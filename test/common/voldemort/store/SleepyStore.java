@@ -63,10 +63,10 @@ public class SleepyStore<K, V> extends DelegatingStore<K, V> {
     }
 
     @Override
-    public void put(K key, Versioned<V> value) throws VoldemortException {
+    public Version put(K key, Versioned<V> value) throws VoldemortException {
         try {
             Thread.sleep(sleepTimeMs);
-            getInnerStore().put(key, value);
+            return getInnerStore().put(key, value);
         } catch(InterruptedException e) {
             throw new VoldemortException(e);
         }

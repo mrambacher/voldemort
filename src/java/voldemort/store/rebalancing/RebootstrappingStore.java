@@ -72,7 +72,9 @@ public class RebootstrappingStore extends DelegatingStore<ByteArray, byte[]> {
 
     private void reinit() {
         AdminClient adminClient = RebalanceUtils.createTempAdminClient(voldemortConfig,
-                                                                       metadata.getCluster(), 4, 2);
+                                                                       metadata.getCluster(),
+                                                                       4,
+                                                                       2);
         try {
             Versioned<Cluster> latestCluster = RebalanceUtils.getLatestCluster(new ArrayList<Integer>(),
                                                                                adminClient);
@@ -167,12 +169,11 @@ public class RebootstrappingStore extends DelegatingStore<ByteArray, byte[]> {
     }
 
     @Override
-    public void put(final ByteArray key, final Versioned<byte[]> versioned)
+    public Version put(final ByteArray key, final Versioned<byte[]> versioned)
             throws ObsoleteVersionException {
         for(int attempts = 0; attempts < this.maxMetadataRefreshAttempts; attempts++) {
             try {
-                super.put(key, versioned);
-                return;
+                return super.put(key, versioned);
             } catch(InvalidMetadataException e) {
                 reinit();
             }

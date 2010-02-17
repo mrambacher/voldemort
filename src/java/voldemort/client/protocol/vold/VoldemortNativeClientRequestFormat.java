@@ -24,13 +24,15 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import voldemort.VoldemortException;
 import voldemort.client.protocol.RequestFormat;
+import voldemort.client.protocol.RequestFormatType;
+import voldemort.protocol.vold.VoldemortNativeProtocol;
 import voldemort.serialization.VoldemortOpCode;
 import voldemort.server.RequestRoutingType;
 import voldemort.store.ErrorCodeMapper;
 import voldemort.store.StoreUtils;
 import voldemort.utils.ByteArray;
-import voldemort.utils.ByteUtils;
 import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
@@ -44,12 +46,29 @@ import voldemort.versioning.Versioned;
  */
 public class VoldemortNativeClientRequestFormat implements RequestFormat {
 
-    private final ErrorCodeMapper mapper;
-    private final int protocolVersion;
+    protected final ErrorCodeMapper mapper;
 
-    public VoldemortNativeClientRequestFormat(int protocolVersion) {
-        this.mapper = new ErrorCodeMapper();
-        this.protocolVersion = protocolVersion;
+    public VoldemortNativeClientRequestFormat() {
+        mapper = new ErrorCodeMapper();
+    }
+
+    protected RequestFormatType getProtocol() {
+        return RequestFormatType.VOLDEMORT_V1;
+    }
+
+    protected void writeMessageHeader(DataOutputStream outputStream,
+                                      byte operation,
+                                      String storeName,
+                                      RequestRoutingType routingType) throws IOException {
+        outputStream.writeByte(operation);
+        outputStream.writeUTF(storeName);
+        outputStream.writeBoolean(routingType.equals(RequestRoutingType.ROUTED));
+        /*
+         * if(protocol.getVersion() >= 2) { if(operation ==
+         * VoldemortOpCode.DELETE_OP_CODE) {
+         * outputStream.writeByte(routingType.getRoutingTypeCode()); } else {
+         * outputStream.writeUTF(routingType.toString()); } }
+         */
     }
 
     public void writeDeleteRequest(DataOutputStream outputStream,
@@ -58,15 +77,11 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
                                    VectorClock version,
                                    RequestRoutingType routingType) throws IOException {
         StoreUtils.assertValidKey(key);
-        outputStream.writeByte(VoldemortOpCode.DELETE_OP_CODE);
-        outputStream.writeUTF(storeName);
-        outputStream.writeBoolean(routingType.equals(RequestRoutingType.ROUTED));
-        if(protocolVersion >= 2) {
-            outputStream.writeByte(routingType.getRoutingTypeCode());
-        }
-        outputStream.writeInt(key.length());
-        outputStream.write(key.get());
+        writeMessageHeader(outputStream, VoldemortOpCode.DELETE_OP_CODE, storeName, routingType);
+        VoldemortNativeProtocol.writeKey(outputStream, key);
+
         VectorClock clock = version;
+        // Unlike other methods, delete used shorts not ints
         outputStream.writeShort(clock.sizeInBytes());
         outputStream.write(clock.toBytes());
     }
@@ -76,39 +91,32 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
         return inputStream.readBoolean();
     }
 
+    protected List<Versioned<byte[]>> readVersioneds(DataInputStream inputStream)
+            throws IOException {
+        return VoldemortNativeProtocol.readVersioneds(inputStream);
+    }
+
+    protected Version readVersion(DataInputStream inputStream) throws IOException {
+        return VoldemortNativeProtocol.readVersion(inputStream);
+    }
+
+    protected void writeVersioned(DataOutputStream outputStream, Versioned<byte[]> versioned)
+            throws IOException {
+        VoldemortNativeProtocol.writeVersioned(outputStream, versioned);
+    }
+
     public void writeGetRequest(DataOutputStream outputStream,
                                 String storeName,
                                 ByteArray key,
                                 RequestRoutingType routingType) throws IOException {
         StoreUtils.assertValidKey(key);
-        outputStream.writeByte(VoldemortOpCode.GET_OP_CODE);
-        outputStream.writeUTF(storeName);
-        outputStream.writeBoolean(routingType.equals(RequestRoutingType.ROUTED));
-        if(protocolVersion >= 2) {
-            outputStream.writeUTF(routingType.toString());
-        }
-        outputStream.writeInt(key.length());
-        outputStream.write(key.get());
+        writeMessageHeader(outputStream, VoldemortOpCode.GET_OP_CODE, storeName, routingType);
+        VoldemortNativeProtocol.writeKey(outputStream, key);
     }
 
     public List<Versioned<byte[]>> readGetResponse(DataInputStream inputStream) throws IOException {
         checkException(inputStream);
-        return readResults(inputStream);
-    }
-
-    private List<Versioned<byte[]>> readResults(DataInputStream inputStream) throws IOException {
-        int resultSize = inputStream.readInt();
-        List<Versioned<byte[]>> results = new ArrayList<Versioned<byte[]>>(resultSize);
-        for(int i = 0; i < resultSize; i++) {
-            int valueSize = inputStream.readInt();
-            byte[] bytes = new byte[valueSize];
-            ByteUtils.read(inputStream, bytes);
-            VectorClock clock = new VectorClock(bytes);
-            results.add(new Versioned<byte[]>(ByteUtils.copy(bytes,
-                                                             clock.sizeInBytes(),
-                                                             bytes.length), clock));
-        }
-        return results;
+        return readVersioneds(inputStream);
     }
 
     public void writeGetAllRequest(DataOutputStream output,
@@ -116,20 +124,14 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
                                    Iterable<ByteArray> keys,
                                    RequestRoutingType routingType) throws IOException {
         StoreUtils.assertValidKeys(keys);
-        output.writeByte(VoldemortOpCode.GET_ALL_OP_CODE);
-        output.writeUTF(storeName);
-        output.writeBoolean(routingType.equals(RequestRoutingType.ROUTED));
-        if(protocolVersion >= 2) {
-            output.writeUTF(routingType.toString());
-        }
+        this.writeMessageHeader(output, VoldemortOpCode.GET_ALL_OP_CODE, storeName, routingType);
         // write out keys
         List<ByteArray> l = new ArrayList<ByteArray>();
         for(ByteArray key: keys)
             l.add(key);
         output.writeInt(l.size());
         for(ByteArray key: keys) {
-            output.writeInt(key.length());
-            output.write(key.get());
+            VoldemortNativeProtocol.writeKey(output, key);
         }
     }
 
@@ -139,10 +141,8 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
         int numResults = stream.readInt();
         Map<ByteArray, List<Versioned<byte[]>>> results = new HashMap<ByteArray, List<Versioned<byte[]>>>(numResults);
         for(int i = 0; i < numResults; i++) {
-            int keySize = stream.readInt();
-            byte[] key = new byte[keySize];
-            stream.readFully(key);
-            results.put(new ByteArray(key), readResults(stream));
+            ByteArray key = VoldemortNativeProtocol.readKey(stream);
+            results.put(key, readVersioneds(stream));
         }
         return results;
     }
@@ -150,35 +150,36 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
     public void writePutRequest(DataOutputStream outputStream,
                                 String storeName,
                                 ByteArray key,
-                                byte[] value,
-                                VectorClock version,
+                                Versioned<byte[]> versioned,
                                 RequestRoutingType routingType) throws IOException {
         StoreUtils.assertValidKey(key);
-        outputStream.writeByte(VoldemortOpCode.PUT_OP_CODE);
-        outputStream.writeUTF(storeName);
-        outputStream.writeBoolean(routingType.equals(RequestRoutingType.ROUTED));
-        if(protocolVersion >= 2) {
-            outputStream.writeUTF(routingType.toString());
-        }
-        outputStream.writeInt(key.length());
-        outputStream.write(key.get());
-        outputStream.writeInt(value.length + version.sizeInBytes());
-        outputStream.write(version.toBytes());
-        outputStream.write(value);
+        this.writeMessageHeader(outputStream, VoldemortOpCode.PUT_OP_CODE, storeName, routingType);
+        VoldemortNativeProtocol.writeKey(outputStream, key);
+        writeVersioned(outputStream, versioned);
     }
 
-    public void readPutResponse(DataInputStream inputStream) throws IOException {
+    public Version readPutResponse(DataInputStream inputStream) throws IOException {
         checkException(inputStream);
+        return null;
+    }
+
+    protected VoldemortException getException(short code, DataInputStream inputStream)
+            throws IOException {
+        if(code != 0) {
+            String error = inputStream.readUTF();
+            return mapper.getError(code, error);
+        } else {
+            return null;
+        }
     }
 
     /*
      * If there is an exception, throw it
      */
-    private void checkException(DataInputStream inputStream) throws IOException {
+    protected void checkException(DataInputStream inputStream) throws IOException {
         short retCode = inputStream.readShort();
         if(retCode != 0) {
-            String error = inputStream.readUTF();
-            throw mapper.getError(retCode, error);
+            throw getException(retCode, inputStream);
         }
     }
 
@@ -187,11 +188,7 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
         int resultSize = stream.readInt();
         List<Version> results = new ArrayList<Version>(resultSize);
         for(int i = 0; i < resultSize; i++) {
-            int versionSize = stream.readInt();
-            byte[] bytes = new byte[versionSize];
-            ByteUtils.read(stream, bytes);
-            VectorClock clock = new VectorClock(bytes);
-            results.add(clock);
+            results.add(readVersion(stream));
         }
         return results;
     }
@@ -201,13 +198,7 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
                                        ByteArray key,
                                        RequestRoutingType routingType) throws IOException {
         StoreUtils.assertValidKey(key);
-        output.writeByte(VoldemortOpCode.GET_VERSION_OP_CODE);
-        output.writeUTF(storeName);
-        output.writeBoolean(routingType.equals(RequestRoutingType.ROUTED));
-        if(protocolVersion >= 2) {
-            output.writeUTF(routingType.toString());
-        }
-        output.writeInt(key.length());
-        output.write(key.get());
+        this.writeMessageHeader(output, VoldemortOpCode.GET_VERSION_OP_CODE, storeName, routingType);
+        VoldemortNativeProtocol.writeKey(output, key);
     }
 }

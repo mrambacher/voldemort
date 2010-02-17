@@ -22,6 +22,7 @@ import voldemort.store.Store;
 import voldemort.store.StoreCapabilityType;
 import voldemort.utils.Time;
 import voldemort.versioning.VectorClock;
+import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
 /**
@@ -45,11 +46,11 @@ public class VersionIncrementingStore<K, V> extends DelegatingStore<K, V> implem
     }
 
     @Override
-    public void put(K key, Versioned<V> value) throws VoldemortException {
+    public Version put(K key, Versioned<V> value) throws VoldemortException {
         value = value.cloneVersioned();
         VectorClock clock = (VectorClock) value.getVersion();
         clock.incrementVersion(nodeId, time.getMilliseconds());
-        super.put(key, value);
+        return super.put(key, value);
     }
 
     @Override

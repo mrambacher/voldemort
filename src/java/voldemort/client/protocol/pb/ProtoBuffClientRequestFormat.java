@@ -77,7 +77,7 @@ public class ProtoBuffClientRequestFormat implements RequestFormat {
         DeleteResponse.Builder response = ProtoUtils.readToBuilder(input,
                                                                    DeleteResponse.newBuilder());
         if(response.hasError())
-            throwException(response.getError());
+            ProtoUtils.throwException(mapper, response.getError());
         return response.getSuccess();
     }
 
@@ -100,7 +100,7 @@ public class ProtoBuffClientRequestFormat implements RequestFormat {
     public List<Versioned<byte[]>> readGetResponse(DataInputStream input) throws IOException {
         GetResponse.Builder response = ProtoUtils.readToBuilder(input, GetResponse.newBuilder());
         if(response.hasError())
-            throwException(response.getError());
+            ProtoUtils.throwException(mapper, response.getError());
         return ProtoUtils.decodeVersions(response.getVersionedList());
     }
 
@@ -128,7 +128,7 @@ public class ProtoBuffClientRequestFormat implements RequestFormat {
         GetAllResponse.Builder response = ProtoUtils.readToBuilder(input,
                                                                    GetAllResponse.newBuilder());
         if(response.hasError())
-            throwException(response.getError());
+            ProtoUtils.throwException(mapper, response.getError());
         Map<ByteArray, List<Versioned<byte[]>>> vals = new HashMap<ByteArray, List<Versioned<byte[]>>>(response.getValuesCount());
         for(VProto.KeyedVersions versions: response.getValuesList())
             vals.put(ProtoUtils.decodeBytes(versions.getKey()),
@@ -139,15 +139,12 @@ public class ProtoBuffClientRequestFormat implements RequestFormat {
     public void writePutRequest(DataOutputStream output,
                                 String storeName,
                                 ByteArray key,
-                                byte[] value,
-                                VectorClock version,
+                                Versioned<byte[]> versioned,
                                 RequestRoutingType routingType) throws IOException {
         StoreUtils.assertValidKey(key);
         VProto.PutRequest.Builder req = VProto.PutRequest.newBuilder()
                                                          .setKey(ByteString.copyFrom(key.get()))
-                                                         .setVersioned(VProto.Versioned.newBuilder()
-                                                                                       .setValue(ByteString.copyFrom(value))
-                                                                                       .setVersion(ProtoUtils.encodeClock(version)));
+                                                         .setVersioned(ProtoUtils.encodeVersioned(versioned));
         ProtoUtils.writeMessage(output,
                                 VProto.VoldemortRequest.newBuilder()
                                                        .setType(RequestType.PUT)
@@ -158,21 +155,23 @@ public class ProtoBuffClientRequestFormat implements RequestFormat {
                                                        .build());
     }
 
-    public void readPutResponse(DataInputStream input) throws IOException {
+    public Version readPutResponse(DataInputStream input) throws IOException {
         PutResponse.Builder response = ProtoUtils.readToBuilder(input, PutResponse.newBuilder());
-        if(response.hasError())
-            throwException(response.getError());
-    }
-
-    public void throwException(VProto.Error error) {
-        throw mapper.getError((short) error.getErrorCode(), error.getErrorMessage());
+        if(response.hasError()) {
+            ProtoUtils.throwException(mapper, response.getError());
+        }
+        if(response.hasVersion()) {
+            return ProtoUtils.decodeClock(response.getVersion());
+        } else {
+            return null;
+        }
     }
 
     public List<Version> readGetVersionResponse(DataInputStream stream) throws IOException {
         GetVersionResponse.Builder response = ProtoUtils.readToBuilder(stream,
                                                                        GetVersionResponse.newBuilder());
         if(response.hasError())
-            throwException(response.getError());
+            ProtoUtils.throwException(mapper, response.getError());
         List<Version> versions = Lists.newArrayListWithCapacity(response.getVersionsCount());
         for(VProto.VectorClock version: response.getVersionsList())
             versions.add(ProtoUtils.decodeClock(version));

@@ -64,9 +64,9 @@ public class DelegatingStore<K, V> implements Store<K, V> {
         return innerStore.getName();
     }
 
-    public void put(K key, Versioned<V> value) throws VoldemortException {
+    public Version put(K key, Versioned<V> value) throws VoldemortException {
         StoreUtils.assertValidKey(key);
-        innerStore.put(key, value);
+        return innerStore.put(key, value);
     }
 
     public Store<K, V> getInnerStore() {

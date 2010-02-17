@@ -85,10 +85,10 @@ public class StatTrackingStore<K, V> extends DelegatingStore<K, V> {
     }
 
     @Override
-    public void put(K key, Versioned<V> value) throws VoldemortException {
+    public Version put(K key, Versioned<V> value) throws VoldemortException {
         long start = System.nanoTime();
         try {
-            super.put(key, value);
+            return super.put(key, value);
         } catch(ObsoleteVersionException e) {
             stats.recordTime(Tracked.OBSOLETE, System.nanoTime() - start);
             throw e;

@@ -83,7 +83,10 @@ public class MutableStoreVerifier extends BasicStoreVerifier<ByteArray, byte[]> 
                     return null;
                 }
 
-                public void put(ByteArray key, Versioned<byte[]> value) throws VoldemortException {}
+                public Version put(ByteArray key, Versioned<byte[]> value)
+                        throws VoldemortException {
+                    return null;
+                }
 
             });
         }

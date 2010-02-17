@@ -29,8 +29,8 @@ import java.util.Map;
 import java.util.Set;
 
 import voldemort.client.ClientConfig;
-import voldemort.client.DefaultStoreClient;
 import voldemort.client.SocketStoreClientFactory;
+import voldemort.client.StoreClient;
 import voldemort.client.StoreClientFactory;
 import voldemort.cluster.Node;
 import voldemort.cluster.failuredetector.FailureDetector;
@@ -50,7 +50,7 @@ public class VoldemortClientShell {
 
     private static final String PROMPT = "> ";
 
-    private static DefaultStoreClient<Object, Object> client;
+    private static StoreClient<Object, Object> client;
 
     public static void main(String[] args) throws Exception {
         if(args.length < 2 || args.length > 3)
@@ -76,7 +76,7 @@ public class VoldemortClientShell {
         StoreClientFactory factory = new SocketStoreClientFactory(clientConfig);
 
         try {
-            client = (DefaultStoreClient<Object, Object>) factory.getStoreClient(storeName);
+            client = factory.getStoreClient(storeName);
         } catch(Exception e) {
             Utils.croak("Could not connect to server: " + e.getMessage());
         }
@@ -101,8 +101,9 @@ public class VoldemortClientShell {
             try {
                 if(line.toLowerCase().startsWith("put")) {
                     JsonReader jsonReader = new JsonReader(new StringReader(line.substring("put".length())));
-                    client.put(tightenNumericTypes(jsonReader.read()),
-                               tightenNumericTypes(jsonReader.read()));
+                    Versioned<Object> value = client.put(tightenNumericTypes(jsonReader.read()),
+                                                         tightenNumericTypes(jsonReader.read()));
+                    System.out.println("Version is now: " + value.getVersion());
                 } else if(line.toLowerCase().startsWith("getall")) {
                     JsonReader jsonReader = new JsonReader(new StringReader(line.substring("getall".length())));
                     List<Object> keys = new ArrayList<Object>();

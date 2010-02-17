@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.io.FileDeleteStrategy;
+import org.junit.Test;
 
 import voldemort.TestUtils;
 import voldemort.store.AbstractStoreTest;
@@ -35,6 +36,10 @@ import voldemort.versioning.Versioned;
 public class ConfigurationStorageEngineTest extends AbstractStoreTest<String, String> {
 
     private File tempDir;
+
+    public ConfigurationStorageEngineTest() {
+        super("test");
+    }
 
     @Override
     public void setUp() throws Exception {
@@ -56,11 +61,11 @@ public class ConfigurationStorageEngineTest extends AbstractStoreTest<String, St
     }
 
     @Override
-    public Store<String, String> getStore() {
+    public Store<String, String> createStore(String name) {
         if(null == tempDir || !tempDir.exists()) {
             tempDir = TestUtils.createTempDir();
         }
-        return new ConfigurationStorageEngine("test", tempDir.getAbsolutePath());
+        return new ConfigurationStorageEngine(name, tempDir.getAbsolutePath());
     }
 
     @Override
@@ -111,6 +116,7 @@ public class ConfigurationStorageEngineTest extends AbstractStoreTest<String, St
         return false;
     }
 
+    @Test
     public void testEmacsTempFile() throws IOException {
         Store<String, String> store = getStore();
         String keyName = "testkey.xml";

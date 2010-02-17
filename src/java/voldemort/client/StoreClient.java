@@ -97,7 +97,7 @@ public interface StoreClient<K, V> {
      * @param key The key
      * @param value The value
      */
-    public void put(K key, V value);
+    public Versioned<V> put(K key, V value);
 
     /**
      * Put the given Versioned value into the store for the given key if the
@@ -108,7 +108,7 @@ public interface StoreClient<K, V> {
      * @param versioned The value and its versioned
      * @throws ObsoleteVersionException
      */
-    public void put(K key, Versioned<V> versioned) throws ObsoleteVersionException;
+    public Versioned<V> put(K key, Versioned<V> versioned) throws ObsoleteVersionException;
 
     /**
      * Put the versioned value to the key, ignoring any ObsoleteVersionException

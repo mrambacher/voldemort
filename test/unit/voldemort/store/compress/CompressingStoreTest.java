@@ -17,20 +17,18 @@ import voldemort.client.StoreClient;
 import voldemort.serialization.Compression;
 import voldemort.server.AbstractSocketService;
 import voldemort.store.AbstractByteArrayStoreTest;
-import voldemort.store.Store;
 import voldemort.store.memory.InMemoryStorageEngine;
 import voldemort.utils.ByteArray;
 
 @RunWith(Parameterized.class)
 public class CompressingStoreTest extends AbstractByteArrayStoreTest {
 
-    private CompressingStore store;
-
     private final boolean useNio;
     private final Compression compression;
     private final CompressionStrategyFactory compressionFactory = new CompressionStrategyFactory();
 
     public CompressingStoreTest(boolean useNio, String compressionType) {
+        super("test");
         this.useNio = useNio;
         this.compression = new Compression(compressionType, null);
     }
@@ -44,18 +42,19 @@ public class CompressingStoreTest extends AbstractByteArrayStoreTest {
     @Override
     @Before
     public void setUp() throws Exception {
-        this.store = new CompressingStore(new InMemoryStorageEngine<ByteArray, byte[]>("test"),
-                                          compressionFactory.get(compression),
-                                          compressionFactory.get(compression));
+        stores.put("test", createStore("test"));
     }
 
     @Override
-    public Store<ByteArray, byte[]> getStore() {
+    public CompressingStore createStore(String name) {
+        CompressingStore store = new CompressingStore(new InMemoryStorageEngine<ByteArray, byte[]>(name),
+                                                      compressionFactory.get(compression),
+                                                      compressionFactory.get(compression));
         return store;
     }
 
     @Test
-    public void testPutGetWithSocketService() throws Exception {
+    public void testPutGetWithSocketService() {
         int freePort = ServerTestUtils.findFreePort();
         String clusterXml = VoldemortTestConstants.getOneNodeClusterXml();
         clusterXml = clusterXml.replace("<socket-port>6666</socket-port>", "<socket-port>"
@@ -67,12 +66,8 @@ public class CompressingStoreTest extends AbstractByteArrayStoreTest {
                                                                                "test",
                                                                                freePort);
         socketService.start();
-
-        Thread.sleep(1000);
-
         SocketStoreClientFactory storeClientFactory = new SocketStoreClientFactory(new ClientConfig().setBootstrapUrls("tcp://localhost:"
-                                                                                                                       + freePort)
-                                                                                                     .setMaxBootstrapRetries(10));
+                                                                                                                       + freePort));
         StoreClient<String, String> storeClient = storeClientFactory.getStoreClient("test");
         storeClient.put("someKey", "someValue");
         assertEquals(storeClient.getValue("someKey"), "someValue");

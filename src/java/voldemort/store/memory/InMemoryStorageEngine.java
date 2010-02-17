@@ -121,7 +121,7 @@ public class InMemoryStorageEngine<K, V> implements StorageEngine<K, V> {
         return StoreUtils.getAll(this, keys);
     }
 
-    public void put(K key, Versioned<V> value) throws VoldemortException {
+    public Version put(K key, Versioned<V> value) throws VoldemortException {
         StoreUtils.assertValidKey(key);
 
         Version version = value.getVersion();
@@ -147,7 +147,8 @@ public class InMemoryStorageEngine<K, V> implements StorageEngine<K, V> {
                         Occured occured = value.getVersion().compare(versioned.getVersion());
                         if(occured == Occured.BEFORE) {
                             throw new ObsoleteVersionException("Obsolete version for key '" + key
-                                                               + "': " + value.getVersion());
+                                                                       + "': " + value.getVersion(),
+                                                               versioned.getVersion());
                         } else if(occured == Occured.AFTER) {
                             itemsToRemove.add(versioned);
                         }
@@ -158,6 +159,7 @@ public class InMemoryStorageEngine<K, V> implements StorageEngine<K, V> {
                 success = true;
             }
         }
+        return version;
     }
 
     public Object getCapability(StoreCapabilityType capability) {

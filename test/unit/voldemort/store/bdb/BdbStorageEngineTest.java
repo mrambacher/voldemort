@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.commons.io.FileDeleteStrategy;
+import org.junit.Test;
 
 import voldemort.TestUtils;
 import voldemort.store.AbstractStorageEngineTest;
@@ -35,92 +36,82 @@ import voldemort.utils.Pair;
 import voldemort.versioning.VectorClock;
 import voldemort.versioning.Versioned;
 
-import com.sleepycat.je.Database;
-import com.sleepycat.je.DatabaseConfig;
-import com.sleepycat.je.Environment;
-import com.sleepycat.je.EnvironmentConfig;
+import com.sleepycat.je.DatabaseException;
 
 public class BdbStorageEngineTest extends AbstractStorageEngineTest {
 
-    private Environment environment;
-    private EnvironmentConfig envConfig;
-    private Database database;
+    private BdbConfiguration configuration;
+
+    public BdbStorageEngineTest() {
+        super("test");
+    }
+
     private File tempDir;
-    private BdbStorageEngine store;
-    private DatabaseConfig databaseConfig;
+    private StorageEngine<ByteArray, byte[]> store;
 
     @Override
-    protected void setUp() throws Exception {
+    public void setUp() throws Exception {
         super.setUp();
-        this.envConfig = new EnvironmentConfig();
-        this.envConfig.setTxnNoSync(true);
-        this.envConfig.setAllowCreate(true);
-        this.envConfig.setTransactional(true);
         this.tempDir = TestUtils.createTempDir();
-        this.environment = new Environment(this.tempDir, envConfig);
-        this.databaseConfig = new DatabaseConfig();
-        databaseConfig.setAllowCreate(true);
-        databaseConfig.setTransactional(true);
-        databaseConfig.setSortedDuplicates(true);
-        this.database = environment.openDatabase(null, "test", databaseConfig);
-        this.store = new BdbStorageEngine("test", this.environment, this.database);
+        configuration = new BdbConfiguration(tempDir, "test");
+        this.store = getStorageEngine("test");
     }
 
     @Override
-    protected void tearDown() throws Exception {
+    public void tearDown() throws Exception {
         super.tearDown();
         try {
-            store.close();
-            environment.close();
+            configuration.close();
         } finally {
             FileDeleteStrategy.FORCE.delete(tempDir);
         }
     }
 
     @Override
-    public StorageEngine<ByteArray, byte[]> getStorageEngine() {
-        return store;
+    public BdbStorageEngine createStorageEngine(String name) {
+        try {
+            return configuration.createStorageEngine(name);
+        } catch(DatabaseException e) {
+            assertNull("Unexpected exception", e);
+            return null;
+        }
     }
 
+    @Test
     public void testPersistence() throws Exception {
-        this.store.put(new ByteArray("abc".getBytes()), new Versioned<byte[]>("cdef".getBytes()));
-        this.store.close();
-        this.environment.close();
-        this.environment = new Environment(this.tempDir, envConfig);
-        this.database = environment.openDatabase(null, "test", databaseConfig);
-        this.store = new BdbStorageEngine("test", this.environment, this.database);
+        StorageEngine<ByteArray, byte[]> store = this.getStorageEngine();
+
+        store.put(new ByteArray("abc".getBytes()), new Versioned<byte[]>("cdef".getBytes()));
+        this.closeStore(store.getName());
+        this.configuration.close();
+        this.configuration = new BdbConfiguration(this.tempDir, "test");
+        store = getStorageEngine();
         List<Versioned<byte[]>> vals = store.get(new ByteArray("abc".getBytes()));
         assertEquals(1, vals.size());
         TestUtils.bytesEqual("cdef".getBytes(), vals.get(0).getValue());
     }
 
+    @Test
     public void testEquals() {
         String name = "someName";
-        assertEquals(new BdbStorageEngine(name, environment, database),
-                     new BdbStorageEngine(name, environment, database));
+        BdbStorageEngine first = createStorageEngine(name);
+        BdbStorageEngine second = createStorageEngine(name);
+        assertEquals(first, second);
+        first.close();
+        second.close();
     }
 
+    @Test
     public void testNullConstructorParameters() {
         try {
-            new BdbStorageEngine(null, environment, database);
+            createStorageEngine(null);
+            fail("No exception thrown for null name.");
         } catch(IllegalArgumentException e) {
             return;
         }
-        fail("No exception thrown for null name.");
-        try {
-            new BdbStorageEngine("name", null, database);
-        } catch(IllegalArgumentException e) {
-            return;
-        }
-        fail("No exception thrown for null environment.");
-        try {
-            new BdbStorageEngine("name", environment, null);
-        } catch(IllegalArgumentException e) {
-            return;
-        }
-        fail("No exception thrown for null database.");
     }
 
+    @Test
     public void testSimultaneousIterationAndModification() throws Exception {
         // start a thread to do modifications
         ExecutorService executor = Executors.newFixedThreadPool(2);

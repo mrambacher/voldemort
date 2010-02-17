@@ -87,6 +87,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
     private FailureDetector failureDetector;
 
     public RoutedStoreTest(Class<FailureDetector> failureDetectorClass) {
+        super("test");
         this.failureDetectorClass = failureDetectorClass;
     }
 
@@ -110,7 +111,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
     }
 
     @Override
-    public Store<ByteArray, byte[]> getStore() throws Exception {
+    public Store<ByteArray, byte[]> createStore(String name) {
         return new InconsistencyResolvingStore<ByteArray, byte[]>(getStore(cluster,
                                                                            cluster.getNumberOfNodes(),
                                                                            cluster.getNumberOfNodes(),
@@ -119,8 +120,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
                                                                   new VectorClockInconsistencyResolver<byte[]>());
     }
 
-    private RoutedStore getStore(Cluster cluster, int reads, int writes, int threads, int failing)
-            throws Exception {
+    private RoutedStore getStore(Cluster cluster, int reads, int writes, int threads, int failing) {
         return getStore(cluster,
                         reads,
                         writes,
@@ -138,7 +138,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
                                  int failing,
                                  int sleepy,
                                  String strategy,
-                                 VoldemortException e) throws Exception {
+                                 VoldemortException e) {
         Map<Integer, Store<ByteArray, byte[]>> subStores = Maps.newHashMap();
         int count = 0;
         for(Node n: cluster.getNodes()) {
@@ -693,8 +693,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
         assertEquals("Number of operational nodes not what was expected.", expected, found);
     }
 
-    private void setFailureDetector(Map<Integer, Store<ByteArray, byte[]>> subStores)
-            throws Exception {
+    private void setFailureDetector(Map<Integer, Store<ByteArray, byte[]>> subStores) {
         // Destroy any previous failure detector before creating the next one
         // (the final one is destroyed in tearDown).
         if(failureDetector != null)

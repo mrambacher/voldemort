@@ -112,15 +112,16 @@ public class LoggingStore<K, V> extends DelegatingStore<K, V> {
     }
 
     @Override
-    public void put(K key, Versioned<V> value) throws VoldemortException {
+    public Version put(K key, Versioned<V> value) throws VoldemortException {
         long startTimeNs = 0;
         boolean succeeded = false;
         if(logger.isDebugEnabled()) {
             startTimeNs = time.getNanoseconds();
         }
         try {
-            getInnerStore().put(key, value);
+            Version version = getInnerStore().put(key, value);
             succeeded = true;
+            return version;
         } finally {
             printTimedMessage("PUT", succeeded, startTimeNs);
         }

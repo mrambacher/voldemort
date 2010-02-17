@@ -44,7 +44,7 @@ public class FailingReadsStore<K, V> implements Store<K, V> {
         return name;
     }
 
-    public void put(K key, Versioned<V> value) throws VoldemortException {
-        engine.put(key, value);
+    public Version put(K key, Versioned<V> value) throws VoldemortException {
+        return engine.put(key, value);
     }
 }

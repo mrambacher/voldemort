@@ -284,7 +284,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[]> {
         return results;
     }
 
-    public void put(ByteArray key, Versioned<byte[]> value) throws PersistenceFailureException {
+    public Version put(ByteArray key, Versioned<byte[]> value) throws PersistenceFailureException {
         StoreUtils.assertValidKey(key);
 
         DatabaseEntry keyEntry = new DatabaseEntry(key.get());
@@ -306,11 +306,12 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[]> {
                 Occured occured = value.getVersion().compare(clock);
                 if(occured == Occured.BEFORE)
                     throw new ObsoleteVersionException("Key "
-                                                       + new String(hexCodec.encode(key.get()))
-                                                       + " "
-                                                       + value.getVersion().toString()
-                                                       + " is obsolete, it is no greater than the current version of "
-                                                       + clock + ".");
+                                                               + new String(hexCodec.encode(key.get()))
+                                                               + " "
+                                                               + value.getVersion().toString()
+                                                               + " is obsolete, it is no greater than the current version of "
+                                                               + clock + ".",
+                                                       clock);
                 else if(occured == Occured.AFTER)
                     // best effort delete of obsolete previous value!
                     cursor.delete();
@@ -334,6 +335,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[]> {
             else
                 attemptAbort(transaction);
         }
+        return value.getVersion();
     }
 
     public boolean delete(ByteArray key, Version version) throws PersistenceFailureException {

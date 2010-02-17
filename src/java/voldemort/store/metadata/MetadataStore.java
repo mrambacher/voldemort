@@ -187,7 +187,7 @@ public class MetadataStore implements StorageEngine<ByteArray, byte[]> {
      * @return void
      * @throws VoldemortException
      */
-    public synchronized void put(ByteArray keyBytes, Versioned<byte[]> valueBytes)
+    public synchronized Version put(ByteArray keyBytes, Versioned<byte[]> valueBytes)
             throws VoldemortException {
         String key = ByteUtils.getString(keyBytes.get(), "UTF-8");
         Versioned<String> value = new Versioned<String>(ByteUtils.getString(valueBytes.getValue(),
@@ -197,6 +197,7 @@ public class MetadataStore implements StorageEngine<ByteArray, byte[]> {
         Versioned<Object> valueObject = convertStringToObject(key, value);
 
         this.put(key, valueObject);
+        return valueObject.getVersion();
     }
 
     public void close() throws VoldemortException {

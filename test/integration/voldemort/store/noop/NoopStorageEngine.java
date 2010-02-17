@@ -78,12 +78,13 @@ public class NoopStorageEngine implements StorageEngine<ByteArray, byte[]> {
         return StoreUtils.getVersions(get(key));
     }
 
-    public void put(ByteArray key, Versioned<byte[]> value) throws VoldemortException {
+    public Version put(ByteArray key, Versioned<byte[]> value) throws VoldemortException {
 
         if(dataReflect) {
             this.key = key;
             this.value = value;
         }
+        return value.getVersion();
     }
 
     public boolean delete(ByteArray key, Version version) throws VoldemortException {

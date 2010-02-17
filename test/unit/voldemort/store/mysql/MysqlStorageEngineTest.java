@@ -23,6 +23,7 @@ import java.sql.SQLException;
 import javax.sql.DataSource;
 
 import org.apache.commons.dbcp.BasicDataSource;
+import org.junit.Test;
 
 import voldemort.TestUtils;
 import voldemort.store.AbstractStorageEngineTest;
@@ -31,24 +32,31 @@ import voldemort.utils.ByteArray;
 
 public class MysqlStorageEngineTest extends AbstractStorageEngineTest {
 
-    private MysqlStorageEngine engine;
+    public MysqlStorageEngineTest() {
+        super("test_store");
+    }
 
     @Override
     public void setUp() throws Exception {
-        this.engine = (MysqlStorageEngine) getStorageEngine();
-        engine.destroy();
-        engine.create();
+        // this.engine = (MysqlStorageEngine) createStorageEngine("test_store");
         super.setUp();
     }
 
     @Override
-    public StorageEngine<ByteArray, byte[]> getStorageEngine() {
-        return new MysqlStorageEngine("test_store", getDataSource());
+    public StorageEngine<ByteArray, byte[]> createStorageEngine(String name) {
+        MysqlStorageEngine engine = new MysqlStorageEngine(name, getDataSource());
+        engine.destroy();
+        engine.create();
+        return engine;
     }
 
     @Override
-    public void tearDown() {
-        engine.destroy();
+    public void tearDown() throws Exception {
+        for(String engine: this.engines.keySet()) {
+            MysqlStorageEngine mysql = (MysqlStorageEngine) engines.get(engine);
+            mysql.destroy();
+        }
+        super.tearDown();
     }
 
     private DataSource getDataSource() {
@@ -66,6 +74,7 @@ public class MysqlStorageEngineTest extends AbstractStorageEngineTest {
         s.execute();
     }
 
+    @Test
     public void testOpenNonExistantStoreCreatesTable() throws SQLException {
         String newStore = TestUtils.randomLetters(15);
         /* Create the engine for side-effect */
@@ -74,4 +83,8 @@ public class MysqlStorageEngineTest extends AbstractStorageEngineTest {
         executeQuery(ds, "select 1 from " + newStore + " limit 1");
         executeQuery(ds, "drop table " + newStore);
     }
+
+    @Override
+    @Test
+    public void testFiveHundredKilobyteSizes() {}
 }

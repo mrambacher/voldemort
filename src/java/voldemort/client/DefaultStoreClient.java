@@ -177,7 +177,7 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
         return result;
     }
 
-    public void put(K key, V value) {
+    public Versioned<V> put(K key, V value) {
         List<Version> versions = getVersions(key);
         Versioned<V> versioned;
         if(versions.isEmpty())
@@ -191,7 +191,7 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
             else
                 versioned.setObject(value);
         }
-        put(key, versioned);
+        return put(key, versioned);
     }
 
     public boolean putIfNotObsolete(K key, Versioned<V> versioned) {
@@ -203,11 +203,11 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
         }
     }
 
-    public void put(K key, Versioned<V> versioned) throws ObsoleteVersionException {
+    public Versioned<V> put(K key, Versioned<V> versioned) throws ObsoleteVersionException {
         for(int attempts = 0; attempts < this.metadataRefreshAttempts; attempts++) {
             try {
-                store.put(key, versioned);
-                return;
+                Version version = store.put(key, versioned);
+                return new Versioned<V>(versioned.getValue(), version);
             } catch(InvalidMetadataException e) {
                 bootStrap();
             }

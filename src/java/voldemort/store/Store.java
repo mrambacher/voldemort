@@ -65,7 +65,7 @@ public interface Store<K, V> {
      * @param key The key to use
      * @param value The value to store and its version.
      */
-    public void put(K key, Versioned<V> value) throws VoldemortException;
+    public Version put(K key, Versioned<V> value) throws VoldemortException;
 
     /**
      * Delete all entries prior to the given version

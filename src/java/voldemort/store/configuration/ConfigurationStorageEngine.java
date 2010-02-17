@@ -115,7 +115,7 @@ public class ConfigurationStorageEngine implements StorageEngine<String, String>
         return name;
     }
 
-    public synchronized void put(String key, Versioned<String> value) throws VoldemortException {
+    public synchronized Version put(String key, Versioned<String> value) throws VoldemortException {
         StoreUtils.assertValidKey(key);
 
         if(null == value.getValue()) {
@@ -131,9 +131,10 @@ public class ConfigurationStorageEngine implements StorageEngine<String, String>
                 } else if(value.getVersion().compare(clock) == Occured.BEFORE) {
                     throw new ObsoleteVersionException("A successor version " + clock
                                                        + "  to this " + value.getVersion()
-                                                       + " exists for key " + key);
+                                                       + " exists for key " + key, clock);
                 } else if(value.getVersion().compare(clock) == Occured.CONCURRENTLY) {
-                    throw new ObsoleteVersionException("Concurrent Operation not allowed on Metadata.");
+                    throw new ObsoleteVersionException("Concurrent Operation not allowed on Metadata.",
+                                                       clock);
                 }
             }
         }
@@ -148,6 +149,7 @@ public class ConfigurationStorageEngine implements StorageEngine<String, String>
                 throw new VoldemortException(e);
             }
         }
+        return newClock;
     }
 
     private File getDirectory(String key) {

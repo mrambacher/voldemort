@@ -127,8 +127,7 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
             stmt.executeUpdate();
         } catch(SQLException e) {
             throw new PersistenceFailureException("Fix me!", e);
-        }
-        finally {
+        } finally {
             tryClose(stmt);
             tryClose(conn);
         }
@@ -245,7 +244,7 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
         return name;
     }
 
-    public void put(ByteArray key, Versioned<byte[]> value) throws PersistenceFailureException {
+    public Version put(ByteArray key, Versioned<byte[]> value) throws PersistenceFailureException {
         StoreUtils.assertValidKey(key);
         boolean doCommit = false;
         Connection conn = null;
@@ -270,7 +269,7 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
                     throw new ObsoleteVersionException("Attempt to put version "
                                                        + value.getVersion()
                                                        + " which is superceeded by " + version
-                                                       + ".");
+                                                       + ".", version);
                 else if(occured == Occured.AFTER)
                     delete(conn, thisKey, version.toBytes());
             }
@@ -285,7 +284,7 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
             doCommit = true;
         } catch(SQLException e) {
             if(e.getErrorCode() == MYSQL_ERR_DUP_KEY || e.getErrorCode() == MYSQL_ERR_DUP_ENTRY) {
-                throw new ObsoleteVersionException("Key or value already used.");
+                throw new ObsoleteVersionException("Key or value already used.", value.getVersion());
             } else {
                 throw new PersistenceFailureException("Fix me!", e);
             }
@@ -303,6 +302,7 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
             tryClose(select);
             tryClose(conn);
         }
+        return value.getVersion();
     }
 
     private void tryClose(ResultSet rs) {

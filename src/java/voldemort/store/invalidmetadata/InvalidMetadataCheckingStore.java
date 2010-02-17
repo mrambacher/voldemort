@@ -70,13 +70,13 @@ public class InvalidMetadataCheckingStore extends DelegatingStore<ByteArray, byt
     }
 
     @Override
-    public void put(ByteArray key, Versioned<byte[]> value) throws VoldemortException {
+    public Version put(ByteArray key, Versioned<byte[]> value) throws VoldemortException {
         StoreUtils.assertValidKey(key);
         StoreUtils.assertValidMetadata(key,
                                        metadata.getRoutingStrategy(getName()),
                                        metadata.getCluster().getNodeById(nodeId));
 
-        getInnerStore().put(key, value);
+        return getInnerStore().put(key, value);
     }
 
     @Override

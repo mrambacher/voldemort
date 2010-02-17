@@ -28,14 +28,18 @@ import voldemort.store.memory.InMemoryStorageEngine;
  */
 public class LoggingStoreTest extends AbstractStoreTest<String, String> {
 
+    public LoggingStoreTest() {
+        super("test-store");
+    }
+
     @Override
     public List<String> getKeys(int numKeys) {
         return getStrings(numKeys, 8);
     }
 
     @Override
-    public Store<String, String> getStore() {
-        return new LoggingStore<String, String>(new InMemoryStorageEngine<String, String>("test-store"));
+    public Store<String, String> createStore(String name) {
+        return new LoggingStore<String, String>(new InMemoryStorageEngine<String, String>(name));
     }
 
     @Override

@@ -63,11 +63,10 @@ public interface RequestFormat {
     public void writePutRequest(DataOutputStream output,
                                 String storeName,
                                 ByteArray key,
-                                byte[] value,
-                                VectorClock version,
+                                Versioned<byte[]> versioned,
                                 RequestRoutingType routingType) throws IOException;
 
-    public void readPutResponse(DataInputStream stream) throws IOException;
+    public Version readPutResponse(DataInputStream stream) throws IOException;
 
     public void writeDeleteRequest(DataOutputStream output,
                                    String storeName,

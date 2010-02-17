@@ -643,7 +643,7 @@ public class RoutedStore implements Store<ByteArray, byte[]> {
         return this.name;
     }
 
-    public void put(final ByteArray key, final Versioned<byte[]> versioned)
+    public Version put(final ByteArray key, final Versioned<byte[]> versioned)
             throws VoldemortException {
         long startNs = System.nanoTime();
         StoreUtils.assertValidKey(key);
@@ -772,6 +772,7 @@ public class RoutedStore implements Store<ByteArray, byte[]> {
         // Okay looks like it worked, increment the version for the caller
         VectorClock versionedClock = (VectorClock) versioned.getVersion();
         versionedClock.incrementVersion(master.getId(), time.getMilliseconds());
+        return finalVersionedCopy.getVersion();
     }
 
     /**

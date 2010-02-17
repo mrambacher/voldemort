@@ -133,9 +133,9 @@ public class CompressingStore implements Store<ByteArray, byte[]> {
         return inflated;
     }
 
-    public void put(ByteArray key, Versioned<byte[]> value) throws VoldemortException {
+    public Version put(ByteArray key, Versioned<byte[]> value) throws VoldemortException {
         StoreUtils.assertValidKey(key);
-        innerStore.put(deflateKey(key), deflateValue(value));
+        return innerStore.put(deflateKey(key), deflateValue(value));
     }
 
     public void close() throws VoldemortException {

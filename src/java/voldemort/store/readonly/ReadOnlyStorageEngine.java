@@ -172,7 +172,7 @@ public class ReadOnlyStorageEngine implements StorageEngine<ByteArray, byte[]> {
             File destDir = new File(storeDir, "version-0");
             if(!newDataDir.renameTo(destDir))
                 throw new VoldemortException("Renaming " + newDataDir.getAbsolutePath() + " to "
-                             + destDir.getAbsolutePath() + " failed!");
+                                             + destDir.getAbsolutePath() + " failed!");
 
             // open the new store
             open();
@@ -378,7 +378,7 @@ public class ReadOnlyStorageEngine implements StorageEngine<ByteArray, byte[]> {
     /**
      * Not supported, throws UnsupportedOperationException if called
      */
-    public void put(ByteArray key, Versioned<byte[]> value) throws VoldemortException {
+    public Version put(ByteArray key, Versioned<byte[]> value) throws VoldemortException {
         throw new UnsupportedOperationException("Put is not supported on this store, it is read-only.");
     }
 

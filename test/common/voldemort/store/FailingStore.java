@@ -60,7 +60,7 @@ public class FailingStore<K, V> implements Store<K, V> {
         throw exception;
     }
 
-    public void put(K key, Versioned<V> value) throws VoldemortException {
+    public Version put(K key, Versioned<V> value) throws VoldemortException {
         throw exception;
     }
 

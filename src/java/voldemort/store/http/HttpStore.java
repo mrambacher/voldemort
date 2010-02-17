@@ -134,7 +134,7 @@ public class HttpStore implements Store<ByteArray, byte[]> {
         }
     }
 
-    public void put(ByteArray key, Versioned<byte[]> versioned) throws VoldemortException {
+    public Version put(ByteArray key, Versioned<byte[]> versioned) throws VoldemortException {
         StoreUtils.assertValidKey(key);
         PostMethod method = null;
         try {
@@ -143,11 +143,15 @@ public class HttpStore implements Store<ByteArray, byte[]> {
             requestFormat.writePutRequest(new DataOutputStream(outputBytes),
                                           storeName,
                                           key,
-                                          versioned.getValue(),
-                                          (VectorClock) versioned.getVersion(),
+                                          versioned,
                                           reroute);
             DataInputStream input = executeRequest(method, outputBytes);
-            requestFormat.readPutResponse(input);
+            Version version = requestFormat.readPutResponse(input);
+            if(version != null) {
+                return version;
+            } else {
+                return versioned.getVersion();
+            }
         } catch(IOException e) {
             throw new UnreachableStoreException("Could not connect to " + storeUrl + " for "
                                                 + storeName, e);

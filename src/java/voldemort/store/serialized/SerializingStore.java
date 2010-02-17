@@ -106,9 +106,11 @@ public class SerializingStore<K, V> implements Store<K, V> {
         return store.getName();
     }
 
-    public void put(K key, Versioned<V> value) throws VoldemortException {
-        store.put(keyToBytes(key), new Versioned<byte[]>(valueSerializer.toBytes(value.getValue()),
-                                                         value.getVersion()));
+    public Version put(K key, Versioned<V> value) throws VoldemortException {
+        Versioned<byte[]> versioned = new Versioned<byte[]>(valueSerializer.toBytes(value.getValue()),
+                                                            value.getVersion());
+        return store.put(keyToBytes(key), versioned);
+
     }
 
     public List<Version> getVersions(K key) {

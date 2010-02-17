@@ -56,8 +56,8 @@ public class DoNothingStore<K, V> implements Store<K, V> {
         return true;
     }
 
-    public void put(K key, Versioned<V> value) throws VoldemortException {
-    // Do nothing
+    public Version put(K key, Versioned<V> value) throws VoldemortException {
+        return value.getVersion();
     }
 
     public Map<K, List<Versioned<V>>> getAll(Iterable<K> keys) throws VoldemortException {

@@ -23,22 +23,29 @@ package voldemort.client.protocol;
  * 
  */
 public enum RequestFormatType {
-    VOLDEMORT_V0("vp0", "voldemort-native-v0"),
-    VOLDEMORT_V1("vp1", "voldemort-native-v1"),
-    VOLDEMORT_V2("vp2", "voldemort-native-v2"),
-    PROTOCOL_BUFFERS("pb0", "protocol-buffers-v0"),
-    ADMIN_PROTOCOL_BUFFERS("ad1", "admin-v1");
+    VOLDEMORT_V0("vp0", "voldemort-native-v0", 0),
+    VOLDEMORT_V1("vp1", "voldemort-native-v1", 1),
+    VOLDEMORT_V2("vp2", "voldemort-native-v2", 2),
+    VOLDEMORT_V3("vp3", "voldemort-native-v3", 3),
+    PROTOCOL_BUFFERS("pb0", "protocol-buffers-v0", 0),
+    ADMIN_PROTOCOL_BUFFERS("ad1", "admin-v1", 1);
 
     private final String code;
     private final String displayName;
+    private final int version;
 
-    private RequestFormatType(String code, String display) {
+    private RequestFormatType(String code, String display, int version) {
         this.code = code;
         this.displayName = display;
+        this.version = version;
     }
 
     public String getCode() {
         return code;
+    }
+
+    public int getVersion() {
+        return version;
     }
 
     public String getDisplayName() {

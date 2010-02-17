@@ -26,6 +26,7 @@ import voldemort.VoldemortException;
 import voldemort.store.ErrorCodeMapper;
 import voldemort.utils.ByteArray;
 import voldemort.versioning.ClockEntry;
+import voldemort.versioning.ObsoleteVersionException;
 import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
@@ -45,9 +46,29 @@ import com.google.protobuf.Message;
 public class ProtoUtils {
 
     public static VProto.Error.Builder encodeError(ErrorCodeMapper mapper, VoldemortException e) {
-        return VProto.Error.newBuilder()
-                           .setErrorCode(mapper.getCode(e))
-                           .setErrorMessage(e.getMessage());
+        VProto.Error.Builder error = VProto.Error.newBuilder();
+        error.setErrorCode(mapper.getCode(e));
+        error.setErrorMessage(e.getMessage());
+        if(e instanceof ObsoleteVersionException) {
+            ObsoleteVersionException ove = (ObsoleteVersionException) e;
+            Version v = ove.getExistingVersion();
+            if(v != null) {
+                error.setVersion(ProtoUtils.encodeClock(v));
+            }
+        }
+        return error;
+    }
+
+    public static void throwException(ErrorCodeMapper mapper, VProto.Error error) {
+        VoldemortException ex = mapper.getError((short) error.getErrorCode(),
+                                                error.getErrorMessage());
+        if(ex instanceof ObsoleteVersionException) {
+            if(error.hasVersion()) {
+                ObsoleteVersionException ove = (ObsoleteVersionException) ex;
+                ove.setExistingVersion(ProtoUtils.decodeClock(error.getVersion()));
+            }
+        }
+        throw ex;
     }
 
     public static VProto.Versioned.Builder encodeVersioned(Versioned<byte[]> versioned) {

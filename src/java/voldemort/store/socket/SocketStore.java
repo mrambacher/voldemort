@@ -134,18 +134,24 @@ public class SocketStore implements Store<ByteArray, byte[]> {
         }
     }
 
-    public void put(ByteArray key, Versioned<byte[]> versioned) throws VoldemortException {
+    public Version put(ByteArray key, Versioned<byte[]> versioned) throws VoldemortException {
         StoreUtils.assertValidKey(key);
         SocketAndStreams sands = pool.checkout(destination);
         try {
             requestFormat.writePutRequest(sands.getOutputStream(),
                                           name,
                                           key,
-                                          versioned.getValue(),
-                                          (VectorClock) versioned.getVersion(),
+                                          versioned,
                                           requestType);
             sands.getOutputStream().flush();
-            requestFormat.readPutResponse(sands.getInputStream());
+            Version version = requestFormat.readPutResponse(sands.getInputStream());
+            if(version == null) { // If the protocol is old, it might not return
+                // a version
+                return versioned.getVersion(); // Old protocol, return input
+                // version
+            } else {
+                return version; // New protocol, return the protocol version
+            }
         } catch(IOException e) {
             close(sands.getSocket());
             throw new UnreachableStoreException("Failure in put on " + destination + ": "

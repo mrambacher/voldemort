@@ -9,6 +9,9 @@ import java.util.List;
 import java.util.Map;
 
 import junit.framework.TestCase;
+
+import org.junit.Test;
+
 import voldemort.ServerTestUtils;
 import voldemort.TestUtils;
 import voldemort.VoldemortException;
@@ -22,6 +25,7 @@ import voldemort.store.memory.InMemoryStorageEngine;
 import voldemort.utils.ByteArray;
 import voldemort.versioning.ObsoleteVersionException;
 import voldemort.versioning.VectorClock;
+import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
 public abstract class AbstractRequestFormatTest extends TestCase {
@@ -30,8 +34,10 @@ public abstract class AbstractRequestFormatTest extends TestCase {
     private final RequestFormat clientWireFormat;
     private final RequestHandler serverWireFormat;
     private final InMemoryStorageEngine<ByteArray, byte[]> store;
+    private final RequestFormatType formatType;
 
     public AbstractRequestFormatTest(RequestFormatType type) {
+        this.formatType = type;
         this.storeName = "test";
         this.store = new InMemoryStorageEngine<ByteArray, byte[]>(storeName);
         StoreRepository repository = new StoreRepository();
@@ -42,6 +48,7 @@ public abstract class AbstractRequestFormatTest extends TestCase {
                                                .getRequestHandler(type);
     }
 
+    @Test
     public void testNullKeys() throws Exception {
         try {
             testGetRequest(null, null, null, false);
@@ -69,6 +76,7 @@ public abstract class AbstractRequestFormatTest extends TestCase {
         }
     }
 
+    @Test
     public void testGetRequests() throws Exception {
         testGetRequest(TestUtils.toByteArray("hello"), null, null, false);
         testGetRequest(TestUtils.toByteArray("hello"), "".getBytes(), new VectorClock(), true);
@@ -110,6 +118,7 @@ public abstract class AbstractRequestFormatTest extends TestCase {
         }
     }
 
+    @Test
     public void testGetAllRequests() throws Exception {
         testGetAllRequest(new ByteArray[] {},
                           new byte[][] {},
@@ -167,6 +176,7 @@ public abstract class AbstractRequestFormatTest extends TestCase {
         }
     }
 
+    @Test
     public void testPutRequests() throws Exception {
         testPutRequest(new ByteArray(), new byte[0], new VectorClock(), null);
         testPutRequest(TestUtils.toByteArray("hello"), "world".getBytes(), new VectorClock(), null);
@@ -180,23 +190,33 @@ public abstract class AbstractRequestFormatTest extends TestCase {
                        ObsoleteVersionException.class);
     }
 
-    public void testPutRequest(ByteArray key,
-                               byte[] value,
-                               VectorClock version,
-                               Class<? extends VoldemortException> exception) throws Exception {
+    public Version testPutRequest(ByteArray key,
+                                  byte[] value,
+                                  Version version,
+                                  Class<? extends VoldemortException> exception) throws Exception {
+        Versioned<byte[]> versioned = new Versioned<byte[]>(value, version);
+        return testPutRequest(key, versioned, exception);
+    }
+
+    public Version testPutRequest(ByteArray key,
+                                  Versioned<byte[]> versioned,
+                                  Class<? extends VoldemortException> exception) throws Exception {
+        Version result = null;
         try {
             ByteArrayOutputStream putRequest = new ByteArrayOutputStream();
             this.clientWireFormat.writePutRequest(new DataOutputStream(putRequest),
                                                   storeName,
                                                   key,
-                                                  value,
-                                                  version,
+                                                  versioned,
                                                   RequestRoutingType.NORMAL);
             ByteArrayOutputStream putResponse = new ByteArrayOutputStream();
             this.serverWireFormat.handleRequest(inputStream(putRequest),
                                                 new DataOutputStream(putResponse));
-            this.clientWireFormat.readPutResponse(inputStream(putResponse));
-            TestUtils.assertContains(this.store, key, value);
+            result = this.clientWireFormat.readPutResponse(inputStream(putResponse));
+            if(this.formatType == RequestFormatType.VOLDEMORT_V1) {
+                result = versioned.getVersion();
+            }
+            TestUtils.assertContains(this.store, key, versioned.getValue());
         } catch(IllegalArgumentException e) {
             throw e;
         } catch(Exception e) {
@@ -204,8 +224,10 @@ public abstract class AbstractRequestFormatTest extends TestCase {
         } finally {
             this.store.deleteAll();
         }
+        return result;
     }
 
+    @Test
     public void testDeleteRequests() throws Exception {
         // test pre-existing are deleted
         testDeleteRequest(new ByteArray(),

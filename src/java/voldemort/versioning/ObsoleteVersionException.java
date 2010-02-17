@@ -30,13 +30,34 @@ import voldemort.VoldemortApplicationException;
 public class ObsoleteVersionException extends VoldemortApplicationException {
 
     private static final long serialVersionUID = 1L;
+    private Version version;
 
     public ObsoleteVersionException(String message) {
         super(message);
     }
 
-    public ObsoleteVersionException(String message, Exception cause) {
+    public ObsoleteVersionException(String message, Version version) {
+        super(message);
+        this.version = version;
+    }
+
+    public ObsoleteVersionException(String message, Exception cause, Version version) {
         super(message, cause);
+        this.version = version;
+    }
+
+    /**
+     * Returns the version that caused this exception to be thrown. This version
+     * is the one which caused the input version to be deemed obsolete
+     * 
+     * @return The version that is newer than the requested one.
+     */
+    public Version getExistingVersion() {
+        return version;
+    }
+
+    public void setExistingVersion(Version v) {
+        version = v;
     }
 
     /**

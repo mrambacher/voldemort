@@ -6,6 +6,8 @@ import java.io.DataInputStream;
 import java.io.IOException;
 import java.util.List;
 
+import org.junit.Test;
+
 import voldemort.client.protocol.RequestFormatType;
 import voldemort.client.protocol.pb.ProtoBuffClientRequestFormat;
 import voldemort.protocol.AbstractRequestFormatTest;
@@ -21,6 +23,7 @@ public class ProtocolBuffersRequestFormatTest extends AbstractRequestFormatTest 
      * Replicates a test used by the c++ client. It should give us a warning if
      * a protocol change for get breaks compatibility.
      */
+    @Test
     public void testReadGetResponse() throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         byte[] bytes = new byte[] { 0x0, 0x0, 0x0, 0x18, 0x0a, 0x16, 0x0a, 0x05, 0x77, 0x6f, 0x72,

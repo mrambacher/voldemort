@@ -18,6 +18,8 @@ package voldemort.store;
 
 import java.util.List;
 
+import org.junit.Test;
+
 import voldemort.TestUtils;
 import voldemort.utils.ByteArray;
 import voldemort.versioning.Versioned;
@@ -29,6 +31,10 @@ import com.google.common.collect.Lists;
  * 
  */
 public abstract class AbstractByteArrayStoreTest extends AbstractStoreTest<ByteArray, byte[]> {
+
+    public AbstractByteArrayStoreTest(String name) {
+        super(name);
+    }
 
     @Override
     public List<ByteArray> getKeys(int numValues) {
@@ -48,6 +54,7 @@ public abstract class AbstractByteArrayStoreTest extends AbstractStoreTest<ByteA
         return TestUtils.bytesEqual(t1, t2);
     }
 
+    @Test
     public void testEmptyByteArray() throws Exception {
         Store<ByteArray, byte[]> store = getStore();
         Versioned<byte[]> bytes = new Versioned<byte[]>(new byte[0]);

@@ -21,6 +21,8 @@ import java.util.Collection;
 import java.util.Date;
 import java.util.List;
 
+import org.junit.Test;
+
 import voldemort.TestUtils;
 import voldemort.store.AbstractByteArrayStoreTest;
 import voldemort.store.FailingStore;
@@ -35,13 +37,15 @@ public class SloppyStoreTest extends AbstractByteArrayStoreTest {
     private static final byte[] testVal = "test".getBytes();
     private static final int NODE_ID = 0;
 
+    public SloppyStoreTest() {
+        super("test");
+    }
+
     @Override
     @SuppressWarnings("unchecked")
-    public Store<ByteArray, byte[]> getStore() {
-        Collection<InMemoryStorageEngine<ByteArray, Slop>> backups = Arrays.asList(new InMemoryStorageEngine<ByteArray, Slop>("test"));
-        return new SloppyStore(NODE_ID,
-                               new InMemoryStorageEngine<ByteArray, byte[]>("test"),
-                               backups);
+    public Store<ByteArray, byte[]> createStore(String name) {
+        Collection<InMemoryStorageEngine<ByteArray, Slop>> backups = Arrays.asList(new InMemoryStorageEngine<ByteArray, Slop>(name));
+        return new SloppyStore(NODE_ID, new InMemoryStorageEngine<ByteArray, byte[]>(name), backups);
     }
 
     @SuppressWarnings("unchecked")
@@ -64,6 +68,7 @@ public class SloppyStoreTest extends AbstractByteArrayStoreTest {
         fail("Could not find slop " + slop + " in backup stores.");
     }
 
+    @Test
     public void testFailingStore() {
         SloppyStore store = getSloppyStore(new FailingStore<ByteArray, byte[]>("test",
                                                                                new UnreachableStoreException("Unreachable store.")));

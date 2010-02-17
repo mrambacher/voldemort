@@ -17,6 +17,7 @@
 package voldemort.store.http;
 
 import org.apache.commons.httpclient.HttpClient;
+import org.junit.Test;
 import org.mortbay.jetty.Server;
 import org.mortbay.jetty.servlet.Context;
 
@@ -46,6 +47,14 @@ public class HttpStoreTest extends AbstractByteArrayStoreTest {
     private HttpStore httpStore;
     private Server server;
     private Context context;
+    private final RequestFormatType clientFormat;
+    private final RequestFormatType serverFormat;
+
+    public HttpStoreTest() {
+        super("users");
+        clientFormat = RequestFormatType.VOLDEMORT_V2;
+        serverFormat = RequestFormatType.VOLDEMORT_V2;
+    }
 
     @Override
     public void setUp() throws Exception {
@@ -55,17 +64,15 @@ public class HttpStoreTest extends AbstractByteArrayStoreTest {
         context = ServerTestUtils.getJettyServer(new ClusterMapper().writeCluster(cluster),
                                                  VoldemortTestConstants.getSimpleStoreDefinitionsXml(),
                                                  "users",
-                                                 RequestFormatType.VOLDEMORT_V1,
+                                                 serverFormat,
                                                  node.getHttpPort());
         server = context.getServer();
-        httpStore = ServerTestUtils.getHttpStore("users",
-                                                 RequestFormatType.VOLDEMORT_V1,
-                                                 node.getHttpPort());
+        httpStore = ServerTestUtils.getHttpStore("users", clientFormat, node.getHttpPort());
     }
 
     public <T extends Exception> void testBadUrlOrPort(String url, int port, Class<T> expected) {
         ByteArray key = new ByteArray("test".getBytes());
-        RequestFormat requestFormat = new RequestFormatFactory().getRequestFormat(RequestFormatType.VOLDEMORT_V1);
+        RequestFormat requestFormat = new RequestFormatFactory().getRequestFormat(clientFormat);
         HttpClient client = new HttpClient();
         client.getHttpConnectionManager().getParams().setConnectionTimeout(5000);
         HttpStore badUrlHttpStore = new HttpStore("test", url, port, client, requestFormat, false);
@@ -86,12 +93,14 @@ public class HttpStoreTest extends AbstractByteArrayStoreTest {
         }
     }
 
+    @Test
     public void testBadUrl() {
         testBadUrlOrPort("asfgsadfsda",
                          ServerTestUtils.findFreePort(),
                          UnreachableStoreException.class);
     }
 
+    @Test
     public void testBadPort() {
         testBadUrlOrPort("localhost",
                          ServerTestUtils.findFreePort(),
@@ -107,8 +116,7 @@ public class HttpStoreTest extends AbstractByteArrayStoreTest {
     }
 
     @Override
-    public Store<ByteArray, byte[]> getStore() {
+    public Store<ByteArray, byte[]> createStore(String name) {
         return httpStore;
     }
-
 }

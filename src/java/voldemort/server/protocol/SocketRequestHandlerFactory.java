@@ -4,10 +4,12 @@ import voldemort.VoldemortException;
 import voldemort.client.protocol.RequestFormatType;
 import voldemort.server.StoreRepository;
 import voldemort.server.VoldemortConfig;
-import voldemort.server.protocol.admin.AsyncOperationRunner;
 import voldemort.server.protocol.admin.AdminServiceRequestHandler;
+import voldemort.server.protocol.admin.AsyncOperationRunner;
 import voldemort.server.protocol.pb.ProtoBuffRequestHandler;
 import voldemort.server.protocol.vold.VoldemortNativeRequestHandler;
+import voldemort.server.protocol.vold.VoldemortNativeRequestHandlerV2;
+import voldemort.server.protocol.vold.VoldemortNativeRequestHandlerV3;
 import voldemort.server.rebalance.Rebalancer;
 import voldemort.store.ErrorCodeMapper;
 import voldemort.store.metadata.MetadataStore;
@@ -42,20 +44,21 @@ public class SocketRequestHandlerFactory implements RequestHandlerFactory {
     public RequestHandler getRequestHandler(RequestFormatType type) {
         switch(type) {
             case VOLDEMORT_V0:
-                return new VoldemortNativeRequestHandler(new ErrorCodeMapper(), repository, 0);
             case VOLDEMORT_V1:
-                return new VoldemortNativeRequestHandler(new ErrorCodeMapper(), repository, 1);
+                return new VoldemortNativeRequestHandler(new ErrorCodeMapper(), repository);
             case VOLDEMORT_V2:
-                return new VoldemortNativeRequestHandler(new ErrorCodeMapper(), repository, 2);
+                return new VoldemortNativeRequestHandlerV2(new ErrorCodeMapper(), repository);
+            case VOLDEMORT_V3:
+                return new VoldemortNativeRequestHandlerV3(new ErrorCodeMapper(), repository);
             case PROTOCOL_BUFFERS:
                 return new ProtoBuffRequestHandler(new ErrorCodeMapper(), repository);
             case ADMIN_PROTOCOL_BUFFERS:
                 return new AdminServiceRequestHandler(new ErrorCodeMapper(),
-                                                               repository,
-                                                               metadata,
-                                                               voldemortConfig,
-                                                               asyncRunner,
-                                                               rebalancer);
+                                                      repository,
+                                                      metadata,
+                                                      voldemortConfig,
+                                                      asyncRunner,
+                                                      rebalancer);
             default:
                 throw new VoldemortException("Unknown wire format " + type);
         }

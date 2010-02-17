@@ -81,9 +81,9 @@ public class ViewStorageEngine implements StorageEngine<ByteArray, byte[]> {
         return target.getVersions(key);
     }
 
-    public void put(ByteArray key, Versioned<byte[]> value) throws VoldemortException {
-        target.put(key, Versioned.value(valueFromViewSchema(key, value.getValue()),
-                                        value.getVersion()));
+    public Version put(ByteArray key, Versioned<byte[]> value) throws VoldemortException {
+        return target.put(key, Versioned.value(valueFromViewSchema(key, value.getValue()),
+                                               value.getVersion()));
     }
 
     public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries() {
@@ -96,7 +96,7 @@ public class ViewStorageEngine implements StorageEngine<ByteArray, byte[]> {
 
     public void truncate() {
         ViewIterator iterator = new ViewIterator(target.entries());
-        while (iterator.hasNext()) {
+        while(iterator.hasNext()) {
             Pair<ByteArray, Versioned<byte[]>> pair = iterator.next();
             target.delete(pair.getFirst(), pair.getSecond().getVersion());
         }

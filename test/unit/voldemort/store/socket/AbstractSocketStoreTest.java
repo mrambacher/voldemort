@@ -49,13 +49,13 @@ public abstract class AbstractSocketStoreTest extends AbstractByteArrayStoreTest
     private static final Logger logger = Logger.getLogger(AbstractSocketStoreTest.class);
 
     public AbstractSocketStoreTest(RequestFormatType type, boolean useNio) {
+        super("test");
         this.requestFormatType = type;
         this.useNio = useNio;
     }
 
     private int socketPort;
     private AbstractSocketService socketService;
-    private SocketStore socketStore;
     private final RequestFormatType requestFormatType;
     private final boolean useNio;
 
@@ -70,7 +70,6 @@ public abstract class AbstractSocketStoreTest extends AbstractByteArrayStoreTest
                                                          "test",
                                                          socketPort);
         socketService.start();
-        socketStore = ServerTestUtils.getSocketStore("test", socketPort, requestFormatType);
     }
 
     @Override
@@ -78,12 +77,11 @@ public abstract class AbstractSocketStoreTest extends AbstractByteArrayStoreTest
     public void tearDown() throws Exception {
         super.tearDown();
         socketService.stop();
-        socketStore.close();
     }
 
     @Override
-    public Store<ByteArray, byte[]> getStore() {
-        return socketStore;
+    public Store<ByteArray, byte[]> createStore(String name) {
+        return ServerTestUtils.getSocketStore(name, socketPort, requestFormatType);
     }
 
     @Test

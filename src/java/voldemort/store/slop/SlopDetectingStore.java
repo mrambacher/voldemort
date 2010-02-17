@@ -83,9 +83,9 @@ public class SlopDetectingStore extends DelegatingStore<ByteArray, byte[]> {
     }
 
     @Override
-    public void put(ByteArray key, Versioned<byte[]> value) throws VoldemortException {
+    public Version put(ByteArray key, Versioned<byte[]> value) throws VoldemortException {
         if(isLocal(key)) {
-            getInnerStore().put(key, value);
+            return getInnerStore().put(key, value);
         } else {
             Slop slop = new Slop(getName(),
                                  Slop.Operation.PUT,
@@ -93,7 +93,7 @@ public class SlopDetectingStore extends DelegatingStore<ByteArray, byte[]> {
                                  value.getValue(),
                                  localNode.getId(),
                                  new Date());
-            slopStore.put(slop.makeKey(), new Versioned<Slop>(slop, value.getVersion()));
+            return slopStore.put(slop.makeKey(), new Versioned<Slop>(slop, value.getVersion()));
         }
     }
 

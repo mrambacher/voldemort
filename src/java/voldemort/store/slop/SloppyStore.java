@@ -109,7 +109,7 @@ public class SloppyStore extends DelegatingStore<ByteArray, byte[]> {
      * the first available SlopStore for eventual consistency.
      */
     @Override
-    public void put(ByteArray key, Versioned<byte[]> value) throws VoldemortException {
+    public Version put(ByteArray key, Versioned<byte[]> value) throws VoldemortException {
         StoreUtils.assertValidKey(key);
         try {
             getInnerStore().put(key, value);
@@ -142,6 +142,7 @@ public class SloppyStore extends DelegatingStore<ByteArray, byte[]> {
                                                                         + node + ".",
                                                                 failures);
         }
+        return value.getVersion();
     }
 
     public List<Store<ByteArray, Slop>> getBackupStores() {
