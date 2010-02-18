@@ -1123,6 +1123,27 @@ public final class VProto {
     public boolean hasVersion() { return hasVersion; }
     public voldemort.client.protocol.pb.VProto.VectorClock getVersion() { return version_; }
     
+    // optional int32 available = 4;
+    public static final int AVAILABLE_FIELD_NUMBER = 4;
+    private boolean hasAvailable;
+    private int available_ = 0;
+    public boolean hasAvailable() { return hasAvailable; }
+    public int getAvailable() { return available_; }
+    
+    // optional int32 required = 5;
+    public static final int REQUIRED_FIELD_NUMBER = 5;
+    private boolean hasRequired;
+    private int required_ = 0;
+    public boolean hasRequired() { return hasRequired; }
+    public int getRequired() { return required_; }
+    
+    // optional int32 successes = 6;
+    public static final int SUCCESSES_FIELD_NUMBER = 6;
+    private boolean hasSuccesses;
+    private int successes_ = 0;
+    public boolean hasSuccesses() { return hasSuccesses; }
+    public int getSuccesses() { return successes_; }
+    
     public final boolean isInitialized() {
       if (!hasErrorCode) return false;
       if (!hasErrorMessage) return false;
@@ -1142,6 +1163,15 @@ public final class VProto {
       }
       if (hasVersion()) {
         output.writeMessage(3, getVersion());
+      }
+      if (hasAvailable()) {
+        output.writeInt32(4, getAvailable());
+      }
+      if (hasRequired()) {
+        output.writeInt32(5, getRequired());
+      }
+      if (hasSuccesses()) {
+        output.writeInt32(6, getSuccesses());
       }
       getUnknownFields().writeTo(output);
     }
@@ -1163,6 +1193,18 @@ public final class VProto {
       if (hasVersion()) {
         size += com.google.protobuf.CodedOutputStream
           .computeMessageSize(3, getVersion());
+      }
+      if (hasAvailable()) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeInt32Size(4, getAvailable());
+      }
+      if (hasRequired()) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeInt32Size(5, getRequired());
+      }
+      if (hasSuccesses()) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeInt32Size(6, getSuccesses());
       }
       size += getUnknownFields().getSerializedSize();
       memoizedSerializedSize = size;
@@ -1322,6 +1364,15 @@ public final class VProto {
         if (other.hasVersion()) {
           mergeVersion(other.getVersion());
         }
+        if (other.hasAvailable()) {
+          setAvailable(other.getAvailable());
+        }
+        if (other.hasRequired()) {
+          setRequired(other.getRequired());
+        }
+        if (other.hasSuccesses()) {
+          setSuccesses(other.getSuccesses());
+        }
         this.mergeUnknownFields(other.getUnknownFields());
         return this;
       }
@@ -1362,6 +1413,18 @@ public final class VProto {
               }
               input.readMessage(subBuilder, extensionRegistry);
               setVersion(subBuilder.buildPartial());
+              break;
+            }
+            case 32: {
+              setAvailable(input.readInt32());
+              break;
+            }
+            case 40: {
+              setRequired(input.readInt32());
+              break;
+            }
+            case 48: {
+              setSuccesses(input.readInt32());
               break;
             }
           }
@@ -1442,6 +1505,60 @@ public final class VProto {
       public Builder clearVersion() {
         result.hasVersion = false;
         result.version_ = voldemort.client.protocol.pb.VProto.VectorClock.getDefaultInstance();
+        return this;
+      }
+      
+      // optional int32 available = 4;
+      public boolean hasAvailable() {
+        return result.hasAvailable();
+      }
+      public int getAvailable() {
+        return result.getAvailable();
+      }
+      public Builder setAvailable(int value) {
+        result.hasAvailable = true;
+        result.available_ = value;
+        return this;
+      }
+      public Builder clearAvailable() {
+        result.hasAvailable = false;
+        result.available_ = 0;
+        return this;
+      }
+      
+      // optional int32 required = 5;
+      public boolean hasRequired() {
+        return result.hasRequired();
+      }
+      public int getRequired() {
+        return result.getRequired();
+      }
+      public Builder setRequired(int value) {
+        result.hasRequired = true;
+        result.required_ = value;
+        return this;
+      }
+      public Builder clearRequired() {
+        result.hasRequired = false;
+        result.required_ = 0;
+        return this;
+      }
+      
+      // optional int32 successes = 6;
+      public boolean hasSuccesses() {
+        return result.hasSuccesses();
+      }
+      public int getSuccesses() {
+        return result.getSuccesses();
+      }
+      public Builder setSuccesses(int value) {
+        result.hasSuccesses = true;
+        result.successes_ = value;
+        return this;
+      }
+      public Builder clearSuccesses() {
+        result.hasSuccesses = false;
+        result.successes_ = 0;
         return this;
       }
     }
@@ -5652,37 +5769,39 @@ public final class VProto {
       "\002(\003\"H\n\013VectorClock\022&\n\007entries\030\001 \003(\0132\025.vo" +
       "ldemort.ClockEntry\022\021\n\ttimestamp\030\002 \001(\003\"C\n" +
       "\tVersioned\022\r\n\005value\030\001 \002(\014\022\'\n\007version\030\002 \002" +
-      "(\0132\026.voldemort.VectorClock\"[\n\005Error\022\022\n\ne" +
-      "rror_code\030\001 \002(\005\022\025\n\rerror_message\030\002 \002(\t\022\'" +
-      "\n\007version\030\003 \001(\0132\026.voldemort.VectorClock\"" +
-      "D\n\rKeyedVersions\022\013\n\003key\030\001 \002(\014\022&\n\010version" +
-      "s\030\002 \003(\0132\024.voldemort.Versioned\"\031\n\nGetRequ",
-      "est\022\013\n\003key\030\001 \001(\014\"W\n\013GetResponse\022\'\n\tversi" +
-      "oned\030\001 \003(\0132\024.voldemort.Versioned\022\037\n\005erro" +
-      "r\030\002 \001(\0132\020.voldemort.Error\"_\n\022GetVersionR" +
-      "esponse\022(\n\010versions\030\001 \003(\0132\026.voldemort.Ve" +
-      "ctorClock\022\037\n\005error\030\002 \001(\0132\020.voldemort.Err" +
-      "or\"\035\n\rGetAllRequest\022\014\n\004keys\030\001 \003(\014\"[\n\016Get" +
-      "AllResponse\022(\n\006values\030\001 \003(\0132\030.voldemort." +
-      "KeyedVersions\022\037\n\005error\030\002 \001(\0132\020.voldemort" +
-      ".Error\"B\n\nPutRequest\022\013\n\003key\030\001 \002(\014\022\'\n\tver" +
-      "sioned\030\002 \002(\0132\024.voldemort.Versioned\"W\n\013Pu",
-      "tResponse\022\037\n\005error\030\001 \001(\0132\020.voldemort.Err" +
-      "or\022\'\n\007version\030\002 \001(\0132\026.voldemort.VectorCl" +
-      "ock\"E\n\rDeleteRequest\022\013\n\003key\030\001 \002(\014\022\'\n\007ver" +
-      "sion\030\002 \002(\0132\026.voldemort.VectorClock\"B\n\016De" +
-      "leteResponse\022\017\n\007success\030\001 \002(\010\022\037\n\005error\030\002" +
-      " \001(\0132\020.voldemort.Error\"\232\002\n\020VoldemortRequ" +
-      "est\022$\n\004type\030\001 \002(\0162\026.voldemort.RequestTyp" +
-      "e\022\033\n\014should_route\030\002 \002(\010:\005false\022\r\n\005store\030" +
-      "\003 \002(\t\022\"\n\003get\030\004 \001(\0132\025.voldemort.GetReques" +
-      "t\022(\n\006getAll\030\005 \001(\0132\030.voldemort.GetAllRequ",
-      "est\022\"\n\003put\030\006 \001(\0132\025.voldemort.PutRequest\022" +
-      "(\n\006delete\030\007 \001(\0132\030.voldemort.DeleteReques" +
-      "t\022\030\n\020requestRouteType\030\010 \001(\005*I\n\013RequestTy" +
-      "pe\022\007\n\003GET\020\000\022\013\n\007GET_ALL\020\001\022\007\n\003PUT\020\002\022\n\n\006DEL" +
-      "ETE\020\003\022\017\n\013GET_VERSION\020\004B(\n\034voldemort.clie" +
-      "nt.protocol.pbB\006VProtoH\001"
+      "(\0132\026.voldemort.VectorClock\"\223\001\n\005Error\022\022\n\n" +
+      "error_code\030\001 \002(\005\022\025\n\rerror_message\030\002 \002(\t\022" +
+      "\'\n\007version\030\003 \001(\0132\026.voldemort.VectorClock" +
+      "\022\021\n\tavailable\030\004 \001(\005\022\020\n\010required\030\005 \001(\005\022\021\n" +
+      "\tsuccesses\030\006 \001(\005\"D\n\rKeyedVersions\022\013\n\003key",
+      "\030\001 \002(\014\022&\n\010versions\030\002 \003(\0132\024.voldemort.Ver" +
+      "sioned\"\031\n\nGetRequest\022\013\n\003key\030\001 \001(\014\"W\n\013Get" +
+      "Response\022\'\n\tversioned\030\001 \003(\0132\024.voldemort." +
+      "Versioned\022\037\n\005error\030\002 \001(\0132\020.voldemort.Err" +
+      "or\"_\n\022GetVersionResponse\022(\n\010versions\030\001 \003" +
+      "(\0132\026.voldemort.VectorClock\022\037\n\005error\030\002 \001(" +
+      "\0132\020.voldemort.Error\"\035\n\rGetAllRequest\022\014\n\004" +
+      "keys\030\001 \003(\014\"[\n\016GetAllResponse\022(\n\006values\030\001" +
+      " \003(\0132\030.voldemort.KeyedVersions\022\037\n\005error\030" +
+      "\002 \001(\0132\020.voldemort.Error\"B\n\nPutRequest\022\013\n",
+      "\003key\030\001 \002(\014\022\'\n\tversioned\030\002 \002(\0132\024.voldemor" +
+      "t.Versioned\"W\n\013PutResponse\022\037\n\005error\030\001 \001(" +
+      "\0132\020.voldemort.Error\022\'\n\007version\030\002 \001(\0132\026.v" +
+      "oldemort.VectorClock\"E\n\rDeleteRequest\022\013\n" +
+      "\003key\030\001 \002(\014\022\'\n\007version\030\002 \002(\0132\026.voldemort." +
+      "VectorClock\"B\n\016DeleteResponse\022\017\n\007success" +
+      "\030\001 \002(\010\022\037\n\005error\030\002 \001(\0132\020.voldemort.Error\"" +
+      "\232\002\n\020VoldemortRequest\022$\n\004type\030\001 \002(\0162\026.vol" +
+      "demort.RequestType\022\033\n\014should_route\030\002 \002(\010" +
+      ":\005false\022\r\n\005store\030\003 \002(\t\022\"\n\003get\030\004 \001(\0132\025.vo",
+      "ldemort.GetRequest\022(\n\006getAll\030\005 \001(\0132\030.vol" +
+      "demort.GetAllRequest\022\"\n\003put\030\006 \001(\0132\025.vold" +
+      "emort.PutRequest\022(\n\006delete\030\007 \001(\0132\030.volde" +
+      "mort.DeleteRequest\022\030\n\020requestRouteType\030\010" +
+      " \001(\005*I\n\013RequestType\022\007\n\003GET\020\000\022\013\n\007GET_ALL\020" +
+      "\001\022\007\n\003PUT\020\002\022\n\n\006DELETE\020\003\022\017\n\013GET_VERSION\020\004B" +
+      "(\n\034voldemort.client.protocol.pbB\006VProtoH" +
+      "\001"
     };
     com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner assigner =
       new com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner() {
@@ -5718,7 +5837,7 @@ public final class VProto {
           internal_static_voldemort_Error_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_voldemort_Error_descriptor,
-              new java.lang.String[] { "ErrorCode", "ErrorMessage", "Version", },
+              new java.lang.String[] { "ErrorCode", "ErrorMessage", "Version", "Available", "Required", "Successes", },
               voldemort.client.protocol.pb.VProto.Error.class,
               voldemort.client.protocol.pb.VProto.Error.Builder.class);
           internal_static_voldemort_KeyedVersions_descriptor =

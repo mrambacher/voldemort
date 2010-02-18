@@ -151,6 +151,34 @@ _ERROR = descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
+    descriptor.FieldDescriptor(
+      name='version', full_name='voldemort.Error.version', index=2,
+      number=3, type=11, cpp_type=10, label=1,
+      default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    descriptor.FieldDescriptor(
+      name='available', full_name='voldemort.Error.available', index=3,
+      number=4, type=5, cpp_type=1, label=1,
+      default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    descriptor.FieldDescriptor(
+      name='required', full_name='voldemort.Error.required', index=4,
+      number=5, type=5, cpp_type=1, label=1,
+      default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    descriptor.FieldDescriptor(
+      name='successes', full_name='voldemort.Error.successes', index=5,
+      number=6, type=5, cpp_type=1, label=1,
+      default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
   ],
   extensions=[
   ],
@@ -362,6 +390,13 @@ _PUTRESPONSE = descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
+    descriptor.FieldDescriptor(
+      name='version', full_name='voldemort.PutResponse.version', index=1,
+      number=2, type=11, cpp_type=10, label=1,
+      default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
   ],
   extensions=[
   ],
@@ -502,6 +537,7 @@ _VOLDEMORTREQUEST = descriptor.Descriptor(
 
 _VECTORCLOCK.fields_by_name['entries'].message_type = _CLOCKENTRY
 _VERSIONED.fields_by_name['version'].message_type = _VECTORCLOCK
+_ERROR.fields_by_name['version'].message_type = _VECTORCLOCK
 _KEYEDVERSIONS.fields_by_name['versions'].message_type = _VERSIONED
 _GETRESPONSE.fields_by_name['versioned'].message_type = _VERSIONED
 _GETRESPONSE.fields_by_name['error'].message_type = _ERROR
@@ -511,6 +547,7 @@ _GETALLRESPONSE.fields_by_name['values'].message_type = _KEYEDVERSIONS
 _GETALLRESPONSE.fields_by_name['error'].message_type = _ERROR
 _PUTREQUEST.fields_by_name['versioned'].message_type = _VERSIONED
 _PUTRESPONSE.fields_by_name['error'].message_type = _ERROR
+_PUTRESPONSE.fields_by_name['version'].message_type = _VECTORCLOCK
 _DELETEREQUEST.fields_by_name['version'].message_type = _VECTORCLOCK
 _DELETERESPONSE.fields_by_name['error'].message_type = _ERROR
 _VOLDEMORTREQUEST.fields_by_name['type'].enum_type = _REQUESTTYPE

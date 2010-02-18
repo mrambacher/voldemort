@@ -44,6 +44,7 @@ import voldemort.cluster.failuredetector.FailureDetector;
 import voldemort.routing.RoutingStrategy;
 import voldemort.routing.RoutingStrategyFactory;
 import voldemort.store.InsufficientOperationalNodesException;
+import voldemort.store.InsufficientSuccessfulNodesException;
 import voldemort.store.NoSuchCapabilityException;
 import voldemort.store.Store;
 import voldemort.store.StoreCapabilityType;
@@ -190,10 +191,13 @@ public class RoutedStore implements Store<ByteArray, byte[]> {
         // requirements
         final int numNodes = nodes.size();
         if(numNodes < this.storeDef.getRequiredWrites())
-            throw new InsufficientOperationalNodesException("Only " + numNodes
-                                                            + " nodes in preference list, but "
-                                                            + this.storeDef.getRequiredWrites()
-                                                            + " writes required.");
+            throw new InsufficientOperationalNodesException("Only "
+                                                                    + numNodes
+                                                                    + " nodes in preference list, but "
+                                                                    + this.storeDef.getRequiredWrites()
+                                                                    + " writes required.",
+                                                            numNodes,
+                                                            this.storeDef.getRequiredWrites());
 
         // A count of the number of successful operations
         final AtomicInteger successes = new AtomicInteger(0);
@@ -259,11 +263,14 @@ public class RoutedStore implements Store<ByteArray, byte[]> {
         // of writes, throw an exception if you can't even hit the required
         // number
         if(successes.get() < storeDef.getRequiredWrites())
-            throw new InsufficientOperationalNodesException(this.storeDef.getRequiredWrites()
-                                                                    + " deletes required, but "
-                                                                    + successes.get()
-                                                                    + " succeeded.",
-                                                            failures);
+            throw new InsufficientSuccessfulNodesException(this.storeDef.getRequiredWrites()
+                                                                   + " deletes required, but "
+                                                                   + successes.get()
+                                                                   + " succeeded.",
+                                                           failures,
+                                                           numNodes,
+                                                           successes.get(),
+                                                           storeDef.getRequiredWrites());
         else
             return deletedSomething.get();
     }
@@ -429,11 +436,14 @@ public class RoutedStore implements Store<ByteArray, byte[]> {
         for(Map.Entry<ByteArray, MutableInt> mapEntry: keyToSuccessCount.entrySet()) {
             int successCount = mapEntry.getValue().intValue();
             if(successCount < storeDef.getRequiredReads())
-                throw new InsufficientOperationalNodesException(this.storeDef.getRequiredReads()
-                                                                        + " reads required, but "
-                                                                        + successCount
-                                                                        + " succeeded.",
-                                                                failures);
+                throw new InsufficientSuccessfulNodesException(this.storeDef.getRequiredReads()
+                                                                       + " reads required, but "
+                                                                       + successCount
+                                                                       + " succeeded.",
+                                                               failures,
+                                                               storeDef.getReplicationFactor(),
+                                                               storeDef.getRequiredReads(),
+                                                               successCount);
         }
 
         return result;
@@ -561,9 +571,14 @@ public class RoutedStore implements Store<ByteArray, byte[]> {
                 result.addAll(getResult.retrieved);
             return result;
         } else
-            throw new InsufficientOperationalNodesException(this.storeDef.getRequiredReads()
-                                                            + " reads required, but " + successes
-                                                            + " succeeded.", failures);
+            throw new InsufficientSuccessfulNodesException(this.storeDef.getRequiredReads()
+                                                                   + " reads required, but "
+                                                                   + successes + " succeeded.",
+                                                           failures,
+                                                           storeDef.getReplicationFactor(),
+                                                           storeDef.getRequiredReads(),
+                                                           successes);
+
     }
 
     private void fillRepairReadsValues(final List<NodeValue<ByteArray, byte[]>> nodeValues,
@@ -619,10 +634,13 @@ public class RoutedStore implements Store<ByteArray, byte[]> {
     private void checkRequiredReads(final List<Node> nodes)
             throws InsufficientOperationalNodesException {
         if(nodes.size() < this.storeDef.getRequiredReads())
-            throw new InsufficientOperationalNodesException("Only " + nodes.size()
-                                                            + " nodes in preference list, but "
-                                                            + this.storeDef.getRequiredReads()
-                                                            + " reads required.");
+            throw new InsufficientOperationalNodesException("Only "
+                                                                    + nodes.size()
+                                                                    + " nodes in preference list, but "
+                                                                    + this.storeDef.getRequiredReads()
+                                                                    + " reads required.",
+                                                            nodes.size(),
+                                                            storeDef.getRequiredReads());
     }
 
     private <R> String formatNodeValues(List<GetResult<R>> results) {
@@ -652,10 +670,13 @@ public class RoutedStore implements Store<ByteArray, byte[]> {
         // quickly fail if there aren't enough nodes to meet the requirement
         final int numNodes = nodes.size();
         if(numNodes < this.storeDef.getRequiredWrites())
-            throw new InsufficientOperationalNodesException("Only " + numNodes
-                                                            + " nodes in preference list, but "
-                                                            + this.storeDef.getRequiredWrites()
-                                                            + " writes required.");
+            throw new InsufficientOperationalNodesException("Only "
+                                                                    + numNodes
+                                                                    + " nodes in preference list, but "
+                                                                    + this.storeDef.getRequiredWrites()
+                                                                    + " writes required.",
+                                                            numNodes,
+                                                            storeDef.getRequiredWrites());
 
         // A count of the number of successful operations
         final AtomicInteger successes = new AtomicInteger(0);
@@ -763,10 +784,14 @@ public class RoutedStore implements Store<ByteArray, byte[]> {
                            storeDef.getRequiredWrites());
             }
             if(successes.get() < storeDef.getRequiredWrites())
-                throw new InsufficientOperationalNodesException(successes.get()
-                                                                + " writes succeeded, but "
-                                                                + this.storeDef.getRequiredWrites()
-                                                                + " are required.", failures);
+                throw new InsufficientSuccessfulNodesException(successes.get()
+                                                                       + " writes succeeded, but "
+                                                                       + this.storeDef.getRequiredWrites()
+                                                                       + " are required.",
+                                                               failures,
+                                                               storeDef.getReplicationFactor(),
+                                                               storeDef.getRequiredWrites(),
+                                                               successes.get());
         }
 
         // Okay looks like it worked, increment the version for the caller

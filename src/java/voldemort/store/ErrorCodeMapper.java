@@ -57,6 +57,7 @@ public class ErrorCodeMapper {
         codeToException.put((short) 13, AlreadyRebalancingException.class);
         codeToException.put((short) 14, VoldemortRebalancingException.class);
         codeToException.put((short) 15, ProxyUnreachableException.class);
+        codeToException.put((short) 16, InsufficientSuccessfulNodesException.class);
 
         exceptionToCode = new HashMap<Class<? extends VoldemortException>, Short>();
         for(Map.Entry<Short, Class<? extends VoldemortException>> entry: codeToException.entrySet())

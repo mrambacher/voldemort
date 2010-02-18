@@ -23,6 +23,9 @@ message Error {
   required int32 error_code = 1;
   required string error_message = 2;
   optional VectorClock version = 3;
+  optional int32 available = 4;
+  optional int32 required  = 5;
+  optional int32 successes = 6;
 }
 
 message KeyedVersions {

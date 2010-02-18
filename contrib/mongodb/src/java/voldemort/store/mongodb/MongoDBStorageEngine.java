@@ -186,7 +186,7 @@ public class MongoDBStorageEngine implements StorageEngine<ByteArray, byte[]> {
         return map;
     }
 
-    public void put(ByteArray key, Versioned<byte[]> value) throws VoldemortException {
+    public Version put(ByteArray key, Versioned<byte[]> value) throws VoldemortException {
         StoreUtils.assertValidKey(key);
         getTLS();
 
@@ -214,7 +214,8 @@ public class MongoDBStorageEngine implements StorageEngine<ByteArray, byte[]> {
                 // if my new one occured before the one from the db....
 
                 if(occured == Occured.BEFORE) {
-                    throw new ObsoleteVersionException("Key '" + strKey + " is obsolete.");
+                    throw new ObsoleteVersionException("Key '" + strKey + " is obsolete.",
+                                                       existingClock);
                 } else if(occured == Occured.AFTER) {
                     coll.remove(new MongoSelector(d));
                 }
@@ -243,6 +244,7 @@ public class MongoDBStorageEngine implements StorageEngine<ByteArray, byte[]> {
         } finally {
             closeCursor(cur);
         }
+        return value.getVersion();
     }
 
     public boolean delete(ByteArray key, Version version) throws VoldemortException {

@@ -24,6 +24,8 @@ import java.util.List;
 
 import voldemort.VoldemortException;
 import voldemort.store.ErrorCodeMapper;
+import voldemort.store.InsufficientOperationalNodesException;
+import voldemort.store.InsufficientSuccessfulNodesException;
 import voldemort.utils.ByteArray;
 import voldemort.versioning.ClockEntry;
 import voldemort.versioning.ObsoleteVersionException;
@@ -55,6 +57,15 @@ public class ProtoUtils {
             if(v != null) {
                 error.setVersion(ProtoUtils.encodeClock(v));
             }
+        } else if(e instanceof InsufficientSuccessfulNodesException) {
+            InsufficientSuccessfulNodesException isne = (InsufficientSuccessfulNodesException) e;
+            error.setAvailable(isne.getAvailable());
+            error.setRequired(isne.getRequired());
+            error.setSuccesses(isne.getSuccessful());
+        } else if(e instanceof InsufficientOperationalNodesException) {
+            InsufficientOperationalNodesException ione = (InsufficientOperationalNodesException) e;
+            error.setAvailable(ione.getAvailable());
+            error.setRequired(ione.getRequired());
         }
         return error;
     }
@@ -67,6 +78,20 @@ public class ProtoUtils {
                 ObsoleteVersionException ove = (ObsoleteVersionException) ex;
                 ove.setExistingVersion(ProtoUtils.decodeClock(error.getVersion()));
             }
+        } else if(ex instanceof InsufficientSuccessfulNodesException) {
+            InsufficientSuccessfulNodesException isne = (InsufficientSuccessfulNodesException) ex;
+            if(error.hasAvailable())
+                isne.setAvailable(error.getAvailable());
+            if(error.hasRequired())
+                isne.setRequired(error.getRequired());
+            if(error.hasSuccesses())
+                isne.setSuccessful(error.getSuccesses());
+        } else if(ex instanceof InsufficientOperationalNodesException) {
+            InsufficientOperationalNodesException ione = (InsufficientOperationalNodesException) ex;
+            if(error.hasAvailable())
+                ione.setAvailable(error.getAvailable());
+            if(error.hasRequired())
+                ione.setRequired(error.getRequired());
         }
         throw ex;
     }

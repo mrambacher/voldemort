@@ -18,22 +18,15 @@ package voldemort.store.mongodb;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 import org.mongodb.driver.MongoDBException;
 import org.mongodb.driver.ts.Doc;
 
-import voldemort.TestUtils;
 import voldemort.VoldemortException;
 import voldemort.serialization.mongodb.MongoDBDocSerializer;
-import voldemort.store.AbstractStoreTest;
+import voldemort.store.AbstractStorageEngineTest;
 import voldemort.store.StorageEngine;
 import voldemort.utils.ByteArray;
-import voldemort.utils.ClosableIterator;
-import voldemort.utils.Pair;
-import voldemort.versioning.Versioned;
-
-import com.google.common.collect.ImmutableMap;
 
 /**
  * Tests for MongoDBStorageEngine. Copied tests from StorageEngineTest as they
@@ -42,9 +35,13 @@ import com.google.common.collect.ImmutableMap;
  * 
  * @author geir
  */
-public class MongoDBStorageEngineTest extends AbstractStoreTest<ByteArray, byte[]> {
+public class MongoDBStorageEngineTest extends AbstractStorageEngineTest {
 
     MongoDBDocSerializer mds = new MongoDBDocSerializer();
+
+    public MongoDBStorageEngineTest() {
+        super("engine_tests");
+    }
 
     @Override
     protected boolean valuesEqual(byte[] t1, byte[] t2) {
@@ -81,70 +78,13 @@ public class MongoDBStorageEngineTest extends AbstractStoreTest<ByteArray, byte[
     }
 
     @Override
-    public StorageEngine<ByteArray, byte[]> getStore() {
+    public StorageEngine<ByteArray, byte[]> createStorageEngine(String name) {
         try {
-            MongoDBStorageEngine e = new MongoDBStorageEngine("engine_tests");
+            MongoDBStorageEngine e = new MongoDBStorageEngine(name);
             e.clearStore();
             return e;
         } catch(MongoDBException ee) {
             throw new VoldemortException(ee);
         }
-    }
-
-    public void testGetNoEntries() {
-        ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> it = null;
-
-        try {
-            StorageEngine<ByteArray, byte[]> engine = getStore();
-            it = engine.entries();
-            while(it.hasNext())
-                fail("There shouldn't be any entries in this store.");
-        } finally {
-            if(it != null)
-                it.close();
-        }
-    }
-
-    public void testIterationWithSerialization() {
-        StorageEngine<ByteArray, byte[]> store = getStore();
-        Map<String, String> vals = ImmutableMap.of("a", "a", "b", "b", "c", "c", "d", "d", "e", "e");
-        for(Map.Entry<String, String> entry: vals.entrySet()) {
-            store.put(new ByteArray(entry.getKey().getBytes()),
-                      new Versioned<byte[]>(mds.toBytes(new Doc(entry.getKey(), entry.getValue()))));
-        }
-
-        ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iter = store.entries();
-        int count = 0;
-        while(iter.hasNext()) {
-            Pair<ByteArray, Versioned<byte[]>> entry = iter.next();
-
-            String key = new String(entry.getFirst().get());
-            assertTrue(vals.containsKey(key));
-
-            assertEquals(vals.get(key), mds.toObject(entry.getSecond().getValue()).getString(key));
-            count++;
-        }
-
-        assertEquals(count, vals.size());
-        iter.close();
-    }
-
-    public void testPruneOnWrite() {
-        StorageEngine<ByteArray, byte[]> engine = getStore();
-        Doc d = new Doc("x", 1);
-        Versioned<byte[]> v1 = new Versioned<byte[]>(mds.toBytes(d.add("x", 1)),
-                                                     TestUtils.getClock(1));
-        Versioned<byte[]> v2 = new Versioned<byte[]>(mds.toBytes(d.add("x", 2)),
-                                                     TestUtils.getClock(2));
-        Versioned<byte[]> v3 = new Versioned<byte[]>(mds.toBytes(d.add("x", 3)),
-                                                     TestUtils.getClock(1, 2));
-
-        ByteArray key = new ByteArray("foo".getBytes());
-
-        engine.put(key, v1);
-        engine.put(key, v2);
-        assertEquals(2, engine.get(key).size());
-        engine.put(key, v3);
-        assertEquals(1, engine.get(key).size());
     }
 }
