@@ -60,8 +60,8 @@ import voldemort.utils.ByteUtils;
 import voldemort.utils.NetworkClassLoader;
 import voldemort.utils.Pair;
 import voldemort.utils.RebalanceUtils;
-import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
+import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
 import voldemort.xml.ClusterMapper;
 import voldemort.xml.StoreDefinitionsMapper;
@@ -1023,12 +1023,12 @@ public class AdminClient {
     public void updateRemoteStoreDefList(int nodeId, List<StoreDefinition> storesList)
             throws VoldemortException {
         // get current version.
-        VectorClock oldClock = (VectorClock) getRemoteStoreDefList(nodeId).getVersion();
+        Version oldVersion = getRemoteStoreDefList(nodeId).getVersion();
 
         updateRemoteMetadata(nodeId,
                              MetadataStore.STORES_KEY,
                              new Versioned<String>(storeMapper.writeStoreList(storesList),
-                                                   oldClock.incremented(nodeId, 1)));
+                                                   VersionFactory.incremented(oldVersion, nodeId, 1)));
     }
 
     /**

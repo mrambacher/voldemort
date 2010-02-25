@@ -47,8 +47,8 @@ import voldemort.utils.ByteUtils;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
 import voldemort.utils.Utils;
-import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
+import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
 import voldemort.xml.ClusterMapper;
 import voldemort.xml.StoreDefinitionsMapper;
@@ -171,8 +171,10 @@ public class MetadataStore implements StorageEngine<ByteArray, byte[]> {
      */
     public void put(String key, Object value) {
         if(METADATA_KEYS.contains(key)) {
-            VectorClock version = (VectorClock) get(key).get(0).getVersion();
-            put(key, new Versioned<Object>(value, version.incremented(getNodeId(),
+            Version version = get(key).get(0).getVersion();
+            put(key, new Versioned<Object>(value,
+                                           VersionFactory.incremented(version,
+                                                                      getNodeId(),
                                                                       System.currentTimeMillis())));
         } else {
             throw new VoldemortException("Unhandled Key:" + key + " for MetadataStore put()");
@@ -308,14 +310,15 @@ public class MetadataStore implements StorageEngine<ByteArray, byte[]> {
     }
 
     public void updateRoutingStrategies(Cluster cluster, List<StoreDefinition> storeDefs) {
-        VectorClock clock = new VectorClock();
+        Version clock = VersionFactory.newVersion();
         if(metadataCache.containsKey(ROUTING_STRATEGY_KEY))
-            clock = (VectorClock) metadataCache.get(ROUTING_STRATEGY_KEY).getVersion();
+            clock = metadataCache.get(ROUTING_STRATEGY_KEY).getVersion();
 
         this.metadataCache.put(ROUTING_STRATEGY_KEY,
                                new Versioned<Object>(createRoutingStrategMap(cluster, storeDefs),
-                                                     clock.incremented(getNodeId(),
-                                                                       System.currentTimeMillis())));
+                                                     VersionFactory.incremented(clock,
+                                                                                getNodeId(),
+                                                                                System.currentTimeMillis())));
     }
 
     public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries() {

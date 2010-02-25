@@ -22,7 +22,8 @@ import voldemort.store.metadata.MetadataStore;
 import voldemort.store.metadata.MetadataStore.VoldemortState;
 import voldemort.store.rebalancing.RedirectingStore;
 import voldemort.utils.RebalanceUtils;
-import voldemort.versioning.VectorClock;
+import voldemort.versioning.Version;
+import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
 
 public class RebalanceController {
@@ -105,13 +106,13 @@ public class RebalanceController {
         currentCluster = getClusterWithNewNodes(currentCluster, targetCluster);
         adminClient.setAdminClientCluster(currentCluster);
         Node firstNode = currentCluster.getNodes().iterator().next();
-        VectorClock latestClock = (VectorClock) RebalanceUtils.getLatestCluster(new ArrayList<Integer>(),
-                                                                                adminClient)
-                                                              .getVersion();
+        Version latest = RebalanceUtils.getLatestCluster(new ArrayList<Integer>(), adminClient)
+                                       .getVersion();
         RebalanceUtils.propagateCluster(adminClient,
                                         currentCluster,
-                                        latestClock.incremented(firstNode.getId(),
-                                                                System.currentTimeMillis()),
+                                        VersionFactory.incremented(latest,
+                                                                   firstNode.getId(),
+                                                                   System.currentTimeMillis()),
                                         new ArrayList<Integer>());
 
         ExecutorService executor = createExecutors(rebalanceConfig.getMaxParallelRebalancing());
@@ -250,10 +251,10 @@ public class RebalanceController {
             Cluster currentCluster = adminClient.getAdminClientCluster();
             Node donorNode = currentCluster.getNodeById(rebalanceStealInfo.getDonorId());
 
-            VectorClock latestClock = (VectorClock) RebalanceUtils.getLatestCluster(Arrays.asList(stealerNode.getId(),
-                                                                                                  rebalanceStealInfo.getDonorId()),
-                                                                                    adminClient)
-                                                                  .getVersion();
+            Version latest = RebalanceUtils.getLatestCluster(Arrays.asList(stealerNode.getId(),
+                                                                           rebalanceStealInfo.getDonorId()),
+                                                             adminClient)
+                                           .getVersion();
 
             // apply changes and create new updated cluster.
             Cluster updatedCluster = RebalanceUtils.createUpdatedCluster(currentCluster,
@@ -261,12 +262,12 @@ public class RebalanceController {
                                                                          donorNode,
                                                                          rebalanceStealInfo.getPartitionList());
             // increment clock version on stealerNodeId
-            latestClock.incrementVersion(stealerNode.getId(), System.currentTimeMillis());
+            latest.incrementClock(stealerNode.getId(), System.currentTimeMillis());
             try {
                 // propogates changes to all nodes.
                 RebalanceUtils.propagateCluster(adminClient,
                                                 updatedCluster,
-                                                latestClock,
+                                                latest,
                                                 Arrays.asList(stealerNode.getId(),
                                                               rebalanceStealInfo.getDonorId()));
 
@@ -275,10 +276,10 @@ public class RebalanceController {
             } catch(Exception e) {
                 // revert cluster changes.
                 updatedCluster = currentCluster;
-                latestClock.incrementVersion(stealerNode.getId(), System.currentTimeMillis());
+                latest.incrementClock(stealerNode.getId(), System.currentTimeMillis());
                 RebalanceUtils.propagateCluster(adminClient,
                                                 updatedCluster,
-                                                latestClock,
+                                                latest,
                                                 new ArrayList<Integer>());
 
                 throw e;

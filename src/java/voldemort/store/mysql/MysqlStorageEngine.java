@@ -38,8 +38,8 @@ import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
 import voldemort.versioning.ObsoleteVersionException;
 import voldemort.versioning.Occured;
-import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
+import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
 
 import com.google.common.collect.Lists;
@@ -79,6 +79,7 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
             rs = stmt.executeQuery();
             return rs.next();
         } catch(SQLException e) {
+            System.err.println("Caught exception " + e);
             throw new PersistenceFailureException("SQLException while checking for table existence!",
                                                   e);
         } finally {
@@ -172,7 +173,8 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
             while(rs.next()) {
                 byte[] theKey = rs.getBytes("key_");
                 byte[] version = rs.getBytes("version_");
-                if(new VectorClock(version).compare(maxVersion) == Occured.BEFORE) {
+                Version existing = VersionFactory.toVersion(version);
+                if(existing.compare(maxVersion) == Occured.BEFORE) {
                     delete(conn, theKey, version);
                     deletedSomething = true;
                 }
@@ -220,7 +222,7 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
                 while(rs.next()) {
                     byte[] version = rs.getBytes("version_");
                     byte[] value = rs.getBytes("value_");
-                    found.add(new Versioned<byte[]>(value, new VectorClock(version)));
+                    found.add(new Versioned<byte[]>(value, VersionFactory.toVersion(version)));
                 }
                 if(found.size() > 0)
                     result.put(key, found);
@@ -263,7 +265,7 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
             results = select.executeQuery();
             while(results.next()) {
                 byte[] thisKey = results.getBytes("key_");
-                VectorClock version = new VectorClock(results.getBytes("version_"));
+                Version version = VersionFactory.toVersion(results.getBytes("version_"));
                 Occured occured = value.getVersion().compare(version);
                 if(occured == Occured.BEFORE)
                     throw new ObsoleteVersionException("Attempt to put version "
@@ -277,7 +279,7 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
             // Okay, cool, now put the value
             insert = conn.prepareStatement(insertSql);
             insert.setBytes(1, key.get());
-            VectorClock clock = (VectorClock) value.getVersion();
+            Version clock = value.getVersion();
             insert.setBytes(2, clock.toBytes());
             insert.setBytes(3, value.getValue());
             insert.executeUpdate();
@@ -370,7 +372,7 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
                     throw new PersistenceFailureException("Next called on iterator, but no more items available!");
                 ByteArray key = new ByteArray(rs.getBytes("key_"));
                 byte[] value = rs.getBytes("value_");
-                VectorClock clock = new VectorClock(rs.getBytes("version_"));
+                Version clock = VersionFactory.toVersion(rs.getBytes("version_"));
                 this.hasMore = rs.next();
                 return Pair.create(key, new Versioned<byte[]>(value, clock));
             } catch(SQLException e) {

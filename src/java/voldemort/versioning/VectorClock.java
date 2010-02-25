@@ -21,7 +21,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import voldemort.annotations.concurrency.NotThreadsafe;
-import voldemort.utils.ByteUtils;
+import voldemort.utils.SystemTime;
+import voldemort.utils.Time;
 
 import com.google.common.collect.Lists;
 
@@ -72,73 +73,22 @@ public class VectorClock implements Version, Serializable {
         this.timestamp = timestamp;
     }
 
-    /**
-     * Takes the bytes of a VectorClock and creates a java object from them. For
-     * efficiency reasons the extra bytes can be attached to the end of the byte
-     * array that are not related to the VectorClock
-     * 
-     * @param bytes The serialized bytes of the VectorClock
-     */
-    public VectorClock(byte[] bytes) {
-        this(bytes, 0);
-    }
-
-    /**
-     * Read the vector clock from the given bytes starting from a particular
-     * offset
-     * 
-     * @param bytes The bytes to read from
-     * @param offset The offset to start reading from
-     */
-    public VectorClock(byte[] bytes, int offset) {
-        if(bytes == null || bytes.length <= offset)
-            throw new IllegalArgumentException("Invalid byte array for serialization--no bytes to read.");
-        int numEntries = ByteUtils.readShort(bytes, offset);
-        int versionSize = bytes[offset + 2];
-        int entrySize = ByteUtils.SIZE_OF_SHORT + versionSize;
-        int minimumBytes = offset + ByteUtils.SIZE_OF_SHORT + 1 + numEntries * entrySize
-                           + ByteUtils.SIZE_OF_LONG;
-        if(bytes.length < minimumBytes)
-            throw new IllegalArgumentException("Too few bytes: expected at least " + minimumBytes
-                                               + " but found only " + bytes.length + ".");
-
-        this.versions = new ArrayList<ClockEntry>(numEntries);
-        int index = 3 + offset;
-        for(int i = 0; i < numEntries; i++) {
-            short nodeId = ByteUtils.readShort(bytes, index);
-            long version = ByteUtils.readBytes(bytes, index + ByteUtils.SIZE_OF_SHORT, versionSize);
-            this.versions.add(new ClockEntry(nodeId, version));
-            index += entrySize;
-        }
-        this.timestamp = ByteUtils.readLong(bytes, index);
+    public VectorClock(VectorClock that) {
+        this.versions = Lists.newArrayList(that.versions);
+        this.timestamp = that.timestamp;
     }
 
     public byte[] toBytes() {
-        byte[] serialized = new byte[sizeInBytes()];
-        // write the number of versions
-        ByteUtils.writeShort(serialized, (short) versions.size(), 0);
-        // write the size of each version in bytes
-        byte versionSize = ByteUtils.numberOfBytesRequired(getMaxVersion());
-        serialized[2] = versionSize;
-
-        int clockEntrySize = ByteUtils.SIZE_OF_SHORT + versionSize;
-        int start = 3;
-        for(ClockEntry v: versions) {
-            ByteUtils.writeShort(serialized, v.getNodeId(), start);
-            ByteUtils.writeBytes(serialized,
-                                 v.getVersion(),
-                                 start + ByteUtils.SIZE_OF_SHORT,
-                                 versionSize);
-            start += clockEntrySize;
-        }
-        ByteUtils.writeLong(serialized, this.timestamp, start);
-        return serialized;
+        return VectorClockVersionSerializer.toBytes(this);
     }
 
     public int sizeInBytes() {
-        byte versionSize = ByteUtils.numberOfBytesRequired(getMaxVersion());
-        return ByteUtils.SIZE_OF_SHORT + 1 + this.versions.size()
-               * (ByteUtils.SIZE_OF_SHORT + versionSize) + ByteUtils.SIZE_OF_LONG;
+        return VectorClockVersionSerializer.sizeInBytes(this);
+    }
+
+    public void incrementClock(int node) {
+        Time time = SystemTime.INSTANCE;
+        incrementClock(node, time.getMilliseconds());
     }
 
     /**
@@ -146,7 +96,7 @@ public class VectorClock implements Version, Serializable {
      * 
      * @param node The node
      */
-    public void incrementVersion(int node, long time) {
+    public void incrementClock(int node, long time) {
         if(node < 0 || node > Short.MAX_VALUE)
             throw new IllegalArgumentException(node
                                                + " is outside the acceptable range of node ids.");
@@ -179,22 +129,15 @@ public class VectorClock implements Version, Serializable {
 
     }
 
-    /**
-     * Get new vector clock based on this clock but incremented on index nodeId
-     * 
-     * @param nodeId The id of the node to increment
-     * @return A vector clock equal on each element execept that indexed by
-     *         nodeId
-     */
-    public VectorClock incremented(int nodeId, long time) {
-        VectorClock copyClock = this.clone();
-        copyClock.incrementVersion(nodeId, time);
-        return copyClock;
-    }
-
     @Override
     public VectorClock clone() {
         return new VectorClock(Lists.newArrayList(versions), this.timestamp);
+    }
+
+    public Version incremented(int nodeId, long time) {
+        VectorClock clone = this.clone();
+        clone.incrementClock(nodeId, time);
+        return clone;
     }
 
     @Override
@@ -236,8 +179,12 @@ public class VectorClock implements Version, Serializable {
         return max;
     }
 
-    public VectorClock merge(VectorClock clock) {
+    public Version merge(Version version) {
+        if(!(version instanceof VectorClock)) {
+            throw new IllegalArgumentException("Cannot merge Versions of different types.");
+        }
         VectorClock newClock = new VectorClock();
+        VectorClock clock = (VectorClock) version;
         int i = 0;
         int j = 0;
         while(i < this.versions.size() && j < clock.versions.size()) {
@@ -338,6 +285,10 @@ public class VectorClock implements Version, Serializable {
 
     public long getTimestamp() {
         return this.timestamp;
+    }
+
+    public void setTimestamp(long time) {
+        this.timestamp = time;
     }
 
     public List<ClockEntry> getEntries() {

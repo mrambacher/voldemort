@@ -8,8 +8,8 @@ import java.util.List;
 
 import voldemort.utils.ByteArray;
 import voldemort.utils.ByteUtils;
-import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
+import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
 
 public class VoldemortNativeProtocol {
@@ -26,23 +26,12 @@ public class VoldemortNativeProtocol {
         return new ByteArray(key);
     }
 
-    public static void writeVersion(DataOutputStream outputStream, Version version)
-            throws IOException {
-        if(version != null) {
-            VectorClock clock = (VectorClock) version;
-            outputStream.writeInt(clock.sizeInBytes());
-            outputStream.write(clock.toBytes());
-        } else {
-            outputStream.writeInt(0);
-        }
-    }
-
     public static Version readVersion(DataInputStream inputStream) throws IOException {
         int versionSize = inputStream.readInt();
         if(versionSize > 0) {
             byte[] bytes = new byte[versionSize];
             ByteUtils.read(inputStream, bytes);
-            return new VectorClock(bytes);
+            return VersionFactory.toVersion(bytes);
         } else {
             return null;
         }
@@ -52,19 +41,8 @@ public class VoldemortNativeProtocol {
         int valueSize = inputStream.readInt();
         byte[] bytes = new byte[valueSize];
         ByteUtils.read(inputStream, bytes);
-        VectorClock clock = new VectorClock(bytes);
-        return new Versioned<byte[]>(ByteUtils.copy(bytes, clock.sizeInBytes(), bytes.length),
-                                     clock);
-    }
 
-    public static void writeVersioned(DataOutputStream outputStream, Versioned<byte[]> versioned)
-            throws IOException {
-        VectorClock version = (VectorClock) versioned.getVersion();
-        byte[] value = versioned.getValue();
-
-        outputStream.writeInt(value.length + version.sizeInBytes());
-        outputStream.write(version.toBytes());
-        outputStream.write(value);
+        return VersionFactory.toVersioned(bytes);
     }
 
     public static List<Versioned<byte[]>> readVersioneds(DataInputStream inputStream)
@@ -75,13 +53,5 @@ public class VoldemortNativeProtocol {
             results.add(readVersioned(inputStream));
         }
         return results;
-    }
-
-    public static void writeVersioneds(DataOutputStream outputStream, List<Versioned<byte[]>> values)
-            throws IOException {
-        outputStream.writeInt(values.size());
-        for(Versioned<byte[]> v: values) {
-            writeVersioned(outputStream, v);
-        }
     }
 }

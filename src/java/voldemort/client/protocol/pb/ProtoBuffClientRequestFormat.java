@@ -34,7 +34,6 @@ import voldemort.server.RequestRoutingType;
 import voldemort.store.ErrorCodeMapper;
 import voldemort.store.StoreUtils;
 import voldemort.utils.ByteArray;
-import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
@@ -58,7 +57,7 @@ public class ProtoBuffClientRequestFormat implements RequestFormat {
     public void writeDeleteRequest(DataOutputStream output,
                                    String storeName,
                                    ByteArray key,
-                                   VectorClock version,
+                                   Version version,
                                    RequestRoutingType routingType) throws IOException {
         StoreUtils.assertValidKey(key);
         ProtoUtils.writeMessage(output,

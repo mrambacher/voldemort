@@ -16,9 +16,8 @@
 
 package voldemort.serialization;
 
-import voldemort.utils.ByteUtils;
-import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
+import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
 
 /**
@@ -38,34 +37,15 @@ public class VersionedSerializer<T> implements Serializer<Versioned<T>> {
     }
 
     public byte[] toBytes(Versioned<T> versioned) {
-        byte[] versionBytes = null;
-        if(versioned.getVersion() == null)
-            versionBytes = new byte[] { -1 };
-        else
-            versionBytes = ((VectorClock) versioned.getVersion()).toBytes();
-        byte[] objectBytes = innerSerializer.toBytes(versioned.getValue());
-        return ByteUtils.cat(versionBytes, objectBytes);
+        return VersionFactory.toBytes(versioned, innerSerializer);
     }
 
     public Versioned<T> toObject(byte[] bytes) {
-        VectorClock vectorClock = getVectorClock(bytes);
-
-        int size = 1;
-        if(vectorClock != null)
-            size = vectorClock.sizeInBytes();
-
-        T t = innerSerializer.toObject(ByteUtils.copy(bytes, size, bytes.length));
-        return new Versioned<T>(t, vectorClock);
+        return VersionFactory.toVersioned(bytes, innerSerializer);
     }
 
     public Version getVersion(byte[] bytes) {
-        return getVectorClock(bytes);
-    }
-
-    private VectorClock getVectorClock(byte[] bytes) {
-        if(bytes[0] >= 0)
-            return new VectorClock(bytes);
-        return null;
+        return VersionFactory.toVersion(bytes);
     }
 
 }

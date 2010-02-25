@@ -14,8 +14,9 @@ import voldemort.store.InsufficientSuccessfulNodesException;
 import voldemort.store.StoreUtils;
 import voldemort.utils.ByteArray;
 import voldemort.versioning.ObsoleteVersionException;
-import voldemort.versioning.VectorClock;
+import voldemort.versioning.VectorClockProtoSerializer;
 import voldemort.versioning.Version;
+import voldemort.versioning.Versioned;
 
 public class VoldemortNativeClientRequestFormatV3 extends VoldemortNativeClientRequestFormatV2 {
 
@@ -28,14 +29,28 @@ public class VoldemortNativeClientRequestFormatV3 extends VoldemortNativeClientR
     public void writeDeleteRequest(DataOutputStream outputStream,
                                    String storeName,
                                    ByteArray key,
-                                   VectorClock version,
+                                   Version version,
                                    RequestRoutingType routingType) throws IOException {
         StoreUtils.assertValidKey(key);
         writeMessageHeader(outputStream, VoldemortOpCode.DELETE_OP_CODE, storeName, routingType);
         VoldemortNativeProtocol.writeKey(outputStream, key);
 
-        VectorClock clock = version;
-        VoldemortNativeProtocol.writeVersion(outputStream, clock);
+        writeVersion(outputStream, version);
+    }
+
+    @Override
+    protected void writeVersion(DataOutputStream outputStream, Version version) throws IOException {
+        byte[] bytes = VectorClockProtoSerializer.toBytes(version);
+        outputStream.writeInt(bytes.length);
+        outputStream.write(bytes);
+    }
+
+    @Override
+    protected void writeVersioned(DataOutputStream outputStream, Versioned<byte[]> versioned)
+            throws IOException {
+        byte[] bytes = VectorClockProtoSerializer.toBytes(versioned);
+        outputStream.writeInt(bytes.length);
+        outputStream.write(bytes);
     }
 
     @Override

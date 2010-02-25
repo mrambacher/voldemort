@@ -75,7 +75,7 @@ public class DefaultStoreClientTest extends TestCase {
         Versioned<String> v = client.get("k");
         assertEquals("GET should return the version set by PUT.", "v", v.getValue());
         VectorClock expected = new VectorClock();
-        expected.incrementVersion(nodeId, time.getMilliseconds());
+        expected.incrementClock(nodeId, time.getMilliseconds());
         assertEquals("The version should be incremented after a put.", expected, v.getVersion());
         try {
             client.put("k", Versioned.value("v"));
@@ -88,10 +88,10 @@ public class DefaultStoreClientTest extends TestCase {
                    new Versioned<String>("v2",
                                          new VectorClock().incremented(nodeId + 1,
                                                                        time.getMilliseconds())));
-	assertEquals("GET should return the new value set by PUT.", "v2", client.getValue("k"));
-	assertEquals("GET should return the new version set by PUT.", expected.incremented(nodeId + 1,
-											   time.getMilliseconds()),
-		     client.get("k").getVersion());
+        assertEquals("GET should return the new value set by PUT.", "v2", client.getValue("k"));
+        assertEquals("GET should return the new version set by PUT.",
+                     expected.incremented(nodeId + 1, time.getMilliseconds()),
+                     client.get("k").getVersion());
     }
 
     public void testPutUnversioned() {
@@ -116,7 +116,8 @@ public class DefaultStoreClientTest extends TestCase {
     }
 
     public void testDeleteVersion() {
-        assertFalse("Delete of non-existant key should be false.", client.delete("k", new VectorClock()));
+        assertFalse("Delete of non-existant key should be false.", client.delete("k",
+                                                                                 new VectorClock()));
         client.put("k", new Versioned<String>("v"));
         assertFalse("Delete of a lesser version should be false.", client.delete("k",
                                                                                  new VectorClock()));

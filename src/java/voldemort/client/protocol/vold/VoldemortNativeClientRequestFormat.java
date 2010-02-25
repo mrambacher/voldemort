@@ -33,7 +33,7 @@ import voldemort.server.RequestRoutingType;
 import voldemort.store.ErrorCodeMapper;
 import voldemort.store.StoreUtils;
 import voldemort.utils.ByteArray;
-import voldemort.versioning.VectorClock;
+import voldemort.versioning.VectorClockVersionSerializer;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
@@ -74,16 +74,15 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
     public void writeDeleteRequest(DataOutputStream outputStream,
                                    String storeName,
                                    ByteArray key,
-                                   VectorClock version,
+                                   Version version,
                                    RequestRoutingType routingType) throws IOException {
         StoreUtils.assertValidKey(key);
         writeMessageHeader(outputStream, VoldemortOpCode.DELETE_OP_CODE, storeName, routingType);
         VoldemortNativeProtocol.writeKey(outputStream, key);
 
-        VectorClock clock = version;
         // Unlike other methods, delete used shorts not ints
-        outputStream.writeShort(clock.sizeInBytes());
-        outputStream.write(clock.toBytes());
+        outputStream.writeShort(VectorClockVersionSerializer.sizeInBytes(version));
+        outputStream.write(VectorClockVersionSerializer.toBytes(version));
     }
 
     public boolean readDeleteResponse(DataInputStream inputStream) throws IOException {
@@ -100,9 +99,17 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
         return VoldemortNativeProtocol.readVersion(inputStream);
     }
 
+    protected void writeVersion(DataOutputStream outputStream, Version version) throws IOException {
+        byte[] bytes = VectorClockVersionSerializer.toBytes(version);
+        outputStream.writeInt(bytes.length);
+        outputStream.write(bytes);
+    }
+
     protected void writeVersioned(DataOutputStream outputStream, Versioned<byte[]> versioned)
             throws IOException {
-        VoldemortNativeProtocol.writeVersioned(outputStream, versioned);
+        byte[] bytes = VectorClockVersionSerializer.toBytes(versioned);
+        outputStream.writeInt(bytes.length);
+        outputStream.write(bytes);
     }
 
     public void writeGetRequest(DataOutputStream outputStream,

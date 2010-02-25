@@ -27,7 +27,7 @@ import voldemort.store.metadata.MetadataStore.VoldemortState;
 import voldemort.utils.ByteArray;
 import voldemort.utils.ByteUtils;
 import voldemort.versioning.ObsoleteVersionException;
-import voldemort.versioning.VectorClock;
+import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 import voldemort.xml.ClusterMapper;
 import voldemort.xml.StoreDefinitionsMapper;
@@ -88,7 +88,7 @@ public class MetadataStoreTest extends TestCase {
     public void testSimpleGetAndPut() {
         for(int i = 0; i <= TEST_RUNS; i++) {
             ByteArray key = getValidKey();
-            VectorClock clock = (VectorClock) metadataStore.get(key).get(0).getVersion();
+            Version clock = metadataStore.get(key).get(0).getVersion();
             Versioned<byte[]> value = new Versioned<byte[]>(getValidValue(key),
                                                             clock.incremented(0, 1));
 
@@ -102,7 +102,7 @@ public class MetadataStoreTest extends TestCase {
             for(int j = 0; j <= 5; j++) {
                 ByteArray key = getValidKey();
 
-                VectorClock clock = (VectorClock) metadataStore.get(key).get(0).getVersion();
+                Version clock = metadataStore.get(key).get(0).getVersion();
                 Versioned<byte[]> value = new Versioned<byte[]>(getValidValue(key),
                                                                 clock.incremented(0, 1));
 
@@ -115,7 +115,7 @@ public class MetadataStoreTest extends TestCase {
     public void testObsoletePut() {
         for(int i = 0; i <= TEST_RUNS; i++) {
             ByteArray key = getValidKey();
-            VectorClock clock = (VectorClock) metadataStore.get(key).get(0).getVersion();
+            Version clock = metadataStore.get(key).get(0).getVersion();
             Versioned<byte[]> value = new Versioned<byte[]>(getValidValue(key),
                                                             clock.incremented(0, 1));
 
@@ -133,7 +133,7 @@ public class MetadataStoreTest extends TestCase {
     public void testSynchronousPut() {
         for(int i = 0; i <= TEST_RUNS; i++) {
             ByteArray key = getValidKey();
-            VectorClock clock = (VectorClock) metadataStore.get(key).get(0).getVersion();
+            Version clock = metadataStore.get(key).get(0).getVersion();
 
             Versioned<byte[]> value1 = new Versioned<byte[]>(getValidValue(key),
                                                              clock.incremented(1, 1));
@@ -195,7 +195,7 @@ public class MetadataStoreTest extends TestCase {
      */
     private void incrementVersionAndPut(MetadataStore metadataStore, String keyString, Object value) {
         ByteArray key = new ByteArray(ByteUtils.getBytes(keyString, "UTF-8"));
-        VectorClock current = (VectorClock) metadataStore.getVersions(key).get(0);
+        Version current = metadataStore.getVersions(key).get(0);
 
         metadataStore.put(keyString,
                           new Versioned<Object>(value,

@@ -4,8 +4,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 import junit.framework.TestCase;
 import voldemort.Attempt;
@@ -18,7 +16,6 @@ import voldemort.cluster.Node;
 import voldemort.server.VoldemortConfig;
 import voldemort.server.VoldemortServer;
 import voldemort.store.metadata.MetadataStore;
-import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
@@ -34,15 +31,13 @@ public class GossiperTest extends TestCase {
     private static String testStoreName = "test-replication-memory";
     private static String storesXmlfile = "test/common/voldemort/config/stores.xml";
 
-
-
     @Override
     public void setUp() throws IOException {
         props.put("enable.gossip", "true");
         props.put("gossip.interval.ms", "250");
 
         cluster = ServerTestUtils.getLocalCluster(3, new int[][] { { 0, 1, 2, 3 }, { 4, 5, 6, 7 },
-                                                                   { 8, 9, 10, 11 } });
+                { 8, 9, 10, 11 } });
         servers.add(ServerTestUtils.startVoldemortServer(ServerTestUtils.createServerConfig(0,
                                                                                             TestUtils.createTempDir()
                                                                                                      .getAbsolutePath(),
@@ -90,11 +85,11 @@ public class GossiperTest extends TestCase {
         // Create a new partitioning scheme with room for a new server
         final Cluster newCluster = ServerTestUtils.getLocalCluster(cluster.getNumberOfNodes() + 1,
                                                                    ports,
-                                                                   new int[][] {{ 0, 4, 8 },
-                                                                                { 1, 5, 9 },
-                                                                                { 2, 6, 10 },
-                                                                                { 3, 7, 11 }});
-        
+                                                                   new int[][] { { 0, 4, 8 },
+                                                                           { 1, 5, 9 },
+                                                                           { 2, 6, 10 },
+                                                                           { 3, 7, 11 } });
+
         // Start the new server
         VoldemortServer newServer = ServerTestUtils.startVoldemortServer(ServerTestUtils.createServerConfig(3,
                                                                                                             TestUtils.createTempDir()
@@ -122,8 +117,8 @@ public class GossiperTest extends TestCase {
         // it
         // (this will seed the gossip)
         Version version = versionedClusterXML.getVersion();
-        ((VectorClock) version).incrementVersion(3, ((VectorClock) version).getTimestamp() + 1);
-        ((VectorClock) version).incrementVersion(0, ((VectorClock) version).getTimestamp() + 1);
+        version.incrementClock(3, version.getTimestamp() + 1);
+        version.incrementClock(0, version.getTimestamp() + 1);
 
         localAdminClient.updateRemoteMetadata(0, MetadataStore.CLUSTER_KEY, versionedClusterXML);
         localAdminClient.updateRemoteMetadata(3, MetadataStore.CLUSTER_KEY, versionedClusterXML);

@@ -33,15 +33,15 @@ public final class Versioned<T> implements Serializable {
 
     private static final long serialVersionUID = 1;
 
-    private VectorClock version;
+    private Version version;
     private volatile T object;
 
     public Versioned(T object) {
-        this(object, new VectorClock());
+        this(object, VersionFactory.newVersion());
     }
 
     public Versioned(T object, Version version) {
-        this.version = version == null ? new VectorClock() : (VectorClock) version;
+        this.version = version == null ? VersionFactory.newVersion() : version;
         this.object = object;
     }
 
@@ -88,7 +88,7 @@ public final class Versioned<T> implements Serializable {
      * is the same, but the VectorClock and Versioned wrapper is a shallow copy.
      */
     public Versioned<T> cloneVersioned() {
-        return new Versioned<T>(this.getValue(), this.version.clone());
+        return new Versioned<T>(this.getValue(), VersionFactory.cloneVersion(this.version));
     }
 
     public static <S> Versioned<S> value(S s) {

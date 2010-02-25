@@ -86,8 +86,8 @@ import voldemort.utils.Pair;
 import voldemort.utils.ReflectUtils;
 import voldemort.utils.SystemTime;
 import voldemort.utils.Time;
-import voldemort.versioning.VectorClock;
 import voldemort.versioning.VectorClockInconsistencyResolver;
+import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
 /**
@@ -564,9 +564,9 @@ public class StorageService extends AbstractService {
             int count = 0;
             while(iter.hasNext()) {
                 Pair<ByteArray, Versioned<byte[]>> pair = iter.next();
-                VectorClock clock = (VectorClock) pair.getSecond().getVersion();
+                Version version = pair.getSecond().getVersion();
                 stats.countEntry(pair.getFirst().length(), pair.getSecond().getValue().length
-                                                           + clock.sizeInBytes());
+                                                           + version.sizeInBytes());
                 if(count % 10000 == 0)
                     logger.debug("Processing key " + count);
                 count++;

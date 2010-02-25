@@ -39,6 +39,7 @@ import voldemort.store.metadata.MetadataStore;
 import voldemort.utils.ByteArray;
 import voldemort.utils.Pair;
 import voldemort.versioning.VectorClock;
+import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
 import com.google.common.collect.AbstractIterator;
@@ -121,8 +122,9 @@ public class AdminServiceBasicTest extends TestCase {
         Cluster updatedCluster = ServerTestUtils.getLocalCluster(4);
         AdminClient client = getAdminClient();
         for(int i = 0; i < NUM_RUNS; i++) {
-            VectorClock clock = ((VectorClock) client.getRemoteCluster(0).getVersion()).incremented(0,
-                                                                                                    System.currentTimeMillis());
+            Version clock = client.getRemoteCluster(0)
+                                  .getVersion()
+                                  .incremented(0, System.currentTimeMillis());
             client.updateRemoteCluster(0, updatedCluster, clock);
 
             assertEquals("Cluster should match",

@@ -17,7 +17,7 @@ import voldemort.cluster.Node;
 import voldemort.server.VoldemortConfig;
 import voldemort.store.StoreDefinition;
 import voldemort.versioning.Occured;
-import voldemort.versioning.VectorClock;
+import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
 /**
@@ -141,7 +141,7 @@ public class RebalanceUtils {
         for(Node node: adminClient.getAdminClientCluster().getNodes()) {
             try {
                 Versioned<Cluster> versionedCluster = adminClient.getRemoteCluster(node.getId());
-                VectorClock newClock = (VectorClock) versionedCluster.getVersion();
+                Version newClock = versionedCluster.getVersion();
                 if(null != newClock && !clusterList.contains(newClock)) {
                     // check no two clocks are concurrent.
                     checkNotConcurrent(clusterList, newClock);
@@ -166,10 +166,9 @@ public class RebalanceUtils {
         return latestCluster;
     }
 
-    private static void checkNotConcurrent(ArrayList<Versioned<Cluster>> clockList,
-                                           VectorClock newClock) {
+    private static void checkNotConcurrent(ArrayList<Versioned<Cluster>> clockList, Version newClock) {
         for(Versioned<Cluster> versionedCluster: clockList) {
-            VectorClock clock = (VectorClock) versionedCluster.getVersion();
+            Version clock = versionedCluster.getVersion();
             if(Occured.CONCURRENTLY.equals(clock.equals(newClock)))
                 throw new VoldemortException("Cluster is in inconsistent state got conflicting clocks "
                                              + clock + " and " + newClock);
@@ -187,7 +186,7 @@ public class RebalanceUtils {
      */
     public static void propagateCluster(AdminClient adminClient,
                                         Cluster cluster,
-                                        VectorClock clock,
+                                        Version clock,
                                         List<Integer> requiredNodeIds) {
         List<Integer> failures = new ArrayList<Integer>();
 

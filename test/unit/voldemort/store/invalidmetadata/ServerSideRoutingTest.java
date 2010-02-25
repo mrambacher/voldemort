@@ -30,7 +30,7 @@ import voldemort.server.VoldemortConfig;
 import voldemort.server.VoldemortServer;
 import voldemort.store.Store;
 import voldemort.utils.ByteArray;
-import voldemort.versioning.VectorClock;
+import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
 
 /**
@@ -76,7 +76,9 @@ public class ServerSideRoutingTest extends TestCase {
         for(Entry<ByteArray, byte[]> entry: entryMap.entrySet()) {
             store.put(entry.getKey(),
                       Versioned.value(entry.getValue(),
-                                      new VectorClock().incremented(0, System.currentTimeMillis())));
+                                      VersionFactory.incremented(VersionFactory.newVersion(),
+                                                                 0,
+                                                                 System.currentTimeMillis())));
         }
 
         // try fetching them from server0

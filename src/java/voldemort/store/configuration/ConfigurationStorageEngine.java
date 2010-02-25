@@ -35,8 +35,8 @@ import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
 import voldemort.versioning.ObsoleteVersionException;
 import voldemort.versioning.Occured;
-import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
+import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
 
 /**
@@ -125,7 +125,7 @@ public class ConfigurationStorageEngine implements StorageEngine<String, String>
         File[] files = getDirectory(key).listFiles();
         for(File file: files) {
             if(file.getName().equals(key)) {
-                VectorClock clock = readVersion(key);
+                Version clock = readVersion(key);
                 if(value.getVersion().compare(clock) == Occured.AFTER) {
                     // continue
                 } else if(value.getVersion().compare(clock) == Occured.BEFORE) {
@@ -140,16 +140,16 @@ public class ConfigurationStorageEngine implements StorageEngine<String, String>
         }
 
         File keyFile = new File(getDirectory(key), key);
-        VectorClock newClock = (VectorClock) value.getVersion();
+        Version newVersion = value.getVersion();
         if(!keyFile.exists() || keyFile.delete()) {
             try {
                 FileUtils.writeStringToFile(keyFile, value.getValue(), "UTF-8");
-                writeVersion(key, newClock);
+                writeVersion(key, newVersion);
             } catch(IOException e) {
                 throw new VoldemortException(e);
             }
         }
-        return newClock;
+        return newVersion;
     }
 
     private File getDirectory(String key) {
@@ -164,7 +164,7 @@ public class ConfigurationStorageEngine implements StorageEngine<String, String>
             List<Versioned<String>> found = new ArrayList<Versioned<String>>();
             for(File file: files) {
                 if(file.getName().equals(key)) {
-                    VectorClock clock = readVersion(key);
+                    Version clock = readVersion(key);
                     if(null != clock) {
                         found.add(new Versioned<String>(FileUtils.readFileToString(file, "UTF-8"),
                                                         clock));
@@ -177,25 +177,25 @@ public class ConfigurationStorageEngine implements StorageEngine<String, String>
         }
     }
 
-    private VectorClock readVersion(String key) {
+    private Version readVersion(String key) {
         try {
             File versionFile = new File(getVersionDirectory(), key);
             if(!versionFile.exists()) {
                 // bootstrap file save default clock as version.
-                VectorClock clock = new VectorClock();
+                Version clock = VersionFactory.newVersion();
                 writeVersion(key, clock);
                 return clock;
             } else {
                 // read the version file and return version.
                 String hexCode = FileUtils.readFileToString(versionFile, "UTF-8");
-                return new VectorClock(Hex.decodeHex(hexCode.toCharArray()));
+                return VersionFactory.toVersion(Hex.decodeHex(hexCode.toCharArray()));
             }
         } catch(Exception e) {
             throw new VoldemortException("Failed to read Version for Key:" + key, e);
         }
     }
 
-    private void writeVersion(String key, VectorClock version) {
+    private void writeVersion(String key, Version version) {
         try {
             File versionFile = new File(getVersionDirectory(), key);
             if(!versionFile.exists() || versionFile.delete()) {

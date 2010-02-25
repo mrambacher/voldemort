@@ -16,8 +16,10 @@
 
 package voldemort.versioning;
 
+import static voldemort.TestUtils.getClock;
 import junit.framework.TestCase;
 import voldemort.TestUtils;
+import voldemort.serialization.StringSerializer;
 
 public class VersionedTest extends TestCase {
 
@@ -58,8 +60,42 @@ public class VersionedTest extends TestCase {
         assertEquals(v1, v2);
         assertTrue(v1 != v2);
         assertTrue(v1.getVersion() != v2.getVersion());
-        ((VectorClock) v2.getVersion()).incrementVersion(1, System.currentTimeMillis());
+        ((VectorClock) v2.getVersion()).incrementClock(1, System.currentTimeMillis());
         assertTrue(!v1.equals(v2));
     }
 
+    public static void assertEquals(String message,
+                                    Versioned<byte[]> expected,
+                                    Versioned<byte[]> result) {
+        assertEquals(message, expected.getVersion(), result.getVersion());
+        assertTrue(message, TestUtils.bytesEqual(expected.getValue(), result.getValue()));
+    }
+
+    public void testByteSerialization() {
+        Version version = getClock(2, 1, 2, 3);
+        Versioned<byte[]> versioned = new Versioned<byte[]>("abcde".getBytes(), version);
+        byte[] serialized = VectorClockVersionSerializer.toBytes(versioned);
+        assertEquals("The versioned serializes to itself using original protocol.",
+                     versioned,
+                     VersionFactory.toVersioned(serialized));
+        serialized = VectorClockProtoSerializer.toBytes(versioned);
+        assertEquals("The versioned serializes to itself using protobuf protocol.",
+                     versioned,
+                     VersionFactory.toVersioned(serialized));
+    }
+
+    public void testStringSerialization() {
+        Version version = getClock(2, 1, 2, 3);
+        Versioned<String> versioned = new Versioned<String>("abcde", version);
+        StringSerializer serializer = new StringSerializer();
+        byte[] serialized = VectorClockVersionSerializer.toBytes(versioned, serializer);
+        assertEquals("The versioned serializes to itself using original protocol.",
+                     versioned,
+                     VersionFactory.toVersioned(serialized, serializer));
+        serialized = VectorClockProtoSerializer.toBytes(versioned, serializer);
+        assertEquals("The versioned serializes to itself using protobuf protocol.",
+                     versioned,
+                     VersionFactory.toVersioned(serialized, serializer));
+
+    }
 }

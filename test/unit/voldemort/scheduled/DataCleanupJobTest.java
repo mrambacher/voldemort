@@ -27,6 +27,7 @@ import voldemort.store.memory.InMemoryStorageEngine;
 import voldemort.utils.EventThrottler;
 import voldemort.utils.Time;
 import voldemort.versioning.VectorClock;
+import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
 public class DataCleanupJobTest extends TestCase {
@@ -63,12 +64,12 @@ public class DataCleanupJobTest extends TestCase {
 
     private void put(String... items) {
         for(String item: items) {
-            VectorClock clock = null;
+            Version clock = null;
             List<Versioned<String>> found = engine.get(item);
             if(found.size() == 0) {
                 clock = new VectorClock(time.getMilliseconds());
             } else if(found.size() == 1) {
-                VectorClock oldClock = (VectorClock) found.get(0).getVersion();
+                Version oldClock = found.get(0).getVersion();
                 clock = oldClock.incremented(0, time.getMilliseconds());
             } else {
                 fail("Found multiple versions.");

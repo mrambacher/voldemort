@@ -36,14 +36,13 @@ import voldemort.store.Store;
 import voldemort.store.StoreCapabilityType;
 import voldemort.store.StoreUtils;
 import voldemort.utils.ByteArray;
-import voldemort.utils.ByteUtils;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
 import voldemort.utils.Utils;
 import voldemort.versioning.ObsoleteVersionException;
 import voldemort.versioning.Occured;
-import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
+import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
 
 import com.google.common.collect.Lists;
@@ -94,7 +93,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[]> {
         this.versionSerializer = new Serializer<Version>() {
 
             public byte[] toBytes(Version object) {
-                return ((VectorClock) object).toBytes();
+                return object.toBytes();
             }
 
             public Version toObject(byte[] bytes) {
@@ -302,7 +301,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[]> {
             for(OperationStatus status = cursor.getSearchKey(keyEntry, valueEntry, LockMode.RMW); status == OperationStatus.SUCCESS; status = cursor.getNextDup(keyEntry,
                                                                                                                                                                 valueEntry,
                                                                                                                                                                 LockMode.RMW)) {
-                VectorClock clock = new VectorClock(valueEntry.getData());
+                Version clock = VersionFactory.toVersion(valueEntry.getData());
                 Occured occured = value.getVersion().compare(clock);
                 if(occured == Occured.BEFORE)
                     throw new ObsoleteVersionException("Key "
@@ -352,8 +351,9 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[]> {
                                                          valueEntry,
                                                          LockMode.READ_UNCOMMITTED);
             while(status == OperationStatus.SUCCESS) {
+                Version current = VersionFactory.toVersion(valueEntry.getData());
                 // if version is null no comparison is necessary
-                if(new VectorClock(valueEntry.getData()).compare(version) == Occured.BEFORE) {
+                if(current.compare(version) == Occured.BEFORE) {
                     cursor.delete();
                     deletedSomething = true;
                 }
@@ -552,11 +552,8 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[]> {
 
         @Override
         protected Pair<ByteArray, Versioned<byte[]>> get(DatabaseEntry key, DatabaseEntry value) {
-            VectorClock clock = new VectorClock(value.getData());
-            byte[] bytes = ByteUtils.copy(value.getData(),
-                                          clock.sizeInBytes(),
-                                          value.getData().length);
-            return Pair.create(new ByteArray(key.getData()), new Versioned<byte[]>(bytes, clock));
+            Versioned<byte[]> versioned = VersionFactory.toVersioned(value.getData());
+            return Pair.create(new ByteArray(key.getData()), versioned);
         }
 
         @Override

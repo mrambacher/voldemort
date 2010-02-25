@@ -30,7 +30,8 @@ import org.junit.Test;
 import voldemort.TestUtils;
 import voldemort.store.AbstractStoreTest;
 import voldemort.store.Store;
-import voldemort.versioning.VectorClock;
+import voldemort.versioning.Version;
+import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
 
 public class ConfigurationStorageEngineTest extends AbstractStoreTest<String, String> {
@@ -77,7 +78,7 @@ public class ConfigurationStorageEngineTest extends AbstractStoreTest<String, St
     public void testDelete() {
         String key = getKey();
         Store<String, String> store = getStore();
-        VectorClock c1 = getClock(1, 1);
+        Version c1 = getClock(1, 1);
         String value = getValue();
 
         // can't delete something that isn't there
@@ -133,8 +134,10 @@ public class ConfigurationStorageEngineTest extends AbstractStoreTest<String, St
         assertEquals("Only one file of name key should be present.", 1, store.get(keyName).size());
 
         // do a new put
-        VectorClock clock = (VectorClock) store.get(keyName).get(0).getVersion();
-        store.put(keyName, new Versioned<String>("testValue1", clock.incremented(0, 1)));
+        Version clock = store.get(keyName).get(0).getVersion();
+        store.put(keyName, new Versioned<String>("testValue1", VersionFactory.incremented(clock,
+                                                                                          0,
+                                                                                          1)));
         assertEquals("Only one file of name key should be present.", 1, store.get(keyName).size());
         assertEquals("Value should match.", "testValue1", store.get(keyName).get(0).getValue());
 

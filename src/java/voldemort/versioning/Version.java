@@ -37,4 +37,53 @@ public interface Version {
      */
     public Occured compare(Version v);
 
+    /**
+     * Return the serialized representation of the version,
+     */
+    public byte[] toBytes();
+
+    /**
+     * Return the size in bytes of the serialized representation of the version.
+     */
+    public int sizeInBytes();
+
+    /**
+     * Merges the current clock with the input clock and returns a new merged
+     * clock
+     * 
+     * @param that The clock to be added to the existing clock.
+     * @return The merged clock
+     */
+    public Version merge(Version that);
+
+    /**
+     * Increments the version for the input nodeId
+     * 
+     * @param nodeId The node being incremented
+     * @oparam time The new timestamp for the version
+     */
+    public void incrementClock(int nodeId, long time);
+
+    /**
+     * Increments the version for the input nodeId
+     * 
+     * @param nodeId The node being incremented
+     */
+    public void incrementClock(int nodeId);
+
+    /**
+     * Returns the timestamp for the version
+     * 
+     * @return The timestamp of the version.
+     */
+    public long getTimestamp();
+
+    /**
+     * Returns a copy of the current object with the nodeId incremented
+     * 
+     * @param nodeId The node to increment the clock for
+     * @param time The new timestamp for the clock
+     * @return
+     */
+    public Version incremented(int nodeId, long time);
 }

@@ -13,6 +13,7 @@ import voldemort.store.InsufficientSuccessfulNodesException;
 import voldemort.store.Store;
 import voldemort.utils.ByteArray;
 import voldemort.versioning.ObsoleteVersionException;
+import voldemort.versioning.VectorClockProtoSerializer;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
@@ -35,6 +36,21 @@ public class VoldemortNativeRequestHandlerV3 extends VoldemortNativeRequestHandl
         } catch(VoldemortException e) {
             writeException(outputStream, e);
         }
+    }
+
+    @Override
+    protected void writeVersion(DataOutputStream outputStream, Version version) throws IOException {
+        byte[] bytes = VectorClockProtoSerializer.toBytes(version);
+        outputStream.writeInt(bytes.length);
+        outputStream.write(bytes);
+    }
+
+    @Override
+    protected void writeVersioned(DataOutputStream outputStream, Versioned<byte[]> versioned)
+            throws IOException {
+        byte[] bytes = VectorClockProtoSerializer.toBytes(versioned);
+        outputStream.writeInt(bytes.length);
+        outputStream.write(bytes);
     }
 
     @Override

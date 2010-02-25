@@ -22,8 +22,9 @@ import voldemort.store.Store;
 import voldemort.utils.ByteArray;
 import voldemort.utils.ByteBufferBackedInputStream;
 import voldemort.utils.ByteUtils;
-import voldemort.versioning.VectorClock;
+import voldemort.versioning.VectorClockVersionSerializer;
 import voldemort.versioning.Version;
+import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
 
 /**
@@ -96,8 +97,21 @@ public class VoldemortNativeRequestHandler extends AbstractRequestHandler implem
         }
         outputStream.writeInt(results.size());
         for(Version version: results) {
-            VoldemortNativeProtocol.writeVersion(outputStream, version);
+            writeVersion(outputStream, version);
         }
+    }
+
+    protected void writeVersion(DataOutputStream outputStream, Version version) throws IOException {
+        byte[] bytes = VectorClockVersionSerializer.toBytes(version);
+        outputStream.writeInt(bytes.length);
+        outputStream.write(bytes);
+    }
+
+    protected void writeVersioned(DataOutputStream outputStream, Versioned<byte[]> versioned)
+            throws IOException {
+        byte[] bytes = VectorClockVersionSerializer.toBytes(versioned);
+        outputStream.writeInt(bytes.length);
+        outputStream.write(bytes);
     }
 
     /**
@@ -189,15 +203,14 @@ public class VoldemortNativeRequestHandler extends AbstractRequestHandler implem
 
     protected void writeVersioneds(DataOutputStream outputStream, List<Versioned<byte[]>> versioneds)
             throws IOException {
-        VoldemortNativeProtocol.writeVersioneds(outputStream, versioneds);
+        outputStream.writeInt(versioneds.size());
+        for(Versioned<byte[]> versioned: versioneds) {
+            writeVersioned(outputStream, versioned);
+        }
     }
 
     protected Versioned<byte[]> readVersioned(DataInputStream inputStream) throws IOException {
         return VoldemortNativeProtocol.readVersioned(inputStream);
-    }
-
-    protected void writeVersion(DataOutputStream outputStream, Version version) throws IOException {
-        VoldemortNativeProtocol.writeVersion(outputStream, version);
     }
 
     protected Version readVersion(DataInputStream inputStream) throws IOException {
@@ -269,7 +282,7 @@ public class VoldemortNativeRequestHandler extends AbstractRequestHandler implem
         int versionSize = inputStream.readShort();
         byte[] versionBytes = new byte[versionSize];
         ByteUtils.read(inputStream, versionBytes);
-        Version version = new VectorClock(versionBytes);
+        Version version = VersionFactory.toVersion(versionBytes);
         try {
             boolean succeeded = store.delete(key, version);
             outputStream.writeShort(0);

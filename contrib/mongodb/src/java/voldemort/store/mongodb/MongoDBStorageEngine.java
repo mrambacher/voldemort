@@ -45,8 +45,8 @@ import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
 import voldemort.versioning.ObsoleteVersionException;
 import voldemort.versioning.Occured;
-import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
+import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
 
 /**
@@ -152,7 +152,7 @@ public class MongoDBStorageEngine implements StorageEngine<ByteArray, byte[]> {
                 BSONObject bo = new BSONObject(tls.getReadBuffer());
                 bo.serialize(d.getDoc(VALUE));
                 Versioned<byte[]> val = new Versioned<byte[]>(bo.toArray(),
-                                                              new VectorClock(d.getBytes(CLOCK)));
+                                                              VersionFactory.toVersion(d.getBytes(CLOCK)));
                 list.add(val);
             }
         } catch(MongoDBIOException mioe) {
@@ -208,7 +208,7 @@ public class MongoDBStorageEngine implements StorageEngine<ByteArray, byte[]> {
 
             for(Doc d: cur) {
 
-                VectorClock existingClock = new VectorClock(d.getBytes(CLOCK));
+                Version existingClock = VersionFactory.toVersion(d.getBytes(CLOCK));
                 Occured occured = value.getVersion().compare(existingClock);
 
                 // if my new one occured before the one from the db....
@@ -229,7 +229,7 @@ public class MongoDBStorageEngine implements StorageEngine<ByteArray, byte[]> {
 
             Doc newData = new Doc(KEY, strKey);
             newData.put(VALUE, new BSONBytes(value.getValue()));
-            newData.put(CLOCK, ((VectorClock) value.getVersion()).toBytes());
+            newData.put(CLOCK, value.getVersion().toBytes());
 
             coll.insert(newData);
         } catch(MongoDBIOException mioe) {
@@ -256,7 +256,7 @@ public class MongoDBStorageEngine implements StorageEngine<ByteArray, byte[]> {
         try {
             cur = coll.find(new Doc(KEY, strKey));
             for(Doc d: cur) {
-                VectorClock existingClock = new VectorClock(d.getBytes(CLOCK));
+                Version existingClock = VersionFactory.toVersion(d.getBytes(CLOCK));
                 Occured occured = version.compare(existingClock);
 
                 // TODO - Q : why not concurrently?
@@ -372,7 +372,7 @@ public class MongoDBStorageEngine implements StorageEngine<ByteArray, byte[]> {
                 bo.serialize(d.getDoc(VALUE));
 
                 Versioned<byte[]> val = new Versioned<byte[]>(bo.toArray(),
-                                                              new VectorClock(d.getBytes(CLOCK)));
+                                                              VersionFactory.toVersion(d.getBytes(CLOCK)));
 
                 return new Pair<ByteArray, Versioned<byte[]>>(new ByteArray(d.getString(KEY)
                                                                              .getBytes()), val);

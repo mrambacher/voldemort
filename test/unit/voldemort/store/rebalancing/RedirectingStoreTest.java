@@ -46,6 +46,7 @@ import voldemort.utils.ByteUtils;
 import voldemort.utils.RebalanceUtils;
 import voldemort.versioning.ObsoleteVersionException;
 import voldemort.versioning.VectorClock;
+import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
 
 /**
@@ -126,7 +127,9 @@ public class RedirectingStoreTest extends TestCase {
         for(Entry<ByteArray, byte[]> entry: entryMap.entrySet()) {
             store.put(entry.getKey(),
                       Versioned.value(entry.getValue(),
-                                      new VectorClock().incremented(0, System.currentTimeMillis())));
+                                      VersionFactory.incremented(VersionFactory.newVersion(),
+                                                                 0,
+                                                                 System.currentTimeMillis())));
         }
 
         // set cluster.xml for invalidMetadata sake
@@ -161,7 +164,9 @@ public class RedirectingStoreTest extends TestCase {
         for(Entry<ByteArray, byte[]> entry: entryMap.entrySet()) {
             store.put(entry.getKey(),
                       Versioned.value(entry.getValue(),
-                                      new VectorClock().incremented(0, System.currentTimeMillis())));
+                                      VersionFactory.incremented(VersionFactory.newVersion(),
+                                                                 0,
+                                                                 System.currentTimeMillis())));
         }
 
         // set cluster.xml for invalidMetadata sake
@@ -219,8 +224,9 @@ public class RedirectingStoreTest extends TestCase {
                     // should see obsoleteVersionException for same vectorClock
                     redirectingStore.put(entry.getKey(),
                                          Versioned.value(entry.getValue(),
-                                                         new VectorClock().incremented(0,
-                                                                                       System.currentTimeMillis())));
+                                                         VersionFactory.incremented(VersionFactory.newVersion(),
+                                                                                    0,
+                                                                                    System.currentTimeMillis())));
                     fail("Should see obsoleteVersionException here.");
                 } catch(ObsoleteVersionException e) {
                     // ignore
@@ -241,6 +247,8 @@ public class RedirectingStoreTest extends TestCase {
 
         metadataStore.put(keyString,
                           new Versioned<Object>(value,
-                                                current.incremented(0, System.currentTimeMillis())));
+                                                VersionFactory.incremented(current,
+                                                                           0,
+                                                                           System.currentTimeMillis())));
     }
 }

@@ -24,7 +24,6 @@ import java.util.Map;
 
 import voldemort.server.RequestRoutingType;
 import voldemort.utils.ByteArray;
-import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
@@ -71,7 +70,7 @@ public interface RequestFormat {
     public void writeDeleteRequest(DataOutputStream output,
                                    String storeName,
                                    ByteArray key,
-                                   VectorClock version,
+                                   Version version,
                                    RequestRoutingType routingType) throws IOException;
 
     public boolean readDeleteResponse(DataInputStream input) throws IOException;

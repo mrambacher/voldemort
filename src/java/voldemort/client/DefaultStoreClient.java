@@ -36,8 +36,8 @@ import voldemort.utils.Utils;
 import voldemort.versioning.InconsistencyResolver;
 import voldemort.versioning.InconsistentDataException;
 import voldemort.versioning.ObsoleteVersionException;
-import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
+import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
 
 import com.google.common.collect.Maps;
@@ -181,13 +181,13 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
         List<Version> versions = getVersions(key);
         Versioned<V> versioned;
         if(versions.isEmpty())
-            versioned = Versioned.value(value, new VectorClock());
+            versioned = Versioned.value(value, VersionFactory.newVersion());
         else if(versions.size() == 1)
             versioned = Versioned.value(value, versions.get(0));
         else {
             versioned = get(key, null);
             if(versioned == null)
-                versioned = Versioned.value(value, new VectorClock());
+                versioned = Versioned.value(value, VersionFactory.newVersion());
             else
                 versioned.setObject(value);
         }

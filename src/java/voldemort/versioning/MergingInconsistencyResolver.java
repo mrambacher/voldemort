@@ -41,11 +41,11 @@ public class MergingInconsistencyResolver<T> implements InconsistencyResolver<Ve
             Iterator<Versioned<T>> iter = items.iterator();
             Versioned<T> current = iter.next();
             T merged = current.getValue();
-            VectorClock clock = (VectorClock) current.getVersion();
+            Version clock = current.getVersion();
             while(iter.hasNext()) {
                 Versioned<T> versioned = iter.next();
                 merged = merger.merge(merged, versioned.getValue());
-                clock = clock.merge((VectorClock) versioned.getVersion());
+                clock = clock.merge(versioned.getVersion());
             }
             return Collections.singletonList(new Versioned<T>(merged, clock));
         }
