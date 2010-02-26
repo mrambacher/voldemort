@@ -136,7 +136,8 @@ public class ProtoBuffRequestHandler extends AbstractRequestHandler {
         try {
             ByteArray key = ProtoUtils.decodeBytes(request.getKey());
             Versioned<byte[]> value = ProtoUtils.decodeVersioned(request.getVersioned());
-            store.put(key, value);
+            Version version = store.put(key, value);
+            response.setVersion(ProtoUtils.encodeClock(version));
         } catch(VoldemortException e) {
             response.setError(ProtoUtils.encodeError(getErrorMapper(), e));
         }
