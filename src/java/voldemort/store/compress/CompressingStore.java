@@ -90,12 +90,14 @@ public class CompressingStore implements Store<ByteArray, byte[]> {
 
     private Versioned<byte[]> deflateValue(Versioned<byte[]> versioned) {
         return new Versioned<byte[]>(deflate(valuesCompressionStrategy, versioned.getValue()),
-                                     versioned.getVersion());
+                                     versioned.getVersion(),
+                                     versioned.getMetadata());
     }
 
     private Versioned<byte[]> inflateValue(Versioned<byte[]> versioned) {
         return new Versioned<byte[]>(inflate(valuesCompressionStrategy, versioned.getValue()),
-                                     versioned.getVersion());
+                                     versioned.getVersion(),
+                                     versioned.getMetadata());
     }
 
     private byte[] inflate(CompressionStrategy compressionStrategy, byte[] data)

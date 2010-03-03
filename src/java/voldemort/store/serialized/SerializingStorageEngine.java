@@ -111,7 +111,8 @@ public class SerializingStorageEngine<K, V> extends SerializingStore<K, V> imple
                 Versioned<byte[]> versioned = keyAndVal.getSecond();
                 return Pair.create(getKeySerializer().toObject(keyAndVal.getFirst().get()),
                                    new Versioned<V>(getValueSerializer().toObject(versioned.getValue()),
-                                                    versioned.getVersion()));
+                                                    versioned.getVersion(),
+                                                    versioned.getMetadata()));
             }
 
         }

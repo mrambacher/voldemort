@@ -18,7 +18,6 @@
 package voldemort.versioning;
 
 import voldemort.serialization.Serializer;
-import voldemort.utils.ByteUtils;
 
 public class VersionFactory {
 
@@ -59,6 +58,33 @@ public class VersionFactory {
     }
 
     /**
+     * Takes the bytes of Metadata and creates a java object from them. For
+     * efficiency reasons the extra bytes can be attached to the end of the byte
+     * array that are not related to the Metadata
+     * 
+     * @param bytes The serialized bytes of the Metadata
+     */
+    public static Metadata toMetadata(byte[] bytes) {
+        return toMetadata(bytes, 0);
+    }
+
+    /**
+     * Read the Metadata from the given bytes starting from a particular offset
+     * 
+     * @param bytes The bytes to read from
+     * @param offset The offset to start reading from
+     */
+    public static Metadata toMetadata(byte[] bytes, int offset) {
+        if(bytes == null || bytes.length <= offset) {
+            return new Metadata();
+        } else if(VectorClockProtoSerializer.isValidMetadata(bytes, offset)) {
+            return VectorClockProtoSerializer.toMetadata(bytes, offset);
+        } else {
+            throw new IllegalArgumentException("Unrecognized version encoding");
+        }
+    }
+
+    /**
      * Read the versioned byte object from the given bytes starting from a
      * particular offset
      * 
@@ -78,19 +104,13 @@ public class VersionFactory {
      * @return The reconstructed object
      */
     public static Versioned<byte[]> toVersioned(byte[] data, int offset) {
-        Version version = null;
-        int sizeInBytes = 0;
         if(VectorClockVersionSerializer.isValid(data, offset)) {
-            version = VectorClockVersionSerializer.toVersion(data, offset);
-            sizeInBytes = VectorClockVersionSerializer.sizeInBytes(version);
+            return VectorClockVersionSerializer.toVersioned(data, offset);
         } else if(VectorClockProtoSerializer.isValid(data, offset)) {
-            version = VectorClockProtoSerializer.toVersion(data, offset);
-            sizeInBytes = VectorClockProtoSerializer.sizeInBytes(version);
+            return VectorClockProtoSerializer.toVersioned(data, offset);
         } else {
             throw new IllegalArgumentException("Unrecognized version encoding");
         }
-        return new Versioned<byte[]>(ByteUtils.copy(data, offset + sizeInBytes, data.length),
-                                     version);
     }
 
     /**
@@ -103,7 +123,7 @@ public class VersionFactory {
     public static <T> Versioned<T> toVersioned(byte[] data, Serializer<T> serializer) {
         Versioned<byte[]> versioned = toVersioned(data);
         T object = serializer.toObject(versioned.getValue());
-        return new Versioned<T>(object, versioned.getVersion());
+        return new Versioned<T>(object, versioned.getVersion(), versioned.getMetadata());
     }
 
     /**
@@ -115,7 +135,9 @@ public class VersionFactory {
      */
     public static <T> byte[] toBytes(Versioned<T> versioned, Serializer<T> serializer) {
         byte[] data = serializer.toBytes(versioned.getValue());
-        Versioned<byte[]> value = new Versioned<byte[]>(data, versioned.getVersion());
+        Versioned<byte[]> value = new Versioned<byte[]>(data,
+                                                        versioned.getVersion(),
+                                                        versioned.getMetadata());
         return VectorClockProtoSerializer.toBytes(value);
     }
 

@@ -831,8 +831,9 @@ public class RoutedStore implements Store<ByteArray, byte[]> {
 
     private Versioned<byte[]> incremented(Versioned<byte[]> versioned, int nodeId) {
         return new Versioned<byte[]>(versioned.getValue(),
-                                     ((VectorClock) versioned.getVersion()).incremented(nodeId,
-                                                                                        time.getMilliseconds()));
+                                     versioned.getVersion().incremented(nodeId,
+                                                                        time.getMilliseconds()),
+                                     versioned.getMetadata());
     }
 
     private List<Node> availableNodes(List<Node> list) {

@@ -52,8 +52,8 @@ public class HttpStoreTest extends AbstractByteArrayStoreTest {
 
     public HttpStoreTest() {
         super("users");
-        clientFormat = RequestFormatType.VOLDEMORT_V2;
-        serverFormat = RequestFormatType.VOLDEMORT_V2;
+        clientFormat = RequestFormatType.VOLDEMORT_V3;
+        serverFormat = RequestFormatType.VOLDEMORT_V3;
     }
 
     @Override
@@ -68,6 +68,17 @@ public class HttpStoreTest extends AbstractByteArrayStoreTest {
                                                  node.getHttpPort());
         server = context.getServer();
         httpStore = ServerTestUtils.getHttpStore("users", clientFormat, node.getHttpPort());
+    }
+
+    @Override
+    public boolean supportsMetadata() {
+        if(clientFormat.equals(RequestFormatType.PROTOCOL_BUFFERS)) {
+            return true;
+        } else if(clientFormat.getCode().startsWith("vc")) {
+            return clientFormat.getVersion() >= RequestFormatType.VOLDEMORT_V3.getVersion();
+        } else {
+            return false;
+        }
     }
 
     public <T extends Exception> void testBadUrlOrPort(String url, int port, Class<T> expected) {

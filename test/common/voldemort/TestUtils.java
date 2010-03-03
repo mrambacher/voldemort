@@ -47,7 +47,9 @@ import voldemort.store.readonly.JsonStoreBuilder;
 import voldemort.store.readonly.ReadOnlyStorageConfiguration;
 import voldemort.utils.ByteArray;
 import voldemort.utils.Utils;
+import voldemort.versioning.Metadata;
 import voldemort.versioning.VectorClock;
+import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
 /**
@@ -149,6 +151,29 @@ public class TestUtils {
         byte[] bytes = new byte[length];
         SEEDED_RANDOM.nextBytes(bytes);
         return bytes;
+    }
+
+    public static <K, V> void assertContains(Store<K, V> store,
+                                             K key,
+                                             Version version,
+                                             Versioned<V> value) {
+        List<Versioned<V>> values = store.get(key);
+        for(Versioned<V> v: values) {
+            if(v.getVersion().equals(version)) {
+                if(!Utils.deepEquals(v.getValue(), value.getValue())) {
+                    throw new AssertionFailedError("Wrong value for version " + version
+                                                   + " in store");
+                } else {
+                    Metadata saved = v.getMetadata();
+                    Metadata input = value.getMetadata();
+                    if(!saved.equals(input)) {
+                        throw new AssertionFailedError("Metadata mismatch in store");
+                    }
+                    return;
+                }
+            }
+        }
+        throw new AssertionFailedError("Could not find version " + version + " in store");
     }
 
     public static <K, V> void assertContains(Store<K, V> store, K key, V... values) {

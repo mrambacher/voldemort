@@ -19,13 +19,20 @@ import voldemort.client.protocol.RequestFormatType;
 @RunWith(Parameterized.class)
 public class VoldemortNativeSocketStoreTest extends AbstractSocketStoreTest {
 
-    public VoldemortNativeSocketStoreTest(boolean useNio) {
-        super(RequestFormatType.VOLDEMORT_V1, useNio);
+    public VoldemortNativeSocketStoreTest(RequestFormatType format, boolean useNio) {
+        super(format, useNio);
     }
 
     @Parameters
     public static Collection<Object[]> configs() {
-        return Arrays.asList(new Object[][] { { true }, { false } });
+        return Arrays.asList(new Object[][] { { RequestFormatType.VOLDEMORT_V1, true },
+                { RequestFormatType.VOLDEMORT_V1, false },
+                { RequestFormatType.VOLDEMORT_V3, true }, { RequestFormatType.VOLDEMORT_V3, false } });
+    }
+
+    @Override
+    public boolean supportsMetadata() {
+        return this.requestFormatType.getVersion() >= RequestFormatType.VOLDEMORT_V3.getVersion();
     }
 
 }

@@ -34,15 +34,21 @@ public final class Versioned<T> implements Serializable {
     private static final long serialVersionUID = 1;
 
     private Version version;
+    private Metadata metadata;
     private volatile T object;
 
     public Versioned(T object) {
-        this(object, VersionFactory.newVersion());
+        this(object, VersionFactory.newVersion(), null);
     }
 
     public Versioned(T object, Version version) {
-        this.version = version == null ? VersionFactory.newVersion() : version;
+        this(object, version, null);
+    }
+
+    public Versioned(T object, Version version, Metadata metadata) {
+        this.version = (version != null) ? version : VersionFactory.newVersion();
         this.object = object;
+        this.metadata = (metadata != null) ? metadata : new Metadata();
     }
 
     public Version getVersion() {
@@ -57,6 +63,14 @@ public final class Versioned<T> implements Serializable {
         this.object = object;
     }
 
+    public Metadata getMetadata() {
+        return this.metadata;
+    }
+
+    public void setMetadata(Metadata m) {
+        this.metadata = m;
+    }
+
     @Override
     public boolean equals(Object o) {
         if(o == this)
@@ -66,12 +80,16 @@ public final class Versioned<T> implements Serializable {
 
         Versioned<?> versioned = (Versioned<?>) o;
         return Objects.equal(getVersion(), versioned.getVersion())
+               && Utils.deepEquals(getMetadata(), versioned.getMetadata())
                && Utils.deepEquals(getValue(), versioned.getValue());
     }
 
     @Override
     public int hashCode() {
         int value = 31 + version.hashCode();
+        if(metadata != null) {
+            value += 31 * this.metadata.hashCode();
+        }
         if(object != null) {
             value += 31 * object.hashCode();
         }
@@ -83,20 +101,31 @@ public final class Versioned<T> implements Serializable {
         return "[" + object + ", " + version + "]";
     }
 
+    public Versioned<T> mergeVersion(Version that) {
+        Versioned<T> clone = cloneVersioned();
+        if(that != null) {
+            clone.version = that.merge(clone.getVersion());
+        }
+        return clone;
+    }
+
     /**
      * Create a clone of this Versioned object such that the object pointed to
      * is the same, but the VectorClock and Versioned wrapper is a shallow copy.
      */
     public Versioned<T> cloneVersioned() {
-        return new Versioned<T>(this.getValue(), VersionFactory.cloneVersion(this.version));
+        Versioned<T> clone = new Versioned<T>(getValue(),
+                                              VersionFactory.cloneVersion(getVersion()),
+                                              getMetadata().clone());
+        return clone;
     }
 
     public static <S> Versioned<S> value(S s) {
-        return new Versioned<S>(s, new VectorClock());
+        return new Versioned<S>(s, VersionFactory.newVersion(), null);
     }
 
     public static <S> Versioned<S> value(S s, Version v) {
-        return new Versioned<S>(s, v);
+        return new Versioned<S>(s, v, null);
     }
 
     public static final class HappenedBeforeComparator<S> implements Comparator<Versioned<S>> {
@@ -111,5 +140,4 @@ public final class Versioned<T> implements Serializable {
                 return 0;
         }
     }
-
 }

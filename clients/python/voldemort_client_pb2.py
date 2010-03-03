@@ -102,6 +102,35 @@ _VECTORCLOCK = descriptor.Descriptor(
   options=None)
 
 
+_VERSIONEDPROPERTY = descriptor.Descriptor(
+  name='VersionedProperty',
+  full_name='voldemort.VersionedProperty',
+  filename='voldemort-client.proto',
+  containing_type=None,
+  fields=[
+    descriptor.FieldDescriptor(
+      name='name', full_name='voldemort.VersionedProperty.name', index=0,
+      number=1, type=9, cpp_type=9, label=2,
+      default_value=unicode("", "utf-8"),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    descriptor.FieldDescriptor(
+      name='value', full_name='voldemort.VersionedProperty.value', index=1,
+      number=2, type=9, cpp_type=9, label=1,
+      default_value=unicode("", "utf-8"),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+  ],
+  extensions=[
+  ],
+  nested_types=[],  # TODO(robinson): Implement.
+  enum_types=[
+  ],
+  options=None)
+
+
 _VERSIONED = descriptor.Descriptor(
   name='Versioned',
   full_name='voldemort.Versioned',
@@ -119,6 +148,13 @@ _VERSIONED = descriptor.Descriptor(
       name='version', full_name='voldemort.Versioned.version', index=1,
       number=2, type=11, cpp_type=10, label=2,
       default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    descriptor.FieldDescriptor(
+      name='properties', full_name='voldemort.Versioned.properties', index=2,
+      number=3, type=11, cpp_type=10, label=3,
+      default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
@@ -537,6 +573,7 @@ _VOLDEMORTREQUEST = descriptor.Descriptor(
 
 _VECTORCLOCK.fields_by_name['entries'].message_type = _CLOCKENTRY
 _VERSIONED.fields_by_name['version'].message_type = _VECTORCLOCK
+_VERSIONED.fields_by_name['properties'].message_type = _VERSIONEDPROPERTY
 _ERROR.fields_by_name['version'].message_type = _VECTORCLOCK
 _KEYEDVERSIONS.fields_by_name['versions'].message_type = _VERSIONED
 _GETRESPONSE.fields_by_name['versioned'].message_type = _VERSIONED
@@ -563,6 +600,10 @@ class ClockEntry(message.Message):
 class VectorClock(message.Message):
   __metaclass__ = reflection.GeneratedProtocolMessageType
   DESCRIPTOR = _VECTORCLOCK
+
+class VersionedProperty(message.Message):
+  __metaclass__ = reflection.GeneratedProtocolMessageType
+  DESCRIPTOR = _VERSIONEDPROPERTY
 
 class Versioned(message.Message):
   __metaclass__ = reflection.GeneratedProtocolMessageType

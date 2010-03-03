@@ -117,6 +117,11 @@ public class ConfigurationStorageEngineTest extends AbstractStoreTest<String, St
         return false;
     }
 
+    @Override
+    protected boolean supportsMetadata() {
+        return false; // Configuration store does not support metadata
+    }
+
     @Test
     public void testEmacsTempFile() throws IOException {
         Store<String, String> store = getStore();

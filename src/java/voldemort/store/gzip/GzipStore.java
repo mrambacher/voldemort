@@ -49,7 +49,8 @@ public class GzipStore<K> extends DelegatingStore<K, byte[]> implements Store<K,
         try {
             for(Versioned<byte[]> item: found)
                 results.add(new Versioned<byte[]>(IOUtils.toByteArray(new GZIPInputStream(new ByteArrayInputStream(item.getValue()))),
-                                                  item.getVersion()));
+                                                  item.getVersion(),
+                                                  item.getMetadata()));
         } catch(IOException e) {
             throw new VoldemortException(e);
         }
@@ -62,7 +63,8 @@ public class GzipStore<K> extends DelegatingStore<K, byte[]> implements Store<K,
         try {
             return getInnerStore().put(key,
                                        new Versioned<byte[]>(IOUtils.toByteArray(new GZIPInputStream(new ByteArrayInputStream(value.getValue()))),
-                                                             value.getVersion()));
+                                                             value.getVersion(),
+                                                             value.getMetadata()));
         } catch(IOException e) {
             throw new VoldemortException(e);
         }

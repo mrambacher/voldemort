@@ -96,7 +96,8 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
     public void create() {
         execute("create table " + getName()
                 + " (key_ varbinary(200) not null, version_ varbinary(200) not null, "
-                + " value_ blob, primary key(key_, version_)) engine = InnoDB");
+                + " value_ blob" + " metadata_ blob"
+                + ", primary key(key_, version_)) engine = InnoDB");
     }
 
     public void execute(String query) {
@@ -138,7 +139,7 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
         Connection conn = null;
         PreparedStatement stmt = null;
         ResultSet rs = null;
-        String select = "select key_, version_, value_ from " + name;
+        String select = "select key_, version_, value_, metadata_ from " + name;
         try {
             conn = datasource.getConnection();
             stmt = conn.prepareStatement(select);
@@ -210,7 +211,7 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
         Connection conn = null;
         PreparedStatement stmt = null;
         ResultSet rs = null;
-        String select = "select version_, value_ from " + name + " where key_ = ?";
+        String select = "select version_, value_, metadata_ from " + name + " where key_ = ?";
         try {
             conn = datasource.getConnection();
             stmt = conn.prepareStatement(select);
@@ -222,7 +223,10 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
                 while(rs.next()) {
                     byte[] version = rs.getBytes("version_");
                     byte[] value = rs.getBytes("value_");
-                    found.add(new Versioned<byte[]>(value, VersionFactory.toVersion(version)));
+                    byte[] metadata = rs.getBytes("metadata_");
+                    found.add(new Versioned<byte[]>(value,
+                                                    VersionFactory.toVersion(version),
+                                                    VersionFactory.toMetadata(metadata)));
                 }
                 if(found.size() > 0)
                     result.put(key, found);
@@ -253,7 +257,8 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
         PreparedStatement insert = null;
         PreparedStatement select = null;
         ResultSet results = null;
-        String insertSql = "insert into " + name + " (key_, version_, value_) values (?, ?, ?)";
+        String insertSql = "insert into " + name
+                           + " (key_, version_, value_, metadata_) values (?, ?, ?, ?)";
         String selectSql = "select key_, version_ from " + name + " where key_ = ?";
         try {
             conn = datasource.getConnection();
@@ -282,6 +287,7 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
             Version clock = value.getVersion();
             insert.setBytes(2, clock.toBytes());
             insert.setBytes(3, value.getValue());
+            insert.setBytes(4, value.getMetadata().toBytes());
             insert.executeUpdate();
             doCommit = true;
         } catch(SQLException e) {
@@ -372,9 +378,12 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
                     throw new PersistenceFailureException("Next called on iterator, but no more items available!");
                 ByteArray key = new ByteArray(rs.getBytes("key_"));
                 byte[] value = rs.getBytes("value_");
+                byte[] metadata = rs.getBytes("metadata_");
                 Version clock = VersionFactory.toVersion(rs.getBytes("version_"));
                 this.hasMore = rs.next();
-                return Pair.create(key, new Versioned<byte[]>(value, clock));
+                return Pair.create(key, new Versioned<byte[]>(value,
+                                                              clock,
+                                                              VersionFactory.toMetadata(metadata)));
             } catch(SQLException e) {
                 throw new PersistenceFailureException(e);
             }

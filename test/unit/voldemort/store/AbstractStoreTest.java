@@ -130,16 +130,17 @@ public abstract class AbstractStoreTest<K, V> extends TestCase {
         return Objects.equal(t1, t2);
     }
 
+    protected void assertEquals(Versioned<V> v1, Versioned<V> v2) {
+        assertEquals(null, v1, v2);
+    }
+
     protected void assertEquals(String message, Versioned<V> v1, Versioned<V> v2) {
         String assertTrueMessage = v1 + " != " + v2 + ".";
         if(message != null)
             assertTrueMessage += message;
         assertTrue(assertTrueMessage, valuesEqual(v1.getValue(), v2.getValue()));
         assertEquals(message, v1.getVersion(), v2.getVersion());
-    }
-
-    protected void assertEquals(Versioned<V> v1, Versioned<V> v2) {
-        assertEquals(null, v1, v2);
+        assertEquals(message, v1.getMetadata(), v2.getMetadata());
     }
 
     public void assertContains(Collection<Versioned<V>> collection, Versioned<V> value) {
@@ -306,6 +307,25 @@ public abstract class AbstractStoreTest<K, V> extends TestCase {
         Versioned<V> newest = new Versioned<V>(getValue(), getClock(1, 1, 2, 2));
         store.put(key, newest);
         assertContains(store.get(key), newest);
+    }
+
+    protected boolean supportsMetadata() {
+        return true;
+    }
+
+    @Test
+    public void testMetadata() {
+        if(supportsMetadata()) {
+            K key = getKey();
+            Store<K, V> store = getStore();
+            Version version = TestUtils.getClock(1, 1, 2, 3, 3, 4);
+            V value = getValue();
+            assertEquals("Store not empty at start!", 0, store.get(key).size());
+            Versioned<V> versioned = new Versioned<V>(value, version);
+            versioned.getMetadata().setProperty("test", "metadata");
+            int count = testFetchedEqualsPut(store, key, versioned);
+            assertEquals("Should only be one version stored.", 1, count);
+        }
     }
 
     @Test

@@ -131,7 +131,7 @@ public class InMemoryStorageEngine<K, V> implements StorageEngine<K, V> {
             // If we have no value, optimistically try to add one
             if(items == null) {
                 items = new ArrayList<Versioned<V>>();
-                items.add(new Versioned<V>(value.getValue(), version));
+                items.add(new Versioned<V>(value.getValue(), version, value.getMetadata()));
                 success = map.putIfAbsent(key, items) == null;
             } else {
                 synchronized(items) {

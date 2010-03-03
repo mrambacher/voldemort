@@ -97,14 +97,31 @@ public class ProtoUtils {
     }
 
     public static VProto.Versioned.Builder encodeVersioned(Versioned<byte[]> versioned) {
-        return VProto.Versioned.newBuilder()
-                               .setValue(ByteString.copyFrom(versioned.getValue()))
-                               .setVersion(ProtoUtils.encodeClock(versioned.getVersion()));
+        VProto.Versioned.Builder result = VProto.Versioned.newBuilder();
+
+        result.setValue(ByteString.copyFrom(versioned.getValue()));
+        result.setVersion(ProtoUtils.encodeClock(versioned.getVersion()));
+
+        for(String name: versioned.getMetadata().listProperties()) {
+            VProto.VersionedProperty.Builder property = VProto.VersionedProperty.newBuilder();
+            String value = versioned.getMetadata().getProperty(name);
+            property.setName(name);
+            property.setValue(value);
+            result.addProperties(property);
+        }
+        return result;
     }
 
     public static Versioned<byte[]> decodeVersioned(VProto.Versioned versioned) {
-        return new Versioned<byte[]>(versioned.getValue().toByteArray(),
-                                     decodeClock(versioned.getVersion()));
+        byte[] data = versioned.getValue().toByteArray();
+        Version version = decodeClock(versioned.getVersion());
+        Versioned<byte[]> result = new Versioned<byte[]>(data, version);
+        for(VProto.VersionedProperty prop: versioned.getPropertiesList()) {
+            String name = prop.getName();
+            String value = prop.getValue();
+            result.getMetadata().setProperty(name, value);
+        }
+        return result;
     }
 
     public static List<Versioned<byte[]>> decodeVersions(List<VProto.Versioned> versioned) {

@@ -182,11 +182,11 @@ public abstract class AbstractRequestFormatTest extends TestCase {
         testPutRequest(TestUtils.toByteArray("hello"), "world".getBytes(), new VectorClock(), null);
 
         // test obsolete exception
-        this.store.put(TestUtils.toByteArray("hello"), new Versioned<byte[]>("world".getBytes(),
-                                                                             new VectorClock()));
+        Version stored = store.put(TestUtils.toByteArray("hello"),
+                                   new Versioned<byte[]>("world".getBytes(), new VectorClock()));
         testPutRequest(TestUtils.toByteArray("hello"),
                        "world".getBytes(),
-                       new VectorClock(),
+                       stored,
                        ObsoleteVersionException.class);
     }
 
@@ -213,18 +213,45 @@ public abstract class AbstractRequestFormatTest extends TestCase {
             this.serverWireFormat.handleRequest(inputStream(putRequest),
                                                 new DataOutputStream(putResponse));
             result = this.clientWireFormat.readPutResponse(inputStream(putResponse));
-            if(this.formatType == RequestFormatType.VOLDEMORT_V1) {
+            if(this.formatType.getVersion() < RequestFormatType.VOLDEMORT_V3.getVersion()) {
                 result = versioned.getVersion();
             }
-            TestUtils.assertContains(this.store, key, versioned.getValue());
+            TestUtils.assertContains(this.store, key, result, versioned);
         } catch(IllegalArgumentException e) {
             throw e;
         } catch(Exception e) {
             assertEquals("Unexpected exception " + e.getClass().getName(), e.getClass(), exception);
+            if(supportsMetadata()) {
+                if(e instanceof ObsoleteVersionException) {
+                    ObsoleteVersionException ove = (ObsoleteVersionException) e;
+                    assertNotNull("Obsolete version set", ove.getExistingVersion());
+                }
+            }
         } finally {
             this.store.deleteAll();
         }
         return result;
+    }
+
+    protected boolean supportsMetadata() {
+        if(formatType.equals(RequestFormatType.PROTOCOL_BUFFERS)) {
+            return true;
+        } else if(formatType.getCode().startsWith("vp")) {
+            return formatType.getVersion() >= RequestFormatType.VOLDEMORT_V3.getVersion();
+        } else {
+            return false;
+        }
+
+    }
+
+    @Test
+    public void testMetadata() throws Exception {
+        if(supportsMetadata()) {
+            Versioned<byte[]> versioned = new Versioned<byte[]>("world".getBytes(),
+                                                                new VectorClock());
+            versioned.getMetadata().setProperty("test", "metadata");
+            testPutRequest(TestUtils.toByteArray("hello"), versioned, null);
+        }
     }
 
     @Test

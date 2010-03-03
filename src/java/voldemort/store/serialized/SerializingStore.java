@@ -81,7 +81,8 @@ public class SerializingStore<K, V> implements Store<K, V> {
         List<Versioned<V>> results = new ArrayList<Versioned<V>>(found.size());
         for(Versioned<byte[]> versioned: found)
             results.add(new Versioned<V>(valueSerializer.toObject(versioned.getValue()),
-                                         versioned.getVersion()));
+                                         versioned.getVersion(),
+                                         versioned.getMetadata()));
         return results;
     }
 
@@ -95,7 +96,8 @@ public class SerializingStore<K, V> implements Store<K, V> {
                                                                                    .size());
             for(Versioned<byte[]> versioned: mapEntry.getValue())
                 values.add(new Versioned<V>(valueSerializer.toObject(versioned.getValue()),
-                                            versioned.getVersion()));
+                                            versioned.getVersion(),
+                                            versioned.getMetadata()));
 
             result.put(byteKeyToKey.get(mapEntry.getKey()), values);
         }
@@ -108,7 +110,8 @@ public class SerializingStore<K, V> implements Store<K, V> {
 
     public Version put(K key, Versioned<V> value) throws VoldemortException {
         Versioned<byte[]> versioned = new Versioned<byte[]>(valueSerializer.toBytes(value.getValue()),
-                                                            value.getVersion());
+                                                            value.getVersion(),
+                                                            value.getMetadata());
         return store.put(keyToBytes(key), versioned);
 
     }

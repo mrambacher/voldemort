@@ -119,7 +119,9 @@ public class ConfigurationStorageEngine implements StorageEngine<String, String>
         StoreUtils.assertValidKey(key);
 
         if(null == value.getValue()) {
-            throw new VoldemortException("metadata cannot be null !!");
+            throw new VoldemortException("Value cannot be null !!");
+        } else if(value.getMetadata().listProperties().size() > 0) {
+            throw new VoldemortException("metadata must be null !!");
         }
         // Check for obsolete version
         File[] files = getDirectory(key).listFiles();

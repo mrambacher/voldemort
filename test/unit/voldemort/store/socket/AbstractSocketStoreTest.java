@@ -56,7 +56,7 @@ public abstract class AbstractSocketStoreTest extends AbstractByteArrayStoreTest
 
     private int socketPort;
     private AbstractSocketService socketService;
-    private final RequestFormatType requestFormatType;
+    protected final RequestFormatType requestFormatType;
     private final boolean useNio;
 
     @Override

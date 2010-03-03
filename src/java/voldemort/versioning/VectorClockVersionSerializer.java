@@ -135,4 +135,14 @@ public class VectorClockVersionSerializer {
         byte[] version = toBytes(versioned.getVersion());
         return ByteUtils.cat(version, versioned.getValue());
     }
+
+    public static Versioned<byte[]> toVersioned(byte[] data) {
+        return toVersioned(data, 0);
+    }
+
+    public static Versioned<byte[]> toVersioned(byte[] data, int offset) {
+        Version version = VectorClockVersionSerializer.toVersion(data, offset);
+        int size = VectorClockVersionSerializer.sizeInBytes(version);
+        return new Versioned<byte[]>(ByteUtils.copy(data, offset + size, data.length), version);
+    }
 }

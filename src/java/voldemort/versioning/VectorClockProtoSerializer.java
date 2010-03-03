@@ -20,6 +20,7 @@ package voldemort.versioning;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import voldemort.serialization.Serializer;
 import voldemort.utils.ByteUtils;
@@ -74,17 +75,6 @@ public class VectorClockProtoSerializer {
         return toVersion(bytes, 0);
     }
 
-    public static <T> byte[] toBytes(Versioned<T> versioned, Serializer<T> serializer) {
-        byte[] version = toBytes(versioned.getVersion());
-        byte[] data = serializer.toBytes(versioned.getValue());
-        return ByteUtils.cat(version, data);
-    }
-
-    public static byte[] toBytes(Versioned<byte[]> versioned) {
-        byte[] version = toBytes(versioned.getVersion());
-        return ByteUtils.cat(version, versioned.getValue());
-    }
-
     public static Version toVersion(byte[] bytes, int offset) {
         if(!isValid(bytes, offset)) {
             throw new IllegalArgumentException("Clock encoded incorrectly for " + PROTOCOL);
@@ -118,21 +108,116 @@ public class VectorClockProtoSerializer {
         if(bytes == null || bytes.length < offset + 3) {
             return false;
         } else {
+            int numEntries = ByteUtils.readShort(bytes, offset);
+            int versionSize = bytes[offset + 2];
+            if(numEntries < 0 && versionSize == 0) {
+                return isValidProtocol(bytes, offset + 3);
+            } else {
+                return false;
+            }
+        }
+    }
+
+    public static boolean isValidProtocol(byte[] bytes, int offset) {
+        if(bytes == null || bytes.length <= 0) {
+            return false;
+        } else {
             try {
-                int numEntries = ByteUtils.readShort(bytes, offset);
-                int versionSize = bytes[offset + 2];
-                if(numEntries < 0 && versionSize == 0) {
-                    CodedInputStream in = CodedInputStream.newInstance(bytes,
-                                                                       offset + 3,
-                                                                       bytes.length);
-                    String protocol = in.readString();
-                    return PROTOCOL.equals(protocol);
-                } else {
-                    return false;
-                }
+                CodedInputStream in = CodedInputStream.newInstance(bytes, offset, bytes.length);
+                String protocol = in.readString();
+                return PROTOCOL.equals(protocol);
             } catch(IOException e) { /* Should not happen */
                 return false;
             }
         }
+    }
+
+    public static int sizeInBytes(Metadata md) {
+        Set<String> props = md.listProperties();
+        int size = CodedOutputStream.computeStringSizeNoTag(PROTOCOL);
+        size += CodedOutputStream.computeInt64SizeNoTag(props.size());
+        for(String p: props) {
+            size += CodedOutputStream.computeStringSizeNoTag(p);
+            size += CodedOutputStream.computeStringSizeNoTag(md.getProperty(p));
+        }
+        return size;
+    }
+
+    public static byte[] toBytes(Metadata md) {
+        byte[] bytes = new byte[sizeInBytes(md)];
+        CodedOutputStream out = CodedOutputStream.newInstance(bytes);
+        try {
+            out.writeStringNoTag(PROTOCOL);
+            Set<String> props = md.listProperties();
+            out.writeInt32NoTag(props.size());
+            for(String p: props) {
+                out.writeStringNoTag(p);
+                out.writeStringNoTag(md.getProperty(p));
+            }
+        } catch(IOException e) { /* Should not happen */
+            throw new RuntimeException(e);
+        }
+        return bytes;
+    }
+
+    public static boolean isValidMetadata(byte[] bytes) {
+        return isValidMetadata(bytes, 0);
+    }
+
+    public static boolean isValidMetadata(byte[] bytes, int offset) {
+        return isValidProtocol(bytes, offset);
+    }
+
+    public static Metadata toMetadata(byte[] bytes) {
+        return toMetadata(bytes, 0);
+    }
+
+    public static Metadata toMetadata(byte[] bytes, int offset) {
+        if(!isValidMetadata(bytes, offset)) {
+            throw new IllegalArgumentException("Metadata encoded incorrectly for " + PROTOCOL);
+        } else {
+            CodedInputStream in = CodedInputStream.newInstance(bytes, offset, bytes.length);
+            try {
+                String protocol = in.readString();
+                if(!PROTOCOL.equals(protocol)) {
+                    throw new IllegalArgumentException("Wrong protocol " + PROTOCOL);
+                }
+                Metadata md = new Metadata();
+                int numEntries = in.readInt32();
+                for(int i = 0; i < numEntries; i++) {
+                    String name = in.readString();
+                    String value = in.readString();
+                    md.setProperty(name, value);
+                }
+                return md;
+            } catch(IOException e) { /* Should not happen */
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
+    public static <T> byte[] toBytes(Versioned<T> versioned, Serializer<T> serializer) {
+        byte[] version = toBytes(versioned.getVersion());
+        byte[] metadata = toBytes(versioned.getMetadata());
+        byte[] data = serializer.toBytes(versioned.getValue());
+        return ByteUtils.cat(version, metadata, data);
+    }
+
+    public static byte[] toBytes(Versioned<byte[]> versioned) {
+        byte[] version = toBytes(versioned.getVersion());
+        byte[] metadata = toBytes(versioned.getMetadata());
+        return ByteUtils.cat(version, metadata, versioned.getValue());
+    }
+
+    public static Versioned<byte[]> toVersioned(byte[] data) {
+        return toVersioned(data, 0);
+    }
+
+    public static Versioned<byte[]> toVersioned(byte[] data, int offset) {
+        Version version = VectorClockProtoSerializer.toVersion(data, offset);
+        int size = VectorClockProtoSerializer.sizeInBytes(version);
+        Metadata md = VectorClockProtoSerializer.toMetadata(data, offset + size);
+        size += md.sizeInBytes();
+        return new Versioned<byte[]>(ByteUtils.copy(data, offset + size, data.length), version, md);
     }
 }
