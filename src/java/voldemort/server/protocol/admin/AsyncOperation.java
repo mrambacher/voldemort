@@ -4,7 +4,6 @@ import voldemort.annotations.jmx.JmxGetter;
 import voldemort.annotations.jmx.JmxOperation;
 
 /**
- * @author afeinberg
  */
 public abstract class AsyncOperation implements Runnable {
 
@@ -37,6 +36,11 @@ public abstract class AsyncOperation implements Runnable {
         }
         updateStatus("finished " + getStatus());
         markComplete();
+    }
+
+    @Override
+    public String toString() {
+        return getStatus().toString();
     }
 
     abstract public void operate() throws Exception;

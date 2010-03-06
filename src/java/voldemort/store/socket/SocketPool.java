@@ -34,7 +34,6 @@ import voldemort.utils.pool.ResourcePoolConfig;
  * translates exceptions and delegates to apache commons pool as well as
  * providing some JMX access.
  * 
- * @author jay
  * 
  */
 @JmxManaged(description = "Voldemort socket pool.")
@@ -114,6 +113,7 @@ public class SocketPool {
     }
 
     public void close(SocketDestination destination) {
+        destination.setLastClosedTimestamp();
         pool.close(destination);
     }
 

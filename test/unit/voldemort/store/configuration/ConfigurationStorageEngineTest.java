@@ -25,6 +25,8 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.io.FileDeleteStrategy;
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 
 import voldemort.TestUtils;
@@ -42,6 +44,7 @@ public class ConfigurationStorageEngineTest extends AbstractStoreTest<String, St
         super("test");
     }
 
+    @Before
     @Override
     public void setUp() throws Exception {
         super.setUp();
@@ -49,6 +52,7 @@ public class ConfigurationStorageEngineTest extends AbstractStoreTest<String, St
             FileDeleteStrategy.FORCE.delete(tempDir);
     }
 
+    @After
     @Override
     public void tearDown() throws Exception {
         super.tearDown();
@@ -75,6 +79,7 @@ public class ConfigurationStorageEngineTest extends AbstractStoreTest<String, St
     }
 
     @Override
+    @Test
     public void testDelete() {
         String key = getKey();
         Store<String, String> store = getStore();
@@ -93,6 +98,7 @@ public class ConfigurationStorageEngineTest extends AbstractStoreTest<String, St
     }
 
     @Override
+    @Test
     public void testGetAndDeleteNonExistentKey() {
         try {
             assertEquals("Size should be 0", 0, getStore().get("unknown_key").size());
@@ -102,6 +108,7 @@ public class ConfigurationStorageEngineTest extends AbstractStoreTest<String, St
     }
 
     @Override
+    @Test
     public void testNullKeys() {
         // insert of null keys should not be allowed
         try {

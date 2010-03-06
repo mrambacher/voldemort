@@ -25,7 +25,6 @@ import voldemort.versioning.Versioned;
  * functions are not utils function but are forced move here to allow more
  * granular unit testing.
  * 
- * @author bbansal
  * 
  */
 public class RebalanceUtils {
@@ -142,7 +141,7 @@ public class RebalanceUtils {
             try {
                 Versioned<Cluster> versionedCluster = adminClient.getRemoteCluster(node.getId());
                 Version newClock = versionedCluster.getVersion();
-                if(null != newClock && !clusterList.contains(newClock)) {
+                if(null != newClock && !clusterList.contains(versionedCluster)) {
                     // check no two clocks are concurrent.
                     checkNotConcurrent(clusterList, newClock);
 

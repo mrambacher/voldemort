@@ -29,7 +29,6 @@ import voldemort.client.protocol.RequestFormatType;
  * A wrapper class that wraps a socket with its DataInputStream and
  * DataOutputStream
  * 
- * @author jay
  * 
  */
 public class SocketAndStreams {
@@ -40,6 +39,7 @@ public class SocketAndStreams {
     private final RequestFormatType requestFormatType;
     private final DataInputStream inputStream;
     private final DataOutputStream outputStream;
+    private final long createTimestamp;
 
     public SocketAndStreams(Socket socket, RequestFormatType requestFormatType) throws IOException {
         this(socket, DEFAULT_BUFFER_SIZE, requestFormatType);
@@ -53,6 +53,7 @@ public class SocketAndStreams {
         this.outputStream = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream(),
                                                                           bufferSizeBytes));
         this.requestFormatType = type;
+        this.createTimestamp = System.nanoTime();
     }
 
     public Socket getSocket() {
@@ -69,6 +70,18 @@ public class SocketAndStreams {
 
     public RequestFormatType getRequestFormatType() {
         return this.requestFormatType;
+    }
+
+    /**
+     * Returns the nanosecond-based timestamp of when this socket was created.
+     * 
+     * @return Nanosecond-based timestamp of socket creation
+     * 
+     * @see SocketResourceFactory#validate(SocketDestination, SocketAndStreams)
+     */
+
+    public long getCreateTimestamp() {
+        return createTimestamp;
     }
 
 }

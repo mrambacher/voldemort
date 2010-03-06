@@ -33,7 +33,6 @@ import voldemort.utils.ByteArray;
  * made assumptions about key and value types rather than defer to getValues()
  * and getKeys()
  * 
- * @author geir
  */
 public class MongoDBStorageEngineTest extends AbstractStorageEngineTest {
 

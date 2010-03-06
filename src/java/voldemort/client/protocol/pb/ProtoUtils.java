@@ -42,7 +42,6 @@ import com.google.protobuf.Message;
  * Helper functions for serializing or deserializing client requests in protocol
  * buffers
  * 
- * @author jay
  * 
  */
 public class ProtoUtils {

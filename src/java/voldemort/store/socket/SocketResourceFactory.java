@@ -22,6 +22,7 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketException;
+import java.util.Date;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.log4j.Logger;
@@ -29,12 +30,12 @@ import org.apache.log4j.Logger;
 import voldemort.VoldemortException;
 import voldemort.client.protocol.RequestFormatType;
 import voldemort.utils.ByteUtils;
+import voldemort.utils.Time;
 import voldemort.utils.pool.ResourceFactory;
 
 /**
  * A Factory for creating sockets
  * 
- * @author jay
  * 
  */
 public class SocketResourceFactory implements ResourceFactory<SocketDestination, SocketAndStreams> {
@@ -120,6 +121,27 @@ public class SocketResourceFactory implements ResourceFactory<SocketDestination,
     }
 
     public boolean validate(SocketDestination dest, SocketAndStreams sands) {
+        /**
+         * Keep track of the last time that we closed the sockets for a specific
+         * SocketDestination. That way we know which sockets were created
+         * *before* the SocketDestination was closed. For any sockets in the
+         * pool at time of closure of the SocketDestination, these are shut down
+         * immediately. For in-flight sockets that aren't in the pool at time of
+         * closure of the SocketDestination, these are caught when they're
+         * checked in via validate noting the relation of the timestamps.
+         * 
+         * See bug #222.
+         */
+
+        if(sands.getCreateTimestamp() <= dest.getLastClosedTimestamp()) {
+            if(logger.isDebugEnabled())
+                logger.debug("Socket connection " + sands + " was created on "
+                             + new Date(sands.getCreateTimestamp() / Time.NS_PER_MS)
+                             + " before socket pool was closed and re-created (on "
+                             + new Date(dest.getLastClosedTimestamp() / Time.NS_PER_MS) + ")");
+            return false;
+        }
+
         Socket s = sands.getSocket();
         boolean isValid = !s.isClosed() && s.isBound() && s.isConnected();
         if(!isValid && logger.isDebugEnabled())

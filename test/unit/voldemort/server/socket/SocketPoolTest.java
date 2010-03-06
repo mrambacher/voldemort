@@ -16,9 +16,23 @@
 
 package voldemort.server.socket;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+
 import junit.framework.TestCase;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
+import org.junit.runners.Parameterized.Parameters;
+
 import voldemort.ServerTestUtils;
 import voldemort.client.protocol.RequestFormatType;
+import voldemort.server.AbstractSocketService;
 import voldemort.server.StoreRepository;
 import voldemort.server.protocol.RequestHandlerFactory;
 import voldemort.store.socket.SocketAndStreams;
@@ -28,39 +42,53 @@ import voldemort.store.socket.SocketPool;
 /**
  * Tests for the socket pooling
  * 
- * @author jay
  * 
  */
+@RunWith(Parameterized.class)
 public class SocketPoolTest extends TestCase {
 
     private int port;
     private int maxConnectionsPerNode = 3;
     private SocketPool pool;
     private SocketDestination dest1;
-    private SocketServer server;
+    private AbstractSocketService server;
+
+    private final boolean useNio;
+
+    public SocketPoolTest(boolean useNio) {
+        this.useNio = useNio;
+    }
+
+    @Parameters
+    public static Collection<Object[]> configs() {
+        return Arrays.asList(new Object[][] { { true }, { false } });
+    }
 
     @Override
+    @Before
     public void setUp() {
         this.port = ServerTestUtils.findFreePort();
         this.pool = new SocketPool(maxConnectionsPerNode, 1000, 1000, 32 * 1024);
         this.dest1 = new SocketDestination("localhost", port, RequestFormatType.VOLDEMORT_V1);
         RequestHandlerFactory handlerFactory = ServerTestUtils.getSocketRequestHandlerFactory(new StoreRepository());
-        this.server = new SocketServer(port,
-                                       10,
-                                       10 + 3,
-                                       10000,
-                                       handlerFactory,
-                                       "socket-test-server");
+        this.server = ServerTestUtils.getSocketService(useNio,
+                                                       handlerFactory,
+                                                       port,
+                                                       10,
+                                                       10 + 3,
+                                                       10000);
+
         this.server.start();
-        this.server.awaitStartupCompletion();
     }
 
     @Override
+    @After
     public void tearDown() {
         this.pool.close();
-        this.server.shutdown();
+        this.server.stop();
     }
 
+    @Test
     public void testTwoCheckoutsGetTheSameSocket() throws Exception {
         SocketAndStreams sas1 = pool.checkout(dest1);
         pool.checkin(dest1, sas1);
@@ -68,6 +96,7 @@ public class SocketPoolTest extends TestCase {
         assertTrue(sas1 == sas2);
     }
 
+    @Test
     public void testClosingSocketDeactivates() throws Exception {
         SocketAndStreams sas1 = pool.checkout(dest1);
         sas1.getSocket().close();
@@ -76,6 +105,7 @@ public class SocketPoolTest extends TestCase {
         assertTrue(sas1 != sas2);
     }
 
+    @Test
     public void testClosingStreamDeactivates() throws Exception {
         SocketAndStreams sas1 = pool.checkout(dest1);
         sas1.getOutputStream().close();
@@ -84,12 +114,47 @@ public class SocketPoolTest extends TestCase {
         assertTrue(sas1 != sas2);
     }
 
+    @Test
     public void testVariousProtocols() throws Exception {
         for(RequestFormatType type: RequestFormatType.values()) {
             SocketDestination dest = new SocketDestination("localhost", port, type);
             SocketAndStreams sas = pool.checkout(dest);
             assertEquals(type, sas.getRequestFormatType());
         }
+    }
+
+    @Test
+    public void testCloseWithInFlightSockets() throws Exception {
+        List<SocketAndStreams> list = new ArrayList<SocketAndStreams>();
+
+        for(int i = 0; i < maxConnectionsPerNode; i++)
+            list.add(pool.checkout(dest1));
+
+        assertEquals(list.size(), pool.getNumberSocketsCreated());
+        assertEquals(list.size(), pool.getNumberOfActiveConnections());
+
+        pool.close(dest1);
+
+        assertEquals(list.size(), pool.getNumberOfActiveConnections());
+        assertEquals(0, pool.getNumberSocketsDestroyed());
+
+        for(SocketAndStreams sas: list)
+            pool.checkin(dest1, sas);
+
+        assertEquals(0, pool.getNumberOfActiveConnections());
+        assertEquals(list.size(), pool.getNumberSocketsDestroyed());
+        assertEquals(0, pool.getNumberOfCheckedInConnections());
+    }
+
+    @Test
+    public void testSocketClosedWhenCheckedInAfterPoolKeyClosed() throws Exception {
+        SocketAndStreams sas1 = pool.checkout(dest1);
+        SocketAndStreams sas2 = pool.checkout(dest1);
+        assertTrue(sas1 != sas2);
+        pool.checkin(dest1, sas1);
+        pool.close(dest1);
+        pool.checkin(dest1, sas2);
+        pool.close(dest1);
     }
 
 }

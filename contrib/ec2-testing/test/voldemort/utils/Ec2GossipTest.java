@@ -48,8 +48,12 @@ import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 
 /**
+<<<<<<< HEAD
  * 
  * @author afeinberg
+=======
+ *
+>>>>>>> e219ac64cfc2caf9ebbf4b3dea95a3c29d32202b
  */
 public class Ec2GossipTest {
 

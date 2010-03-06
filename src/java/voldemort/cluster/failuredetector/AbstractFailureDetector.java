@@ -33,7 +33,6 @@ import voldemort.store.UnreachableStoreException;
  * AbstractFailureDetector serves as a building block for FailureDetector
  * implementations.
  * 
- * @author Kirk True
  */
 
 public abstract class AbstractFailureDetector implements FailureDetector {
@@ -57,12 +56,12 @@ public abstract class AbstractFailureDetector implements FailureDetector {
         nodeStatusMap = new ConcurrentHashMap<Node, NodeStatus>();
 
         for(Node node: failureDetectorConfig.getNodes()) {
-            nodeStatusMap.put(node, createNodeStatus(node, failureDetectorConfig.getTime()
-                                                                                .getMilliseconds()));
+            nodeStatusMap.put(node, createNodeStatus(failureDetectorConfig.getTime()
+                                                                          .getMilliseconds()));
         }
     }
 
-    private NodeStatus createNodeStatus(Node node, long currTime) {
+    private NodeStatus createNodeStatus(long currTime) {
         NodeStatus nodeStatus = new NodeStatus();
         nodeStatus.setLastChecked(currTime);
         nodeStatus.setStartMillis(currTime);
@@ -131,7 +130,7 @@ public abstract class AbstractFailureDetector implements FailureDetector {
         NodeStatus nodeStatus = getNodeStatus(node);
 
         synchronized(nodeStatus) {
-            if(!isAvailable(node))
+            while(!isAvailable(node))
                 nodeStatus.wait();
         }
     }
@@ -216,7 +215,7 @@ public abstract class AbstractFailureDetector implements FailureDetector {
 
         if(nodeStatus == null) {
             logger.warn("creating new node status for node " + node + " for failure detector.");
-            nodeStatus = createNodeStatus(node, failureDetectorConfig.getTime().getMilliseconds());
+            nodeStatus = createNodeStatus(failureDetectorConfig.getTime().getMilliseconds());
             nodeStatusMap.put(node, nodeStatus);
         }
 

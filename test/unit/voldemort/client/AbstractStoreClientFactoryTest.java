@@ -20,6 +20,10 @@ import java.net.URISyntaxException;
 import java.util.Date;
 
 import junit.framework.TestCase;
+
+import org.junit.Before;
+import org.junit.Test;
+
 import voldemort.ServerTestUtils;
 import voldemort.VoldemortTestConstants;
 import voldemort.cluster.Cluster;
@@ -31,7 +35,6 @@ import voldemort.serialization.SerializerFactory;
 import voldemort.xml.ClusterMapper;
 
 /**
- * @author jay
  * 
  */
 public abstract class AbstractStoreClientFactoryTest extends TestCase {
@@ -41,6 +44,7 @@ public abstract class AbstractStoreClientFactoryTest extends TestCase {
     private String storeDefinitionXml;
 
     @Override
+    @Before
     public void setUp() throws Exception {
         this.storeDefinitionXml = VoldemortTestConstants.getSingleStoreDefinitionsXml();
         this.cluster = ServerTestUtils.getLocalCluster(1);
@@ -81,6 +85,7 @@ public abstract class AbstractStoreClientFactoryTest extends TestCase {
         assertNotNull(getFactory(getValidBootstrapUrl()).getStoreClient(getValidStoreName()));
     }
 
+    @Test
     public void testCustomSerializerFactory() throws Exception {
         StoreClient<Object, Object> factory = getFactoryWithSerializer(new CustomSerializerFactory(),
                                                                        getValidBootstrapUrl()).getStoreClient(getValidStoreName());
@@ -97,6 +102,7 @@ public abstract class AbstractStoreClientFactoryTest extends TestCase {
         }
     }
 
+    @Test
     public void testBootstrapServerDown() throws Exception {
         try {
             getFactory(getValidScheme() + "://localhost:58558").getStoreClient(getValidStoreName());
@@ -106,10 +112,12 @@ public abstract class AbstractStoreClientFactoryTest extends TestCase {
         }
     }
 
+    @Test
     public void testBootstrapFailoverSucceeds() throws Exception {
         getFactory(getValidScheme() + "://localhost:58558", getValidBootstrapUrl()).getStoreClient(getValidStoreName());
     }
 
+    @Test
     public void testUnknownStoreName() throws Exception {
         try {
             assertNotNull(getFactory(getValidBootstrapUrl()).getStoreClient("12345"));

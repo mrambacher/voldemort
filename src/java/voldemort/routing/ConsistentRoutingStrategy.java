@@ -41,7 +41,6 @@ import com.google.common.collect.Sets;
  * A preference list of nodes to route to is created by taking the partition
  * into which the key hashes, and then taking the next N nodes on the ring.
  * 
- * @author jay
  * 
  */
 public class ConsistentRoutingStrategy implements RoutingStrategy {
@@ -80,7 +79,6 @@ public class ConsistentRoutingStrategy implements RoutingStrategy {
      * Math.abs returns Integer.MIN_VALUE if a == Integer.MIN_VALUE and this
      * method returns Integer.MAX_VALUE in that case.
      */
-    @SuppressWarnings("unused")
     private static int abs(int a) {
         if(a >= 0)
             return a;
@@ -149,7 +147,7 @@ public class ConsistentRoutingStrategy implements RoutingStrategy {
     }
 
     public List<Integer> getPartitionList(byte[] key) {
-        int index = Math.abs(hash.hash(key)) % (Math.max(1, this.partitionToNode.length));
+        int index = abs(hash.hash(key)) % (Math.max(1, this.partitionToNode.length));
         return getReplicatingPartitionList(index);
     }
 }

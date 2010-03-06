@@ -1,11 +1,17 @@
 package voldemort.client.rebalance;
 
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Map.Entry;
+
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
+import org.junit.runners.Parameterized.Parameters;
 
 import voldemort.ServerTestUtils;
 import voldemort.TestUtils;
@@ -18,12 +24,22 @@ import voldemort.server.VoldemortServer;
  * Start VoldemortServer locally using ServerTestUtils and run rebalancing
  * tests.
  * 
- * @author bbansal
  * 
  */
+@RunWith(Parameterized.class)
 public class RebalanceTest extends AbstractRebalanceTest {
 
     Map<Integer, VoldemortServer> serverMap = new HashMap<Integer, VoldemortServer>();
+    private final boolean useNio;
+
+    public RebalanceTest(boolean useNio) {
+        this.useNio = useNio;
+    }
+
+    @Parameters
+    public static Collection<Object[]> configs() {
+        return Arrays.asList(new Object[][] { { true }, { false } });
+    }
 
     @Override
     protected Cluster startServers(Cluster cluster,
@@ -38,7 +54,8 @@ public class RebalanceTest extends AbstractRebalanceTest {
                 }
             }
 
-            VoldemortConfig config = ServerTestUtils.createServerConfig(node,
+            VoldemortConfig config = ServerTestUtils.createServerConfig(useNio,
+                                                                        node,
                                                                         TestUtils.createTempDir()
                                                                                  .getAbsolutePath(),
                                                                         null,
@@ -57,7 +74,7 @@ public class RebalanceTest extends AbstractRebalanceTest {
         for(int node: nodesToStop) {
             try {
                 ServerTestUtils.stopVoldemortServer(serverMap.get(node));
-            } catch (VoldemortException e) {
+            } catch(VoldemortException e) {
                 // ignore these at stop time
             }
         }

@@ -38,7 +38,6 @@ import voldemort.utils.Utils;
  * Handles requests from HttpStores and multiplexes them to the appropriate
  * sub-store for actual storage
  * 
- * @author jay
  * 
  */
 public class StoreServlet extends HttpServlet {
@@ -62,7 +61,7 @@ public class StoreServlet extends HttpServlet {
         // servlet context
         if(this.requestHandler == null) {
             ServletContext context = this.getServletContext();
-            VoldemortServer server = (VoldemortServer) Utils.notNull(context.getAttribute(VoldemortServletContextListener.SERVER_CONFIG_KEY));
+            VoldemortServer server = (VoldemortServer) Utils.notNull(context.getAttribute(VoldemortServletContextListener.SERVER_KEY));
             HttpService httpService = (HttpService) server.getService(ServiceType.HTTP);
             this.requestHandler = httpService.getRequestHandler();
         }

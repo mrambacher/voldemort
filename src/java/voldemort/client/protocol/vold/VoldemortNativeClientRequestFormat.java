@@ -41,7 +41,6 @@ import voldemort.versioning.Versioned;
  * The {@link voldemort.client.protocol.RequestFormat} for a low-overhead custom
  * binary protocol
  * 
- * @author jay
  * 
  */
 public class VoldemortNativeClientRequestFormat implements RequestFormat {
@@ -63,12 +62,6 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
         outputStream.writeByte(operation);
         outputStream.writeUTF(storeName);
         outputStream.writeBoolean(routingType.equals(RequestRoutingType.ROUTED));
-        /*
-         * if(protocol.getVersion() >= 2) { if(operation ==
-         * VoldemortOpCode.DELETE_OP_CODE) {
-         * outputStream.writeByte(routingType.getRoutingTypeCode()); } else {
-         * outputStream.writeUTF(routingType.toString()); } }
-         */
     }
 
     public void writeDeleteRequest(DataOutputStream outputStream,

@@ -17,6 +17,7 @@ import voldemort.client.protocol.pb.VProto.VoldemortRequest;
 import voldemort.server.RequestRoutingType;
 import voldemort.server.StoreRepository;
 import voldemort.server.protocol.AbstractRequestHandler;
+import voldemort.server.protocol.StreamRequestHandler;
 import voldemort.store.ErrorCodeMapper;
 import voldemort.store.Store;
 import voldemort.utils.ByteArray;
@@ -29,7 +30,6 @@ import com.google.protobuf.Message;
 /**
  * A Protocol Buffers request handler
  * 
- * @author jay
  * 
  */
 public class ProtoBuffRequestHandler extends AbstractRequestHandler {
@@ -38,8 +38,8 @@ public class ProtoBuffRequestHandler extends AbstractRequestHandler {
         super(errorMapper, storeRepository);
     }
 
-    public void handleRequest(DataInputStream inputStream, DataOutputStream outputStream)
-            throws IOException {
+    public StreamRequestHandler handleRequest(DataInputStream inputStream,
+                                              DataOutputStream outputStream) throws IOException {
         VoldemortRequest.Builder request = ProtoUtils.readToBuilder(inputStream,
                                                                     VoldemortRequest.newBuilder());
         boolean shouldRoute = request.getShouldRoute();
@@ -76,6 +76,7 @@ public class ProtoBuffRequestHandler extends AbstractRequestHandler {
             }
         }
         ProtoUtils.writeMessage(outputStream, response);
+        return null;
     }
 
     private Message handleGetVersion(GetRequest request, Store<ByteArray, byte[]> store) {

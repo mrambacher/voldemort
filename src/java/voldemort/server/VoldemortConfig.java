@@ -42,7 +42,6 @@ import com.google.common.collect.ImmutableList;
 /**
  * Configuration parameters for the voldemort server.
  * 
- * @author jay
  * 
  */
 public class VoldemortConfig implements Serializable {
@@ -92,6 +91,7 @@ public class VoldemortConfig implements Serializable {
 
     private boolean useNioConnector;
     private int nioConnectorSelectors;
+    private int nioAdminConnectorSelectors;
 
     private int clientRoutingTimeoutMs;
     private int clientMaxConnectionsPerNode;
@@ -230,7 +230,11 @@ public class VoldemortConfig implements Serializable {
 
         this.useNioConnector = props.getBoolean("enable.nio.connector", false);
         this.nioConnectorSelectors = props.getInt("nio.connector.selectors",
-                                                  Runtime.getRuntime().availableProcessors());
+                                                  Math.max(8, Runtime.getRuntime()
+                                                                     .availableProcessors()));
+        this.nioAdminConnectorSelectors = props.getInt("nio.admin.connector.selectors",
+                                                       Math.max(8, Runtime.getRuntime()
+                                                                          .availableProcessors()));
 
         this.clientMaxConnectionsPerNode = props.getInt("client.max.connections.per.node", 5);
         this.clientConnectionTimeoutMs = props.getInt("client.connection.timeout.ms", 400);
@@ -286,6 +290,7 @@ public class VoldemortConfig implements Serializable {
         this.rebalancingServicePeriod = props.getInt("rebalancing.service.period.ms", 1000);
         this.maxParallelStoresRebalancing = props.getInt("max.parallel.stores.rebalancing", 3);
 
+        // FIX: need to use ThresholdFailureDetector, but blocked on issue 197.
         this.failureDetectorImplementation = props.getString("failuredetector.implementation",
                                                              BannagePeriodFailureDetector.class.getName());
 
@@ -897,6 +902,14 @@ public class VoldemortConfig implements Serializable {
 
     public void setNioConnectorSelectors(int nioConnectorSelectors) {
         this.nioConnectorSelectors = nioConnectorSelectors;
+    }
+
+    public int getNioAdminConnectorSelectors() {
+        return nioAdminConnectorSelectors;
+    }
+
+    public void setNioAdminConnectorSelectors(int nioAdminConnectorSelectors) {
+        this.nioAdminConnectorSelectors = nioAdminConnectorSelectors;
     }
 
     public int getAdminSocketBufferSize() {

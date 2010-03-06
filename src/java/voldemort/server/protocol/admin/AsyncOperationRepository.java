@@ -10,7 +10,6 @@ import org.apache.commons.collections.map.LRUMap;
  * TODO: replace {@link org.apache.commons.collections.map.LRUMap} with one based on {@link java.util.LinkedHashMap}.
  * TODO: rename this to something more sensible (AsyncOperationMap/Cache?)
  * 
- * @author afeinberg
  */
 public class AsyncOperationRepository extends LRUMap {
 
@@ -40,7 +39,7 @@ public class AsyncOperationRepository extends LRUMap {
         for(Object value: values()) {
             AsyncOperation operation = (AsyncOperation) value;
             builder.append(operation.toString());
-            builder.append(", ");
+            builder.append(",\n");
         }
         builder.append("])");
 

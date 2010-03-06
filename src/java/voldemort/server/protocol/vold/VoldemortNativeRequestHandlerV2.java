@@ -14,7 +14,18 @@ public class VoldemortNativeRequestHandlerV2 extends VoldemortNativeRequestHandl
     }
 
     @Override
+    protected void checkCompleteRequestHeader(DataInputStream inputStream) throws IOException {
+        // Read the store name in, but just to skip the bytes.
+        inputStream.readUTF();
+
+        // Read the routing type byte.
+        inputStream.readByte();
+    }
+
+    @Override
     protected RequestRoutingType getRoutingType(DataInputStream inputStream) throws IOException {
-        return super.getRoutingType(inputStream);
+        int routingTypeCode = inputStream.readByte();
+        RequestRoutingType routingType = RequestRoutingType.getRequestRoutingType(routingTypeCode);
+        return routingType;
     }
 }

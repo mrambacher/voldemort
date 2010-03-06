@@ -33,7 +33,6 @@ import com.google.common.collect.Maps;
 /**
  * Main servlet for the admin interface
  * 
- * @author jay
  * 
  */
 public class AdminServlet extends HttpServlet {
@@ -54,7 +53,7 @@ public class AdminServlet extends HttpServlet {
     @Override
     public void init() throws ServletException {
         super.init();
-        this.server = (VoldemortServer) Utils.notNull(getServletContext().getAttribute(VoldemortServletContextListener.SERVER_CONFIG_KEY));
+        this.server = (VoldemortServer) Utils.notNull(getServletContext().getAttribute(VoldemortServletContextListener.SERVER_KEY));
         this.velocityEngine = (VelocityEngine) Utils.notNull(getServletContext().getAttribute(VoldemortServletContextListener.VELOCITY_ENGINE_KEY));
     }
 

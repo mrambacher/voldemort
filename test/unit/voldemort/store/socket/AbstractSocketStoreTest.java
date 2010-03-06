@@ -18,6 +18,8 @@ package voldemort.store.socket;
 
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
@@ -27,6 +29,7 @@ import org.apache.log4j.Logger;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runners.Parameterized.Parameters;
 
 import voldemort.ServerTestUtils;
 import voldemort.TestUtils;
@@ -41,7 +44,6 @@ import voldemort.versioning.Versioned;
 /**
  * A base-socket store test that works with any store RequestFormat
  * 
- * @author jay
  * 
  */
 public abstract class AbstractSocketStoreTest extends AbstractByteArrayStoreTest {
@@ -52,6 +54,11 @@ public abstract class AbstractSocketStoreTest extends AbstractByteArrayStoreTest
         super("test");
         this.requestFormatType = type;
         this.useNio = useNio;
+    }
+
+    @Parameters
+    public static Collection<Object[]> configs() {
+        return Arrays.asList(new Object[][] { { true }, { false } });
     }
 
     private int socketPort;

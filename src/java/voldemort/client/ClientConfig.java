@@ -32,7 +32,6 @@ import voldemort.utils.Utils;
 /**
  * A configuration object that holds configuration parameters for the client.
  * 
- * @author jay
  * 
  */
 public class ClientConfig {
@@ -60,10 +59,12 @@ public class ClientConfig {
     private volatile long failureDetectorAsyncRecoveryInterval = FailureDetectorConfig.DEFAULT_ASYNC_RECOVERY_INTERVAL;
     private volatile List<String> failureDetectorCatastrophicErrorTypes = FailureDetectorConfig.DEFAULT_CATASTROPHIC_ERROR_TYPES;
     private long failureDetectorRequestLengthThreshold = FailureDetectorConfig.DEFAULT_REQUEST_LENGTH_THRESHOLD;
-
+    private Props props;
     private volatile int maxBootstrapRetries = 2;
 
-    public ClientConfig() {}
+    public ClientConfig() {
+        this.props = new Props();
+    }
 
     /* Propery names for propery-based configuration */
 
@@ -81,6 +82,8 @@ public class ClientConfig {
     public static final String BOOTSTRAP_URLS_PROPERTY = "bootstrap_urls";
     public static final String REQUEST_FORMAT_PROPERTY = "request_format";
     public static final String ENABLE_JMX_PROPERTY = "enable_jmx";
+    public static final String MAX_KEY_SIZE_PROPERTY = "max_key_size";
+    public static final String MAX_VALUE_SIZE_PROPERTY = "max_value_size";
     public static final String FAILUREDETECTOR_IMPLEMENTATION_PROPERTY = "failuredetector_implementation";
     public static final String FAILUREDETECTOR_BANNAGE_PERIOD_PROPERTY = "failuredetector_bannage_period";
     public static final String FAILUREDETECTOR_THRESHOLD_PROPERTY = "failuredetector_threshold";
@@ -99,7 +102,7 @@ public class ClientConfig {
      * @param properties The properties to use
      */
     public ClientConfig(Properties properties) {
-        Props props = new Props(properties);
+        this.props = new Props(properties);
         if(props.containsKey(MAX_CONNECTIONS_PER_NODE_PROPERTY))
             this.setMaxConnectionsPerNode(props.getInt(MAX_CONNECTIONS_PER_NODE_PROPERTY));
 
@@ -511,6 +514,21 @@ public class ClientConfig {
         return maxBootstrapRetries;
     }
 
+    public int getMaxKeySize() {
+        return props.getInt(MAX_KEY_SIZE_PROPERTY, 0);
+    }
+
+    public int getMaxValueSize() {
+        return props.getInt(MAX_VALUE_SIZE_PROPERTY, 0);
+    }
+
+    /**
+     * If we are unable to bootstrap, how many times should we re-try?
+     * 
+     * @param maxBootstrapRetries Maximum times to retry bootstrapping (must be
+     *        >= 1)
+     * @throws IllegalArgumentException If maxBootstrapRetries < 1
+     */
     public ClientConfig setMaxBootstrapRetries(int maxBootstrapRetries) {
         if(maxBootstrapRetries < 1)
             throw new IllegalArgumentException("maxBootstrapRetries should be >= 1");

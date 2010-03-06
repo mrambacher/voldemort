@@ -18,6 +18,8 @@ public class VoldemortNativeClientRequestFormatV2 extends VoldemortNativeClientR
                                       byte operation,
                                       String storeName,
                                       RequestRoutingType routingType) throws IOException {
-        super.writeMessageHeader(outputStream, operation, storeName, routingType);
+        outputStream.writeByte(operation);
+        outputStream.writeUTF(storeName);
+        outputStream.writeByte(routingType.getRoutingTypeCode());
     }
 }

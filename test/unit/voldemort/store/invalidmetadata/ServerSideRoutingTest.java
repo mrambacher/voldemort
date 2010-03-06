@@ -22,6 +22,9 @@ import java.util.Properties;
 import java.util.Map.Entry;
 
 import junit.framework.TestCase;
+
+import org.junit.Test;
+
 import voldemort.ServerTestUtils;
 import voldemort.TestUtils;
 import voldemort.cluster.Cluster;
@@ -37,7 +40,6 @@ import voldemort.versioning.Versioned;
  * InvalidMetadata can cause trouble for server side routing by not allowing
  * requests from random partitions on a server.
  * 
- * @author bbansal
  * 
  */
 public class ServerSideRoutingTest extends TestCase {
@@ -50,6 +52,7 @@ public class ServerSideRoutingTest extends TestCase {
      * 
      * @throws IOException
      */
+    @Test
     public void testServerSideRouting() throws IOException {
     // Cluster cluster = ServerTestUtils.getLocalCluster(2, new int[][] { { 0, 1
     // }, { 2, 3 } });
@@ -95,11 +98,13 @@ public class ServerSideRoutingTest extends TestCase {
     }
 
     @SuppressWarnings("unused")
-    private VoldemortServer startServer(int node,
+    private VoldemortServer startServer(boolean useNio,
+                                        int node,
                                         String storesXmlfile,
                                         Cluster cluster,
                                         boolean metadataChecking) throws IOException {
-        VoldemortConfig config = ServerTestUtils.createServerConfig(node,
+        VoldemortConfig config = ServerTestUtils.createServerConfig(useNio,
+                                                                    node,
                                                                     TestUtils.createTempDir()
                                                                              .getAbsolutePath(),
                                                                     null,

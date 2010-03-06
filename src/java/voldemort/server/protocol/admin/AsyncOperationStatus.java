@@ -3,7 +3,6 @@ package voldemort.server.protocol.admin;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * @author afeinberg
  */
 public class AsyncOperationStatus {
 
@@ -57,7 +56,17 @@ public class AsyncOperationStatus {
 
     @Override
     public String toString() {
-        return "Task(id = " + getId() + ", description = " + getDescription() + ", complete = "
-               + isComplete() + ", status = " + getStatus() + ")";
+        StringBuilder builder = new StringBuilder();
+        builder.append("AsyncOperationStatus(id = ");
+        builder.append(getId());
+        builder.append(", description = ");
+        builder.append(getDescription());
+        builder.append(", complete = ");
+        builder.append(isComplete());
+        builder.append(", status = ");
+        builder.append(getStatus());
+        builder.append(")");
+
+        return builder.toString();
     }
 }

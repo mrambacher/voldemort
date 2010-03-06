@@ -38,11 +38,11 @@ import voldemort.server.http.gui.StatusServlet;
 import voldemort.server.http.gui.VelocityEngine;
 import voldemort.server.protocol.RequestHandler;
 import voldemort.server.protocol.SocketRequestHandlerFactory;
+import voldemort.server.storage.StorageService;
 
 /**
  * An embedded http server that uses jetty
  * 
- * @author jay
  * 
  */
 @JmxManaged(description = "A store connector that serves remote clients via HTTP.")
@@ -60,6 +60,7 @@ public class HttpService extends AbstractService {
 
     @SuppressWarnings("unused")
     public HttpService(VoldemortServer server,
+                       StorageService storageService,
                        StoreRepository storeRepository,
                        RequestFormatType requestType,
                        int numberOfThreads,
@@ -69,7 +70,8 @@ public class HttpService extends AbstractService {
         this.numberOfThreads = numberOfThreads;
         this.server = server;
         this.velocityEngine = new VelocityEngine(VoldemortServletContextListener.VOLDEMORT_TEMPLATE_DIR);
-        this.requestHandler = new SocketRequestHandlerFactory(server.getStoreRepository(),
+        this.requestHandler = new SocketRequestHandlerFactory(storageService,
+                                                              server.getStoreRepository(),
                                                               server.getMetadataStore(),
                                                               server.getVoldemortConfig(),
                                                               server.getAsyncRunner(),
@@ -91,7 +93,7 @@ public class HttpService extends AbstractService {
             httpServer.setSendServerVersion(false);
             httpServer.setSendDateHeader(false);
             Context context = new Context(httpServer, "/", Context.NO_SESSIONS);
-            context.setAttribute(VoldemortServletContextListener.SERVER_CONFIG_KEY, server);
+            context.setAttribute(VoldemortServletContextListener.SERVER_KEY, server);
             context.setAttribute(VoldemortServletContextListener.VELOCITY_ENGINE_KEY,
                                  velocityEngine);
             context.addServlet(new ServletHolder(new AdminServlet(server, velocityEngine)),

@@ -19,6 +19,7 @@ package voldemort.server.protocol.admin;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.StringReader;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -39,11 +40,16 @@ import voldemort.routing.RoutingStrategy;
 import voldemort.server.StoreRepository;
 import voldemort.server.VoldemortConfig;
 import voldemort.server.protocol.RequestHandler;
+import voldemort.server.protocol.StreamRequestHandler;
 import voldemort.server.rebalance.Rebalancer;
+import voldemort.server.storage.StorageService;
 import voldemort.store.ErrorCodeMapper;
 import voldemort.store.StorageEngine;
+import voldemort.store.StoreDefinition;
+import voldemort.store.StoreOperationFailureException;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.utils.ByteArray;
+import voldemort.utils.ByteBufferBackedInputStream;
 import voldemort.utils.ByteUtils;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.EventThrottler;
@@ -53,13 +59,13 @@ import voldemort.utils.RebalanceUtils;
 import voldemort.versioning.ObsoleteVersionException;
 import voldemort.versioning.VectorClock;
 import voldemort.versioning.Versioned;
+import voldemort.xml.StoreDefinitionsMapper;
 
-import com.google.protobuf.Message;
+import com.google.common.collect.Lists;
 
 /**
  * Protocol buffers implementation of a {@link RequestHandler}
  * 
- * @author afeinberg
  */
 public class AdminServiceRequestHandler implements RequestHandler {
 
@@ -67,6 +73,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
 
     private final ErrorCodeMapper errorCodeMapper;
     private final MetadataStore metadataStore;
+    private final StorageService storageService;
     private final StoreRepository storeRepository;
     private final NetworkClassLoader networkClassLoader;
     private final VoldemortConfig voldemortConfig;
@@ -74,12 +81,14 @@ public class AdminServiceRequestHandler implements RequestHandler {
     private final Rebalancer rebalancer;
 
     public AdminServiceRequestHandler(ErrorCodeMapper errorCodeMapper,
+                                      StorageService storageService,
                                       StoreRepository storeRepository,
                                       MetadataStore metadataStore,
                                       VoldemortConfig voldemortConfig,
                                       AsyncOperationRunner asyncRunner,
                                       Rebalancer rebalancer) {
         this.errorCodeMapper = errorCodeMapper;
+        this.storageService = storageService;
         this.metadataStore = metadataStore;
         this.storeRepository = storeRepository;
         this.voldemortConfig = voldemortConfig;
@@ -89,11 +98,19 @@ public class AdminServiceRequestHandler implements RequestHandler {
         this.rebalancer = rebalancer;
     }
 
-    public void handleRequest(final DataInputStream inputStream, final DataOutputStream outputStream)
+    public StreamRequestHandler handleRequest(final DataInputStream inputStream,
+                                              final DataOutputStream outputStream)
             throws IOException {
         // Another protocol buffers bug here, temp. work around
         VoldemortAdminRequest.Builder request = VoldemortAdminRequest.newBuilder();
         int size = inputStream.readInt();
+
+        if(logger.isTraceEnabled())
+            logger.trace("In handleRequest, request specified size of " + size + " bytes");
+
+        if(size < 0)
+            throw new IOException("In handleRequest, request specified size of " + size + " bytes");
+
         byte[] input = new byte[size];
         ByteUtils.read(inputStream, input);
         request.mergeFrom(input);
@@ -111,13 +128,11 @@ public class AdminServiceRequestHandler implements RequestHandler {
                                         handleDeletePartitionEntries(request.getDeletePartitionEntries()));
                 break;
             case FETCH_PARTITION_ENTRIES:
-                handleFetchPartitionEntries(request.getFetchPartitionEntries(), outputStream);
-                break;
+                return handleFetchPartitionEntries(request.getFetchPartitionEntries());
+
             case UPDATE_PARTITION_ENTRIES:
-                handleUpdatePartitionEntries(request.getUpdatePartitionEntries(),
-                                             inputStream,
-                                             outputStream);
-                break;
+                return handleUpdatePartitionEntries(request.getUpdatePartitionEntries());
+
             case INITIATE_FETCH_AND_UPDATE:
                 ProtoUtils.writeMessage(outputStream,
                                         handleFetchAndUpdate(request.getInitiateFetchAndUpdate()));
@@ -142,225 +157,41 @@ public class AdminServiceRequestHandler implements RequestHandler {
                 ProtoUtils.writeMessage(outputStream,
                                         handleTruncateEntries(request.getTruncateEntries()));
                 break;
+            case ADD_STORE:
+                ProtoUtils.writeMessage(outputStream, handleAddStore(request.getAddStore()));
+                break;
             default:
                 throw new VoldemortException("Unkown operation " + request.getType());
         }
 
+        return null;
     }
 
-    public void handleFetchPartitionEntries(VAdminProto.FetchPartitionEntriesRequest request,
-                                            DataOutputStream outputStream) throws IOException {
-        try {
-            String storeName = request.getStore();
-            StorageEngine<ByteArray, byte[]> storageEngine = getStorageEngine(storeName);
-            RoutingStrategy routingStrategy = metadataStore.getRoutingStrategy(storageEngine.getName());
-            EventThrottler throttler = new EventThrottler(voldemortConfig.getStreamMaxReadBytesPerSec());
-            List<Integer> partitionList = request.getPartitionsList();
-            VoldemortFilter filter = (request.hasFilter()) ? getFilterFromRequest(request.getFilter())
-                                                          : new DefaultVoldemortFilter();
+    public StreamRequestHandler handleFetchPartitionEntries(VAdminProto.FetchPartitionEntriesRequest request) {
+        boolean fetchValues = request.hasFetchValues() && request.getFetchValues();
 
-            // boolean switch to fetchEntries/fetchKeys Only
-            boolean fetchValues = request.hasFetchValues() && request.getFetchValues();
-
-            if(fetchValues)
-                fetchEntries(storageEngine,
-                             outputStream,
-                             partitionList,
-                             routingStrategy,
-                             filter,
-                             throttler);
-            else
-                fetchKeys(storageEngine,
-                          outputStream,
-                          partitionList,
-                          routingStrategy,
-                          filter,
-                          throttler);
-
-            ProtoUtils.writeEndOfStream(outputStream);
-        } catch(VoldemortException e) {
-            VAdminProto.FetchPartitionEntriesResponse response = VAdminProto.FetchPartitionEntriesResponse.newBuilder()
-                                                                                                          .setError(ProtoUtils.encodeError(errorCodeMapper,
-                                                                                                                                           e))
-                                                                                                          .build();
-
-            ProtoUtils.writeMessage(outputStream, response);
-            logger.error("handleFetchPartitionEntries failed for request(" + request.toString()
-                         + ")", e);
-        }
+        if(fetchValues)
+            return new FetchEntriesStreamRequestHandler(request,
+                                                        metadataStore,
+                                                        errorCodeMapper,
+                                                        voldemortConfig,
+                                                        storeRepository,
+                                                        networkClassLoader);
+        else
+            return new FetchKeysStreamRequestHandler(request,
+                                                     metadataStore,
+                                                     errorCodeMapper,
+                                                     voldemortConfig,
+                                                     storeRepository,
+                                                     networkClassLoader);
     }
 
-    /**
-     * FetchEntries fetches and return key/value entry.
-     * <p>
-     * For performance reason use storageEngine.keys() iterator to filter out
-     * unwanted keys and then call storageEngine.get() for valid keys.
-     * <p>
-     * 
-     * @param storageEngine
-     * @param outputStream
-     * @param partitionList
-     * @param routingStrategy
-     * @param filter
-     * @param throttler
-     * @throws IOException
-     */
-    private void fetchEntries(StorageEngine<ByteArray, byte[]> storageEngine,
-                              DataOutputStream outputStream,
-                              List<Integer> partitionList,
-                              RoutingStrategy routingStrategy,
-                              VoldemortFilter filter,
-                              EventThrottler throttler) throws IOException {
-        ClosableIterator<ByteArray> keyIterator = null;
-        try {
-            int counter = 0;
-            int fetched = 0;
-            long startTime = System.currentTimeMillis();
-            keyIterator = storageEngine.keys();
-            while(keyIterator.hasNext()) {
-                ByteArray key = keyIterator.next();
-                if(validPartition(key.get(), partitionList, routingStrategy)) {
-                    for(Versioned<byte[]> value: storageEngine.get(key)) {
-                        if(filter.accept(key, value)) {
-                            fetched++;
-                            VAdminProto.FetchPartitionEntriesResponse.Builder response = VAdminProto.FetchPartitionEntriesResponse.newBuilder();
-
-                            VAdminProto.PartitionEntry partitionEntry = VAdminProto.PartitionEntry.newBuilder()
-                                                                                                  .setKey(ProtoUtils.encodeBytes(key))
-                                                                                                  .setVersioned(ProtoUtils.encodeVersioned(value))
-                                                                                                  .build();
-                            response.setPartitionEntry(partitionEntry);
-
-                            Message message = response.build();
-                            ProtoUtils.writeMessage(outputStream, message);
-
-                            if(throttler != null) {
-                                throttler.maybeThrottle(entrySize(key, value));
-                            }
-                        }
-                    }
-                }
-                // log progress
-                counter++;
-                if(0 == counter % 100000) {
-                    long totalTime = (System.currentTimeMillis() - startTime) / 1000;
-                    if(logger.isDebugEnabled())
-                        logger.debug("fetchEntries() scanned " + counter + " entries, fetched "
-                                     + fetched + " entries for store:" + storageEngine.getName()
-                                     + " partition:" + partitionList + " in " + totalTime + " s");
-                }
-            }
-        } finally {
-            if(null != keyIterator)
-                keyIterator.close();
-        }
-    }
-
-    private void fetchKeys(StorageEngine<ByteArray, byte[]> storageEngine,
-                           DataOutputStream outputStream,
-                           List<Integer> partitionList,
-                           RoutingStrategy routingStrategy,
-                           VoldemortFilter filter,
-                           EventThrottler throttler) throws IOException {
-        ClosableIterator<ByteArray> iterator = null;
-        try {
-            int counter = 0;
-            int fetched = 0;
-            long startTime = System.currentTimeMillis();
-            iterator = storageEngine.keys();
-            while(iterator.hasNext()) {
-                ByteArray key = iterator.next();
-
-                if(validPartition(key.get(), partitionList, routingStrategy)
-                   && filter.accept(key, null)) {
-                    VAdminProto.FetchPartitionEntriesResponse.Builder response = VAdminProto.FetchPartitionEntriesResponse.newBuilder();
-                    response.setKey(ProtoUtils.encodeBytes(key));
-
-                    fetched++;
-                    Message message = response.build();
-                    ProtoUtils.writeMessage(outputStream, message);
-
-                    if(throttler != null) {
-                        throttler.maybeThrottle(key.length());
-                    }
-                }
-                // log progress
-                counter++;
-                if(0 == counter % 100000) {
-                    long totalTime = (System.currentTimeMillis() - startTime) / 1000;
-                    if(logger.isDebugEnabled())
-                        logger.debug("fetchKeys() scanned " + counter + " keys, fetched " + fetched
-                                     + " keys for store:" + storageEngine.getName() + " partition:"
-                                     + partitionList + " in " + totalTime + " s");
-                }
-            }
-        } finally {
-            if(null != iterator)
-                iterator.close();
-        }
-    }
-
-    public void handleUpdatePartitionEntries(VAdminProto.UpdatePartitionEntriesRequest originalRequest,
-                                             DataInputStream inputStream,
-                                             DataOutputStream outputStream) throws IOException {
-        VAdminProto.UpdatePartitionEntriesRequest request = originalRequest;
-        VAdminProto.UpdatePartitionEntriesResponse.Builder response = VAdminProto.UpdatePartitionEntriesResponse.newBuilder();
-        boolean continueReading = true;
-
-        try {
-            String storeName = request.getStore();
-            StorageEngine<ByteArray, byte[]> storageEngine = getStorageEngine(storeName);
-            VoldemortFilter filter = (request.hasFilter()) ? getFilterFromRequest(request.getFilter())
-                                                          : new DefaultVoldemortFilter();
-
-            int counter = 0;
-            long startTime = System.currentTimeMillis();
-            EventThrottler throttler = new EventThrottler(voldemortConfig.getStreamMaxWriteBytesPerSec());
-            while(continueReading) {
-                VAdminProto.PartitionEntry partitionEntry = request.getPartitionEntry();
-                ByteArray key = ProtoUtils.decodeBytes(partitionEntry.getKey());
-                Versioned<byte[]> value = ProtoUtils.decodeVersioned(partitionEntry.getVersioned());
-
-                if(filter.accept(key, value)) {
-                    try {
-                        storageEngine.put(key, value);
-
-                    } catch(ObsoleteVersionException e) {
-                        // log and ignore
-                        logger.debug("updateEntries (Streaming put) threw ObsoleteVersionException, Ignoring.");
-                    }
-
-                    if(throttler != null) {
-                        throttler.maybeThrottle(entrySize(key, value));
-                    }
-                }
-                // log progress
-                counter++;
-                if(0 == counter % 100000) {
-                    long totalTime = (System.currentTimeMillis() - startTime) / 1000;
-                    if(logger.isDebugEnabled())
-                        logger.debug("updateEntries() updated " + counter + " entries for store:"
-                                     + storageEngine.getName() + " in " + totalTime + " s");
-                }
-
-                int size = inputStream.readInt();
-                if(size == -1)
-                    continueReading = false;
-                else {
-                    byte[] input = new byte[size];
-                    ByteUtils.read(inputStream, input);
-                    VAdminProto.UpdatePartitionEntriesRequest.Builder builder = VAdminProto.UpdatePartitionEntriesRequest.newBuilder();
-                    builder.mergeFrom(input);
-                    request = builder.build();
-                }
-            }
-        } catch(VoldemortException e) {
-            response.setError(ProtoUtils.encodeError(errorCodeMapper, e));
-            logger.error("handleUpdatePartitionEntries failed for request(" + request.toString()
-                         + ")", e);
-        } finally {
-            ProtoUtils.writeMessage(outputStream, response.build());
-        }
+    public StreamRequestHandler handleUpdatePartitionEntries(VAdminProto.UpdatePartitionEntriesRequest request) {
+        return new UpdatePartitionEntriesStreamRequestHandler(request,
+                                                              errorCodeMapper,
+                                                              voldemortConfig,
+                                                              storeRepository,
+                                                              networkClassLoader);
     }
 
     public VAdminProto.AsyncOperationStatusResponse handleRebalanceNode(VAdminProto.InitiateRebalanceNodeRequest request) {
@@ -422,7 +253,9 @@ public class AdminServiceRequestHandler implements RequestHandler {
     public VAdminProto.AsyncOperationStatusResponse handleFetchAndUpdate(VAdminProto.InitiateFetchAndUpdateRequest request) {
         final int nodeId = request.getNodeId();
         final List<Integer> partitions = request.getPartitionsList();
-        final VoldemortFilter filter = request.hasFilter() ? getFilterFromRequest(request.getFilter())
+        final VoldemortFilter filter = request.hasFilter() ? getFilterFromRequest(request.getFilter(),
+                                                                                  voldemortConfig,
+                                                                                  networkClassLoader)
                                                           : new DefaultVoldemortFilter();
         final String storeName = request.getStore();
 
@@ -451,7 +284,8 @@ public class AdminServiceRequestHandler implements RequestHandler {
                                                                                                                4,
                                                                                                                2);
                                                 try {
-                                                    StorageEngine<ByteArray, byte[]> storageEngine = getStorageEngine(storeName);
+                                                    StorageEngine<ByteArray, byte[]> storageEngine = getStorageEngine(storeRepository,
+                                                                                                                      storeName);
                                                     Iterator<Pair<ByteArray, Versioned<byte[]>>> entriesIterator = adminClient.fetchEntries(nodeId,
                                                                                                                                             storeName,
                                                                                                                                             partitions,
@@ -462,17 +296,17 @@ public class AdminServiceRequestHandler implements RequestHandler {
                                                                     && entriesIterator.hasNext(); i++) {
                                                         Pair<ByteArray, Versioned<byte[]>> entry = entriesIterator.next();
 
+                                                        ByteArray key = entry.getFirst();
+                                                        Versioned<byte[]> value = entry.getSecond();
                                                         try {
-                                                            storageEngine.put(entry.getFirst(),
-                                                                              entry.getSecond());
+                                                            storageEngine.put(key,
+                                                                              value);
                                                         } catch(ObsoleteVersionException e) {
                                                             // log and ignore
                                                             logger.debug("migratePartition threw ObsoleteVersionException, Ignoring.");
                                                         }
 
-                                                        throttler.maybeThrottle(entrySize(entry.getFirst(),
-                                                                                          entry.getSecond()));
-
+                                                        throttler.maybeThrottle(key.length() + valueSize(value));
                                                         if((i % 1000) == 0) {
                                                             updateStatus(i + " entries processed");
                                                         }
@@ -518,8 +352,11 @@ public class AdminServiceRequestHandler implements RequestHandler {
         try {
             String storeName = request.getStore();
             List<Integer> partitions = request.getPartitionsList();
-            StorageEngine<ByteArray, byte[]> storageEngine = getStorageEngine(storeName);
-            VoldemortFilter filter = (request.hasFilter()) ? getFilterFromRequest(request.getFilter())
+            StorageEngine<ByteArray, byte[]> storageEngine = getStorageEngine(storeRepository,
+                                                                              storeName);
+            VoldemortFilter filter = (request.hasFilter()) ? getFilterFromRequest(request.getFilter(),
+                                                                                  voldemortConfig,
+                                                                                  networkClassLoader)
                                                           : new DefaultVoldemortFilter();
             RoutingStrategy routingStrategy = metadataStore.getRoutingStrategy(storageEngine.getName());
 
@@ -530,14 +367,15 @@ public class AdminServiceRequestHandler implements RequestHandler {
             while(iterator.hasNext()) {
                 Pair<ByteArray, Versioned<byte[]>> entry = iterator.next();
 
-                if(checkKeyBelongsToDeletePartition(entry.getFirst().get(),
+                ByteArray key = entry.getFirst();
+                Versioned<byte[]> value = entry.getSecond();
+                throttler.maybeThrottle(key.length() + valueSize(value));
+                if(checkKeyBelongsToDeletePartition(key.get(),
                                                     partitions,
                                                     routingStrategy)
-                   && filter.accept(entry.getFirst(), entry.getSecond())) {
-                    if(storageEngine.delete(entry.getFirst(), entry.getSecond().getVersion()))
+                   && filter.accept(key, value)) {
+                    if(storageEngine.delete(key, value.getVersion()))
                         deleteSuccess++;
-                    if(throttler != null)
-                        throttler.maybeThrottle(entrySize(entry.getFirst(), entry.getSecond()));
                 }
             }
             response.setCount(deleteSuccess);
@@ -603,12 +441,63 @@ public class AdminServiceRequestHandler implements RequestHandler {
         VAdminProto.TruncateEntriesResponse.Builder response = VAdminProto.TruncateEntriesResponse.newBuilder();
         try {
             String storeName = request.getStore();
-            StorageEngine<ByteArray, byte[]> storageEngine = getStorageEngine(storeName);
+            StorageEngine<ByteArray, byte[]> storageEngine = getStorageEngine(storeRepository,
+                                                                              storeName);
 
             storageEngine.truncate();
         } catch(VoldemortException e) {
             response.setError(ProtoUtils.encodeError(errorCodeMapper, e));
             logger.error("handleTruncateEntries failed for request(" + request.toString() + ")", e);
+        }
+
+        return response.build();
+    }
+
+    public VAdminProto.AddStoreResponse handleAddStore(VAdminProto.AddStoreRequest request) {
+        VAdminProto.AddStoreResponse.Builder response = VAdminProto.AddStoreResponse.newBuilder();
+
+        // don't try to add a store in the middle of rebalancing
+        if(metadataStore.getServerState()
+                        .equals(MetadataStore.VoldemortState.REBALANCING_MASTER_SERVER)
+           || metadataStore.getServerState()
+                           .equals(MetadataStore.VoldemortState.REBALANCING_CLUSTER)) {
+            response.setError(ProtoUtils.encodeError(errorCodeMapper,
+                                                     new VoldemortException("Rebalancing in progress")));
+            return response.build();
+        }
+
+        try {
+            // adding a store requires decoding the passed in store string
+            StoreDefinitionsMapper mapper = new StoreDefinitionsMapper();
+            StoreDefinition def = mapper.readStore(new StringReader(request.getStoreDefinition()));
+
+            if(!storeRepository.hasLocalStore(def.getName())) {
+                // open the store
+                storageService.openStore(def);
+
+                // update stores list in metadata store (this also has the
+                // effect of updating the stores.xml file)
+                List<StoreDefinition> currentStoreDefs;
+                List<Versioned<byte[]>> v = metadataStore.get(MetadataStore.STORES_KEY);
+
+                if(((v.size() > 0) ? 1 : 0) > 0) {
+                    Versioned<byte[]> currentValue = v.get(0);
+                    currentStoreDefs = mapper.readStoreList(new StringReader(ByteUtils.getString(currentValue.getValue(),
+                                                                                                 "UTF-8")));
+                } else {
+                    currentStoreDefs = Lists.newArrayList();
+                }
+                currentStoreDefs.add(def);
+
+                metadataStore.put(MetadataStore.STORES_KEY, currentStoreDefs);
+            } else {
+                throw new StoreOperationFailureException(String.format("Store '%s' already exists on this server",
+                                                                       def.getName()));
+            }
+
+        } catch(VoldemortException e) {
+            response.setError(ProtoUtils.encodeError(errorCodeMapper, e));
+            logger.error("handleAddStore failed for request(" + request.toString() + ")", e);
         }
 
         return response.build();
@@ -626,11 +515,38 @@ public class AdminServiceRequestHandler implements RequestHandler {
      * @return True if the buffer holds a complete request, false otherwise
      */
     public boolean isCompleteRequest(ByteBuffer buffer) {
-        throw new VoldemortException("Non-blocking server not supported for AdminServiceRequestHandler");
+        DataInputStream inputStream = new DataInputStream(new ByteBufferBackedInputStream(buffer));
+
+        try {
+            int dataSize = inputStream.readInt();
+
+            if(logger.isTraceEnabled())
+                logger.trace("In isCompleteRequest, dataSize: " + dataSize + ", buffer position: "
+                             + buffer.position());
+
+            if(dataSize == -1)
+                return true;
+
+            // Here we skip over the data (without reading it in) and
+            // move our position to just past it.
+            buffer.position(buffer.position() + dataSize);
+
+            return true;
+        } catch(Exception e) {
+            // This could also occur if the various methods we call into
+            // re-throw a corrupted value error as some other type of exception.
+            // For example, updating the position on a buffer past its limit
+            // throws an InvalidArgumentException.
+            if(logger.isTraceEnabled())
+                logger.trace("In isCompleteRequest, probable partial read occurred: " + e);
+
+            return false;
+        }
     }
 
-    /* Private helper methods */
-    private VoldemortFilter getFilterFromRequest(VAdminProto.VoldemortFilter request) {
+    static VoldemortFilter getFilterFromRequest(VAdminProto.VoldemortFilter request,
+                                                VoldemortConfig voldemortConfig,
+                                                NetworkClassLoader networkClassLoader) {
         VoldemortFilter filter = null;
 
         byte[] classBytes = ProtoUtils.decodeBytes(request.getData()).get();
@@ -659,12 +575,12 @@ public class AdminServiceRequestHandler implements RequestHandler {
         return filter;
     }
 
-    private static int entrySize(ByteArray key, Versioned<byte[]> value) {
-        return key.get().length + value.getValue().length
-               + ((VectorClock) value.getVersion()).sizeInBytes() + 1;
+    static int valueSize(Versioned<byte[]> value) {
+        return value.getValue().length + ((VectorClock) value.getVersion()).sizeInBytes() + 1;
     }
 
-    private StorageEngine<ByteArray, byte[]> getStorageEngine(String storeName) {
+    static StorageEngine<ByteArray, byte[]> getStorageEngine(StoreRepository storeRepository,
+                                                             String storeName) {
         StorageEngine<ByteArray, byte[]> storageEngine = storeRepository.getStorageEngine(storeName);
 
         if(storageEngine == null) {
@@ -672,20 +588,6 @@ public class AdminServiceRequestHandler implements RequestHandler {
         }
 
         return storageEngine;
-    }
-
-    protected boolean validPartition(byte[] key,
-                                     List<Integer> partitionList,
-                                     RoutingStrategy routingStrategy) {
-        List<Integer> keyPartitions = routingStrategy.getPartitionList(key);
-
-        for(int p: partitionList) {
-            if(keyPartitions.contains(p)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**

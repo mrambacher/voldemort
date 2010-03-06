@@ -10,12 +10,10 @@ import voldemort.client.protocol.admin.AdminClient;
 import voldemort.cluster.Cluster;
 import voldemort.cluster.Node;
 import voldemort.store.metadata.MetadataStore;
-import voldemort.versioning.Occured;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
 /**
- * @author afeinberg
  * 
  *         Implementation of a gossip (epidemic) protocol for metadata. The algorithm is
  *         fairly simple. Until the service is stopped on a node, that node will:

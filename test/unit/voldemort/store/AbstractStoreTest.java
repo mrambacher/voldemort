@@ -28,6 +28,8 @@ import java.util.Map;
 
 import junit.framework.TestCase;
 
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 
 import voldemort.TestUtils;
@@ -50,11 +52,13 @@ public abstract class AbstractStoreTest<K, V> extends TestCase {
         stores = new HashMap<String, Store<K, V>>();
     }
 
+    @Before
     @Override
     public void setUp() throws Exception {
         super.setUp();
     }
 
+    @After
     @Override
     public void tearDown() throws Exception {
         super.tearDown();

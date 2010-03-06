@@ -66,7 +66,6 @@ import com.google.common.collect.Maps;
  * A base class for various {@link voldemort.client.StoreClientFactory
  * StoreClientFactory} implementations
  * 
- * @author jay
  * 
  */
 public abstract class AbstractStoreClientFactory implements StoreClientFactory {
@@ -122,7 +121,7 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
     public <K, V> StoreClient<K, V> getStoreClient(String storeName,
                                                    InconsistencyResolver<Versioned<V>> resolver) {
 
-        return new DefaultStoreClient<K, V>(storeName, resolver, this, 3);     
+        return new DefaultStoreClient<K, V>(storeName, resolver, this, 3);
     }
 
     @SuppressWarnings("unchecked")
@@ -193,17 +192,18 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
 
     protected abstract FailureDetector initFailureDetector(final ClientConfig config,
                                                            final Collection<Node> nodes);
-    
+
     public FailureDetector getFailureDetector() {
         // first check: avoids locking as the field is volatile
         FailureDetector result = failureDetector;
-        if (result == null) {
-            String clusterXml = bootstrapMetadataWithRetries(MetadataStore.CLUSTER_KEY, bootstrapUrls);
+        if(result == null) {
+            String clusterXml = bootstrapMetadataWithRetries(MetadataStore.CLUSTER_KEY,
+                                                             bootstrapUrls);
             Cluster cluster = clusterMapper.readCluster(new StringReader(clusterXml));
             synchronized(this) {
                 // second check: avoids double initialization
                 result = failureDetector;
-                if (result == null)
+                if(result == null)
                     failureDetector = result = initFailureDetector(config, cluster.getNodes());
             }
         }
@@ -258,7 +258,7 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
                 logger.warn("Failed to bootstrap from " + url, e);
             }
         }
-        throw new BootstrapFailureException("No available boostrap servers found!");
+        throw new BootstrapFailureException("No available bootstrap servers found!");
     }
 
     public URI[] validateUrls(String[] urls) {

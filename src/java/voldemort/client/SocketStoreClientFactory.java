@@ -18,13 +18,11 @@ package voldemort.client;
 
 import static voldemort.cluster.failuredetector.FailureDetectorUtils.create;
 
-import java.io.StringReader;
 import java.net.URI;
 import java.util.Collection;
 import java.util.concurrent.TimeUnit;
 
 import voldemort.client.protocol.RequestFormatType;
-import voldemort.cluster.Cluster;
 import voldemort.cluster.Node;
 import voldemort.cluster.failuredetector.ClientStoreVerifier;
 import voldemort.cluster.failuredetector.FailureDetector;
@@ -45,7 +43,6 @@ import voldemort.utils.Utils;
  * {@link voldemort.client.StoreClient StoreClient} instances for different
  * stores.
  * 
- * @author jay
  * 
  */
 public class SocketStoreClientFactory extends AbstractStoreClientFactory {

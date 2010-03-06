@@ -54,7 +54,6 @@ import com.google.common.collect.Maps;
  * data=data-file-url</li>
  * </ol>
  * 
- * @author jay
  * 
  */
 public class ReadOnlyStoreManagementServlet extends HttpServlet {
@@ -77,7 +76,7 @@ public class ReadOnlyStoreManagementServlet extends HttpServlet {
     @Override
     public void init() throws ServletException {
         super.init();
-        VoldemortServer server = (VoldemortServer) getServletContext().getAttribute(VoldemortServletContextListener.SERVER_CONFIG_KEY);
+        VoldemortServer server = (VoldemortServer) getServletContext().getAttribute(VoldemortServletContextListener.SERVER_KEY);
 
         this.stores = getReadOnlyStores(server);
         this.velocityEngine = (VelocityEngine) Utils.notNull(getServletContext().getAttribute(VoldemortServletContextListener.VELOCITY_ENGINE_KEY));

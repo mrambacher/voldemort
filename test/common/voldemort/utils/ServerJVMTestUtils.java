@@ -20,7 +20,6 @@ import voldemort.xml.ClusterMapper;
 /**
  * Helper function to start/stop manage a Voldemort Server in a JVM.
  * 
- * @author bbansal
  * 
  */
 public class ServerJVMTestUtils {
@@ -80,10 +79,12 @@ public class ServerJVMTestUtils {
         }
     }
 
-    public static String createAndInitializeVoldemortHome(int node,
+    public static String createAndInitializeVoldemortHome(boolean useNio,
+                                                          int node,
                                                           String storesXmlfile,
                                                           Cluster cluster) throws IOException {
-        VoldemortConfig config = ServerTestUtils.createServerConfig(node,
+        VoldemortConfig config = ServerTestUtils.createServerConfig(useNio,
+                                                                    node,
                                                                     TestUtils.createTempDir()
                                                                              .getAbsolutePath(),
                                                                     null,

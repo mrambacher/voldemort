@@ -73,7 +73,6 @@ import com.google.common.collect.ImmutableList;
 /**
  * Helper functions for testing with real server implementations
  * 
- * @author jay
  * 
  */
 public class ServerTestUtils {
@@ -113,9 +112,10 @@ public class ServerTestUtils {
 
     public static RequestHandlerFactory getSocketRequestHandlerFactory(String clusterXml,
                                                                        String storesXml,
-                                                                       StoreRepository storeRepsitory) {
+                                                                       StoreRepository storeRepository) {
 
-        return new SocketRequestHandlerFactory(storeRepsitory,
+        return new SocketRequestHandlerFactory(null,
+                                               storeRepository,
                                                createMetadataStore(new ClusterMapper().readCluster(new StringReader(clusterXml)),
                                                                    new StoreDefinitionsMapper().readStoreList(new StringReader(storesXml))),
                                                null,
@@ -348,7 +348,8 @@ public class ServerTestUtils {
         return map;
     }
 
-    public static VoldemortConfig createServerConfig(int nodeId,
+    public static VoldemortConfig createServerConfig(boolean useNio,
+                                                     int nodeId,
                                                      String baseDir,
                                                      String clusterFile,
                                                      String storeFile,
@@ -368,6 +369,8 @@ public class ServerTestUtils {
         config.setMysqlPassword("voldemort");
         config.setStreamMaxReadBytesPerSec(10 * 1000 * 1000);
         config.setStreamMaxWriteBytesPerSec(10 * 1000 * 1000);
+
+        config.setUseNioConnector(useNio);
 
         // clean and reinit metadata dir.
         File tempDir = new File(config.getMetadataDirectory());
@@ -402,7 +405,7 @@ public class ServerTestUtils {
     }
 
     public static RequestHandlerFactory getSocketRequestHandlerFactory(StoreRepository repository) {
-        return new SocketRequestHandlerFactory(repository, null, null, null, null);
+        return new SocketRequestHandlerFactory(null, repository, null, null, null, null);
     }
 
     public static void stopVoldemortServer(VoldemortServer server) throws IOException {

@@ -22,7 +22,6 @@ import java.util.Collections;
 /**
  * Thrown if an operation fails due to too few reachable nodes.
  * 
- * @author jay
  * 
  */
 public class InsufficientOperationalNodesException extends StoreOperationFailureException {

@@ -11,6 +11,7 @@ import voldemort.server.protocol.vold.VoldemortNativeRequestHandler;
 import voldemort.server.protocol.vold.VoldemortNativeRequestHandlerV2;
 import voldemort.server.protocol.vold.VoldemortNativeRequestHandlerV3;
 import voldemort.server.rebalance.Rebalancer;
+import voldemort.server.storage.StorageService;
 import voldemort.store.ErrorCodeMapper;
 import voldemort.store.metadata.MetadataStore;
 
@@ -18,22 +19,24 @@ import voldemort.store.metadata.MetadataStore;
  * A factory that gets the appropriate request handler for a given
  * {@link voldemort.client.protocol.RequestFormatType}.
  * 
- * @author jay
  * 
  */
 public class SocketRequestHandlerFactory implements RequestHandlerFactory {
 
+    private final StorageService storage;
     private final StoreRepository repository;
     private final MetadataStore metadata;
     private final VoldemortConfig voldemortConfig;
     private final AsyncOperationRunner asyncRunner;
     private final Rebalancer rebalancer;
 
-    public SocketRequestHandlerFactory(StoreRepository repository,
+    public SocketRequestHandlerFactory(StorageService storageService,
+                                       StoreRepository repository,
                                        MetadataStore metadata,
                                        VoldemortConfig voldemortConfig,
                                        AsyncOperationRunner asyncRunner,
                                        Rebalancer rebalancer) {
+        this.storage = storageService;
         this.repository = repository;
         this.metadata = metadata;
         this.voldemortConfig = voldemortConfig;
@@ -54,6 +57,7 @@ public class SocketRequestHandlerFactory implements RequestHandlerFactory {
                 return new ProtoBuffRequestHandler(new ErrorCodeMapper(), repository);
             case ADMIN_PROTOCOL_BUFFERS:
                 return new AdminServiceRequestHandler(new ErrorCodeMapper(),
+                                                      storage,
                                                       repository,
                                                       metadata,
                                                       voldemortConfig,

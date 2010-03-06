@@ -260,7 +260,7 @@ public class RebalanceController {
             Cluster updatedCluster = RebalanceUtils.createUpdatedCluster(currentCluster,
                                                                          stealerNode,
                                                                          donorNode,
-                                                                         rebalanceStealInfo.getPartitionList());
+                                                                         rebalanceStealInfo.getStealMasterPartitions());// use steal master partitions to update cluster
             // increment clock version on stealerNodeId
             latest.incrementClock(stealerNode.getId(), System.currentTimeMillis());
             try {

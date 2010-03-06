@@ -47,7 +47,6 @@ import com.google.common.collect.Lists;
 /**
  * A StorageEngine that uses Mysql for persistence
  * 
- * @author jay
  * 
  */
 public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
@@ -96,7 +95,7 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
     public void create() {
         execute("create table " + getName()
                 + " (key_ varbinary(200) not null, version_ varbinary(200) not null, "
-                + " value_ blob" + " metadata_ blob"
+                + " value_ blob," + " metadata_ blob"
                 + ", primary key(key_, version_)) engine = InnoDB");
     }
 
@@ -108,6 +107,7 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
             stmt = conn.prepareStatement(query);
             stmt.executeUpdate();
         } catch(SQLException e) {
+            System.out.println("Caught SQL Exception " + e.getMessage());
             throw new PersistenceFailureException("SQLException while performing operation.", e);
         } finally {
             tryClose(stmt);
