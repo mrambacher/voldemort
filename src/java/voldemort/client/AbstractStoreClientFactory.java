@@ -52,7 +52,6 @@ import voldemort.store.versioned.InconsistencyResolvingStore;
 import voldemort.utils.ByteArray;
 import voldemort.utils.JmxUtils;
 import voldemort.utils.SystemTime;
-import voldemort.versioning.ChainedResolver;
 import voldemort.versioning.InconsistencyResolver;
 import voldemort.versioning.TimeBasedInconsistencyResolver;
 import voldemort.versioning.VectorClockInconsistencyResolver;
@@ -161,6 +160,9 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
                                                          getFailureDetector(),
                                                          SystemTime.INSTANCE);
 
+        // Do Vector-Clock Inconsistency resolution at a higher-level
+        store = new InconsistencyResolvingStore<ByteArray, byte[]>(store,
+                                                                   new VectorClockInconsistencyResolver<byte[]>());
         if(isJmxEnabled) {
             StatTrackingStore statStore = new StatTrackingStore(store, this.stats);
             store = statStore;
@@ -168,7 +170,6 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
                                    JmxUtils.createObjectName(JmxUtils.getPackageName(store.getClass()),
                                                              store.getName() + jmxId()));
         }
-
         if(storeDef.getKeySerializer().hasCompression()
            || storeDef.getValueSerializer().hasCompression()) {
             store = new CompressingStore(store,
@@ -184,9 +185,7 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
         // resolver (if they gave us one)
         InconsistencyResolver<Versioned<V>> secondaryResolver = resolver == null ? new TimeBasedInconsistencyResolver()
                                                                                 : resolver;
-        serializedStore = new InconsistencyResolvingStore<K, V>(serializedStore,
-                                                                new ChainedResolver<Versioned<V>>(new VectorClockInconsistencyResolver(),
-                                                                                                  secondaryResolver));
+        serializedStore = new InconsistencyResolvingStore<K, V>(serializedStore, secondaryResolver);
         return serializedStore;
     }
 
