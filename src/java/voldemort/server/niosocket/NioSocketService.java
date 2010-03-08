@@ -63,24 +63,31 @@ public class NioSocketService extends AbstractSocketService {
 
     private final ServerSocketChannel serverSocketChannel;
 
-    private final InetSocketAddress endpoint;
-
     private final SelectorManager[] selectorManagers;
 
     private final ExecutorService selectorManagerThreadPool;
 
     private final int socketBufferSize;
 
+    private final int parallelProcessingThreshold;
+
+    private final int socketListenQueueLength;
+
     private final StatusManager statusManager;
 
-    private final Thread acceptorThread;
+    private Thread acceptorThread;
+
+    private ThreadPoolExecutor threadPool;
 
     private final Logger logger = Logger.getLogger(getClass());
 
     public NioSocketService(RequestHandlerFactory requestHandlerFactory,
+                            ThreadPoolExecutor threadPool,
                             int port,
                             int socketBufferSize,
                             int selectors,
+                            int parallelProcessingThreshold,
+                            int socketListenQueueLength,
                             String serviceName,
                             boolean enableJmx) {
         super(ServiceType.SOCKET, port, serviceName, enableJmx);
@@ -93,12 +100,13 @@ public class NioSocketService extends AbstractSocketService {
             throw new VoldemortException(e);
         }
 
-        this.endpoint = new InetSocketAddress(port);
-
         this.selectorManagers = new SelectorManager[selectors];
         this.selectorManagerThreadPool = Executors.newFixedThreadPool(selectorManagers.length,
                                                                       new DaemonThreadFactory("voldemort-niosocket-server"));
         this.statusManager = new StatusManager((ThreadPoolExecutor) this.selectorManagerThreadPool);
+        this.threadPool = threadPool;
+        this.parallelProcessingThreshold = parallelProcessingThreshold;
+        this.socketListenQueueLength = socketListenQueueLength;
         this.acceptorThread = new Thread(new Acceptor());
     }
 
@@ -115,19 +123,28 @@ public class NioSocketService extends AbstractSocketService {
 
         try {
             for(int i = 0; i < selectorManagers.length; i++) {
-                selectorManagers[i] = new SelectorManager(endpoint,
-                                                          requestHandlerFactory,
-                                                          socketBufferSize);
+                selectorManagers[i] = new SelectorManager(requestHandlerFactory,
+                                                          socketBufferSize,
+                                                          threadPool,
+                                                          parallelProcessingThreshold);
                 selectorManagerThreadPool.execute(selectorManagers[i]);
             }
 
-            serverSocketChannel.socket().bind(endpoint);
+            InetSocketAddress endpoint = new InetSocketAddress(port);
+            if(socketListenQueueLength > 0) {
+                serverSocketChannel.socket().bind(endpoint, socketListenQueueLength);
+            } else {
+                // let jdk default kick in for queue length
+                serverSocketChannel.socket().bind(endpoint);
+            }
             serverSocketChannel.socket().setReceiveBufferSize(socketBufferSize);
             serverSocketChannel.socket().setReuseAddress(true);
 
+            acceptorThread = new Thread(new Acceptor(endpoint));
             acceptorThread.start();
         } catch(Exception e) {
-            throw new VoldemortException(e);
+            if(logger.isEnabledFor(Level.ERROR))
+                logger.error(e.getMessage(), e);
         }
 
         enableJmx(this);

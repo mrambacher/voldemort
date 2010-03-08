@@ -3,6 +3,7 @@ package voldemort.server.protocol.vold;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -154,42 +155,51 @@ public class VoldemortNativeRequestHandler extends AbstractRequestHandler implem
         inputStream.readBoolean();
     }
 
+    protected boolean isCompleteRequest(final ByteBuffer buffer, DataInputStream inputStream)
+            throws IOException {
+        byte opCode = inputStream.readByte();
+
+        checkCompleteRequestHeader(inputStream);
+
+        switch(opCode) {
+            case VoldemortOpCode.GET_OP_CODE:
+            case VoldemortOpCode.GET_VERSION_OP_CODE:
+                // Read the key just to skip the bytes.
+                checkCompleteGetRequest(inputStream);
+                break;
+            case VoldemortOpCode.GET_ALL_OP_CODE:
+                checkCompleteGetAllRequest(inputStream);
+                break;
+            case VoldemortOpCode.PUT_OP_CODE:
+                int dataSize = checkCompletePutRequest(inputStream);
+                // Here we skip over the data (without reading it in) and
+                // move our position to just past it.
+                buffer.position(buffer.position() + dataSize);
+                break;
+            case VoldemortOpCode.DELETE_OP_CODE:
+                int versionSize = checkCompleteDeleteRequest(inputStream);
+                // Here we skip over the version (without reading it in) and
+                // move our position to just past it.
+                buffer.position(buffer.position() + versionSize);
+                break;
+            default:
+                // Do nothing, let the request handler address this...
+        }
+
+        // If there aren't any remaining, we've "consumed" all the bytes and
+        // thus have a complete request...
+        return !buffer.hasRemaining();
+
+    }
+
     public boolean isCompleteRequest(final ByteBuffer buffer) {
-        DataInputStream inputStream = new DataInputStream(new ByteBufferBackedInputStream(buffer));
+        ByteBufferBackedInputStream bbbis = null;
+        DataInputStream inputStream = null;
 
         try {
-            byte opCode = inputStream.readByte();
-
-            checkCompleteRequestHeader(inputStream);
-
-            switch(opCode) {
-                case VoldemortOpCode.GET_OP_CODE:
-                case VoldemortOpCode.GET_VERSION_OP_CODE:
-                    // Read the key just to skip the bytes.
-                    checkCompleteGetRequest(inputStream);
-                    break;
-                case VoldemortOpCode.GET_ALL_OP_CODE:
-                    checkCompleteGetAllRequest(inputStream);
-                    break;
-                case VoldemortOpCode.PUT_OP_CODE:
-                    int dataSize = checkCompletePutRequest(inputStream);
-                    // Here we skip over the data (without reading it in) and
-                    // move our position to just past it.
-                    buffer.position(buffer.position() + dataSize);
-                    break;
-                case VoldemortOpCode.DELETE_OP_CODE:
-                    int versionSize = checkCompleteDeleteRequest(inputStream);
-                    // Here we skip over the version (without reading it in) and
-                    // move our position to just past it.
-                    buffer.position(buffer.position() + versionSize);
-                    break;
-                default:
-                    // Do nothing, let the request handler address this...
-            }
-
-            // If there aren't any remaining, we've "consumed" all the bytes and
-            // thus have a complete request...
-            return !buffer.hasRemaining();
+            bbbis = new ByteBufferBackedInputStream(buffer);
+            inputStream = new DataInputStream(bbbis);
+            return isCompleteRequest(buffer, inputStream);
         } catch(Exception e) {
             // This could also occur if the various methods we call into
             // re-throw a corrupted value error as some other type of exception.
@@ -199,6 +209,19 @@ public class VoldemortNativeRequestHandler extends AbstractRequestHandler implem
                 logger.debug("Probable partial read occurred causing exception", e);
 
             return false;
+        } finally {
+            tryClose(inputStream);
+            tryClose(bbbis);
+        }
+    }
+
+    protected void tryClose(InputStream is) {
+        if(is != null) {
+            try {
+                is.close();
+            } catch(IOException e) {
+
+            }
         }
     }
 

@@ -64,6 +64,15 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
         outputStream.writeBoolean(routingType.equals(RequestRoutingType.ROUTED));
     }
 
+    @SuppressWarnings("unused")
+    protected int getHeaderSize(byte operation, String storeName, RequestRoutingType routingType)
+            throws IOException {
+        int headerSize = + // Operation is a byte
+        VoldemortNativeProtocol.getStringRequestSize(storeName) + 1; // Size of
+        // boolean
+        return headerSize;
+    }
+
     public void writeDeleteRequest(DataOutputStream outputStream,
                                    String storeName,
                                    ByteArray key,
@@ -88,6 +97,10 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
         return VoldemortNativeProtocol.readVersioneds(inputStream);
     }
 
+    protected int getVersionSize(Version version) {
+        return 4 + VectorClockVersionSerializer.sizeInBytes(version);
+    }
+
     protected Version readVersion(DataInputStream inputStream) throws IOException {
         return VoldemortNativeProtocol.readVersion(inputStream);
     }
@@ -96,6 +109,18 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
         byte[] bytes = VectorClockVersionSerializer.toBytes(version);
         outputStream.writeInt(bytes.length);
         outputStream.write(bytes);
+    }
+
+    protected int getVersionedSize(Versioned<byte[]> versioned) {
+        return 4 + VectorClockVersionSerializer.sizeInBytes(versioned);
+    }
+
+    protected int getVersionedsSize(List<Versioned<byte[]>> versioneds) {
+        int size = 4;
+        for(Versioned<byte[]> v: versioneds) {
+            size += getVersionedSize(v);
+        }
+        return size;
     }
 
     protected void writeVersioned(DataOutputStream outputStream, Versioned<byte[]> versioned)
@@ -124,12 +149,20 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
                                    Iterable<ByteArray> keys,
                                    RequestRoutingType routingType) throws IOException {
         StoreUtils.assertValidKeys(keys);
-        this.writeMessageHeader(output, VoldemortOpCode.GET_ALL_OP_CODE, storeName, routingType);
         // write out keys
-        List<ByteArray> l = new ArrayList<ByteArray>();
-        for(ByteArray key: keys)
-            l.add(key);
-        output.writeInt(l.size());
+        List<ByteArray> list = new ArrayList<ByteArray>();
+        for(ByteArray key: keys) {
+            list.add(key);
+        }
+        writeGetAllRequest(output, storeName, list, routingType);
+    }
+
+    protected void writeGetAllRequest(DataOutputStream output,
+                                      String storeName,
+                                      List<ByteArray> keys,
+                                      RequestRoutingType routingType) throws IOException {
+        this.writeMessageHeader(output, VoldemortOpCode.GET_ALL_OP_CODE, storeName, routingType);
+        output.writeInt(keys.size());
         for(ByteArray key: keys) {
             VoldemortNativeProtocol.writeKey(output, key);
         }

@@ -203,6 +203,11 @@ public class VectorClockProtoSerializer {
         return ByteUtils.cat(version, metadata, data);
     }
 
+    public static int sizeInBytes(Versioned<byte[]> versioned) {
+        return sizeInBytes(versioned.getVersion()) + sizeInBytes(versioned.getMetadata())
+               + versioned.getValue().length;
+    }
+
     public static byte[] toBytes(Versioned<byte[]> versioned) {
         byte[] version = toBytes(versioned.getVersion());
         byte[] metadata = toBytes(versioned.getMetadata());

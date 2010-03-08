@@ -3,10 +3,12 @@ package voldemort.server.protocol.vold;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 
 import voldemort.VoldemortException;
 import voldemort.protocol.vold.VoldemortNativeProtocol;
 import voldemort.server.StoreRepository;
+import voldemort.server.protocol.StreamRequestHandler;
 import voldemort.store.ErrorCodeMapper;
 import voldemort.store.InsufficientOperationalNodesException;
 import voldemort.store.InsufficientSuccessfulNodesException;
@@ -21,6 +23,32 @@ public class VoldemortNativeRequestHandlerV3 extends VoldemortNativeRequestHandl
 
     public VoldemortNativeRequestHandlerV3(ErrorCodeMapper errorMapper, StoreRepository repository) {
         super(errorMapper, repository);
+    }
+
+    @Override
+    public StreamRequestHandler handleRequest(DataInputStream inputStream,
+                                              DataOutputStream outputStream) throws IOException {
+        // Read and throw away the request size. It's used by isCompleteRequest
+        inputStream.readInt();
+
+        return super.handleRequest(inputStream, outputStream);
+    }
+
+    @Override
+    protected boolean isCompleteRequest(final ByteBuffer buffer, DataInputStream inputStream)
+            throws IOException {
+        int requestSize = inputStream.readInt();
+        System.out.println("REQUEST SIZE: " + requestSize + "/" + buffer.limit());
+
+        // Here we skip over the data (without reading it in) and
+        // move our position to just past it.
+        buffer.position(buffer.position() + requestSize);
+
+        // If there aren't any remaining, we've "consumed" all the bytes and
+        // thus have a complete request...
+        boolean complete = !buffer.hasRemaining();
+        System.out.println("REQUEST SIZE: " + requestSize + "/" + complete);
+        return complete;
     }
 
     @Override
@@ -71,13 +99,6 @@ public class VoldemortNativeRequestHandlerV3 extends VoldemortNativeRequestHandl
             stream.writeInt(ione.getAvailable());
             stream.writeInt(ione.getRequired());
         }
-    }
-
-    @Override
-    protected int checkCompleteDeleteRequest(DataInputStream inputStream) throws IOException {
-        VoldemortNativeProtocol.readKey(inputStream);
-        int versionSize = inputStream.readInt();
-        return versionSize;
     }
 
     @Override

@@ -88,10 +88,12 @@ public class VoldemortConfig implements Serializable {
 
     private int socketTimeoutMs;
     private int socketBufferSize;
+    private int socketListenQueueLength;
 
     private boolean useNioConnector;
     private int nioConnectorSelectors;
     private int nioAdminConnectorSelectors;
+    private int nioParallelProcessingThreshold;
 
     private int clientRoutingTimeoutMs;
     private int clientMaxConnectionsPerNode;
@@ -227,6 +229,7 @@ public class VoldemortConfig implements Serializable {
 
         this.socketTimeoutMs = props.getInt("socket.timeout.ms", 4000);
         this.socketBufferSize = (int) props.getBytes("socket.buffer.size", 32 * 1024);
+        this.socketListenQueueLength = props.getInt("socket.listen.queue.length", 0);
 
         this.useNioConnector = props.getBoolean("enable.nio.connector", false);
         this.nioConnectorSelectors = props.getInt("nio.connector.selectors",
@@ -235,6 +238,7 @@ public class VoldemortConfig implements Serializable {
         this.nioAdminConnectorSelectors = props.getInt("nio.admin.connector.selectors",
                                                        Math.max(8, Runtime.getRuntime()
                                                                           .availableProcessors()));
+        this.nioParallelProcessingThreshold = props.getInt("nio.parallel.processing.threshold", 50);
 
         this.clientMaxConnectionsPerNode = props.getInt("client.max.connections.per.node", 5);
         this.clientConnectionTimeoutMs = props.getInt("client.connection.timeout.ms", 400);
@@ -888,6 +892,14 @@ public class VoldemortConfig implements Serializable {
         this.socketBufferSize = socketBufferSize;
     }
 
+    public int getSocketListenQueueLength() {
+        return socketListenQueueLength;
+    }
+
+    public void setSocketListenQueueLength(int socketListenQueueLength) {
+        this.socketListenQueueLength = socketListenQueueLength;
+    }
+
     public boolean getUseNioConnector() {
         return this.useNioConnector;
     }
@@ -910,6 +922,14 @@ public class VoldemortConfig implements Serializable {
 
     public void setNioAdminConnectorSelectors(int nioAdminConnectorSelectors) {
         this.nioAdminConnectorSelectors = nioAdminConnectorSelectors;
+    }
+
+    public int getNioParallelProcessingThreshold() {
+        return nioParallelProcessingThreshold;
+    }
+
+    public void setNioParallelProcessingThreshold(int nioParallelProcessingThreshold) {
+        this.nioParallelProcessingThreshold = nioParallelProcessingThreshold;
     }
 
     public int getAdminSocketBufferSize() {

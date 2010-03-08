@@ -6,6 +6,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.commons.io.output.ByteArrayOutputStream;
+
 import voldemort.utils.ByteArray;
 import voldemort.utils.ByteUtils;
 import voldemort.versioning.Version;
@@ -13,6 +15,14 @@ import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
 
 public class VoldemortNativeProtocol {
+
+    public static int getKeyRequestSize(ByteArray key) {
+        if(key == null) {
+            throw new IllegalArgumentException("key cannot be null.");
+        }
+        // 4 bytes for the size preamble, N bytes for the actual key data...
+        return 4 + key.length();
+    }
 
     public static void writeKey(DataOutputStream outputStream, ByteArray key) throws IOException {
         outputStream.writeInt(key.length());
@@ -24,6 +34,16 @@ public class VoldemortNativeProtocol {
         byte[] key = new byte[keySize];
         stream.readFully(key);
         return new ByteArray(key);
+    }
+
+    public static int getVersionRequestSize(Version version) {
+        // 4 bytes for the size preamble, 0 or N bytes for the actual version
+        // data...
+        int size = 4;
+        if(version != null) {
+            size += version.sizeInBytes();
+        }
+        return size;
     }
 
     public static Version readVersion(DataInputStream inputStream) throws IOException {
@@ -54,4 +74,26 @@ public class VoldemortNativeProtocol {
         }
         return results;
     }
+
+    public static int getStringRequestSize(String s) throws IOException {
+        if(s == null) {
+            throw new IllegalArgumentException("String cannot be null.");
+        }
+        ByteArrayOutputStream baos = null;
+        DataOutputStream dos = null;
+        try {
+            baos = new ByteArrayOutputStream();
+            dos = new DataOutputStream(baos);
+            dos.writeUTF(s);
+            return baos.toByteArray().length;
+        } finally {
+            if(dos != null) {
+                dos.close();
+            }
+            if(baos != null) {
+                baos.close();
+            }
+        }
+    }
+
 }

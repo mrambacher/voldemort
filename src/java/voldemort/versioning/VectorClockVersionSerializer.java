@@ -131,6 +131,10 @@ public class VectorClockVersionSerializer {
         return ByteUtils.cat(version, data);
     }
 
+    public static int sizeInBytes(Versioned<byte[]> versioned) {
+        return sizeInBytes(versioned.getVersion()) + versioned.getValue().length;
+    }
+
     public static byte[] toBytes(Versioned<byte[]> versioned) {
         byte[] version = toBytes(versioned.getVersion());
         return ByteUtils.cat(version, versioned.getValue());
