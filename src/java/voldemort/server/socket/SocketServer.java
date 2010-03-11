@@ -28,8 +28,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionHandler;
-import java.util.concurrent.SynchronousQueue;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -59,53 +57,35 @@ public class SocketServer extends Thread {
 
     private final ThreadPoolExecutor threadPool;
     private final int port;
-    private final ThreadGroup threadGroup;
     private final int socketBufferSize;
+    private final int socketListenQueueLength;
     private final RequestHandlerFactory handlerFactory;
     private final int maxThreads;
     private final StatusManager statusManager;
     private final AtomicLong sessionIdSequence;
     private final ConcurrentMap<Long, SocketServerSession> activeSessions;
     private final String serverName;
-
     private ServerSocket serverSocket = null;
 
     public SocketServer(int port,
-                        int defaultThreads,
-                        int maxThreads,
                         int socketBufferSize,
+                        int socketListenQueueLength,
+                        ThreadPoolExecutor threadPool,
                         RequestHandlerFactory handlerFactory,
                         String serverName) {
         this.port = port;
         this.socketBufferSize = socketBufferSize;
-        this.threadGroup = new ThreadGroup("voldemort-socket-server");
+        this.socketListenQueueLength = socketListenQueueLength;
         this.handlerFactory = handlerFactory;
-        this.maxThreads = maxThreads;
-        this.threadPool = new ThreadPoolExecutor(defaultThreads,
-                                                 maxThreads,
-                                                 0,
-                                                 TimeUnit.MILLISECONDS,
-                                                 new SynchronousQueue<Runnable>(),
-                                                 threadFactory,
-                                                 rejectedExecutionHandler);
+        this.threadPool = threadPool;
+        this.threadPool.setRejectedExecutionHandler(rejectedExecutionHandler);
+        this.maxThreads = threadPool.getMaximumPoolSize();
         this.statusManager = new StatusManager(this.threadPool);
         this.sessionIdSequence = new AtomicLong(0);
         this.activeSessions = new ConcurrentHashMap<Long, SocketServerSession>();
         this.serverName = serverName;
         this.logger = Logger.getLogger(SocketServer.class.getName() + "[" + serverName + "]");
     }
-
-    private final ThreadFactory threadFactory = new ThreadFactory() {
-
-        private AtomicLong threadIdSequence = new AtomicLong(0);
-
-        public Thread newThread(Runnable r) {
-            String name = "voldemort-server-" + threadIdSequence.getAndIncrement();
-            Thread t = new Thread(threadGroup, r, name);
-            t.setDaemon(true);
-            return t;
-        }
-    };
 
     private final RejectedExecutionHandler rejectedExecutionHandler = new RejectedExecutionHandler() {
 
@@ -123,6 +103,9 @@ public class SocketServer extends Thread {
             }
             try {
                 session.getSocket().close();
+                if(logger.isDebugEnabled()) {
+                    logger.debug("Rejected execution handler in Socket Server thread pool - sockec closed.");
+                }
             } catch(IOException e) {
                 logger.error("Could not close socket.", e);
             }
@@ -134,7 +117,12 @@ public class SocketServer extends Thread {
         logger.info("Starting voldemort socket server (" + serverName + ") on port " + port);
         try {
             serverSocket = new ServerSocket();
-            serverSocket.bind(new InetSocketAddress(port));
+            if(socketListenQueueLength > 0) {
+                serverSocket.bind(new InetSocketAddress(port));
+            } else {
+                // let jdk default kick in
+                serverSocket.bind(new InetSocketAddress(port), socketListenQueueLength);
+            }
             serverSocket.setReceiveBufferSize(this.socketBufferSize);
             startedStatusQueue.put(SUCCESS);
             while(!isInterrupted() && !serverSocket.isClosed()) {

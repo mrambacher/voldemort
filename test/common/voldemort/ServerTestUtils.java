@@ -24,6 +24,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.io.FileUtils;
@@ -50,6 +53,7 @@ import voldemort.server.protocol.RequestHandler;
 import voldemort.server.protocol.RequestHandlerFactory;
 import voldemort.server.protocol.SocketRequestHandlerFactory;
 import voldemort.server.socket.SocketService;
+import voldemort.store.SleepyStore;
 import voldemort.store.Store;
 import voldemort.store.StoreDefinition;
 import voldemort.store.StoreDefinitionBuilder;
@@ -78,14 +82,23 @@ import com.google.common.collect.ImmutableList;
 public class ServerTestUtils {
 
     public static StoreRepository getStores(String storeName, String clusterXml, String storesXml) {
+        return getStores(storeName, clusterXml, storesXml);
+    }
+
+    public static StoreRepository getStores(String storeName,
+                                            String clusterXml,
+                                            String storesXml,
+                                            long sleepMs) {
         StoreRepository repository = new StoreRepository();
         Store<ByteArray, byte[]> store = new InMemoryStorageEngine<ByteArray, byte[]>(storeName);
+        if(sleepMs > 0) {
+            store = new SleepyStore<ByteArray, byte[]>(sleepMs, store);
+        }
         repository.addLocalStore(store);
         repository.addRoutedStore(store);
 
+        MetadataStore metadata = createMetadataStore(clusterXml, storesXml);
         // create new metadata store.
-        MetadataStore metadata = createMetadataStore(new ClusterMapper().readCluster(new StringReader(clusterXml)),
-                                                     new StoreDefinitionsMapper().readStoreList(new StringReader(storesXml)));
         repository.addLocalStore(metadata);
         return repository;
     }
@@ -102,11 +115,21 @@ public class ServerTestUtils {
                                                          String storesXml,
                                                          String storeName,
                                                          int port) {
+        return getSocketService(useNio, clusterXml, storesXml, storeName, port, 0);
+    }
+
+    public static AbstractSocketService getSocketService(boolean useNio,
+                                                         String clusterXml,
+                                                         String storesXml,
+                                                         String storeName,
+                                                         int port,
+                                                         long sleepMs) {
         RequestHandlerFactory factory = getSocketRequestHandlerFactory(clusterXml,
                                                                        storesXml,
                                                                        getStores(storeName,
                                                                                  clusterXml,
-                                                                                 storesXml));
+                                                                                 storesXml,
+                                                                                 sleepMs));
         return getSocketService(useNio, factory, port, 5, 10, 10000);
     }
 
@@ -116,8 +139,7 @@ public class ServerTestUtils {
 
         return new SocketRequestHandlerFactory(null,
                                                storeRepository,
-                                               createMetadataStore(new ClusterMapper().readCluster(new StringReader(clusterXml)),
-                                                                   new StoreDefinitionsMapper().readStoreList(new StringReader(storesXml))),
+                                               createMetadataStore(clusterXml, storesXml),
                                                null,
                                                null,
                                                null);
@@ -130,20 +152,27 @@ public class ServerTestUtils {
                                                          int maxConnections,
                                                          int bufferSize) {
         AbstractSocketService socketService = null;
-
+        ThreadPoolExecutor threadPool = new ThreadPoolExecutor(coreConnections,
+                                                               maxConnections,
+                                                               0,
+                                                               TimeUnit.MILLISECONDS,
+                                                               new SynchronousQueue<Runnable>());
         if(useNio) {
             socketService = new NioSocketService(requestHandlerFactory,
+                                                 threadPool,
                                                  port,
                                                  bufferSize,
                                                  coreConnections,
+                                                 50,
+                                                 0,
                                                  "client-request-service",
                                                  false);
         } else {
             socketService = new SocketService(requestHandlerFactory,
+                                              threadPool,
                                               port,
-                                              coreConnections,
-                                              maxConnections,
                                               bufferSize,
+                                              0,
                                               "client-request-service",
                                               false);
         }
@@ -272,6 +301,12 @@ public class ServerTestUtils {
     public static Node getLocalNode(int nodeId, List<Integer> partitions) {
         int[] ports = findFreePorts(3);
         return new Node(nodeId, "localhost", ports[0], ports[1], ports[2], partitions);
+    }
+
+    public static MetadataStore createMetadataStore(String clusterXml, String storesXml) {
+        MetadataStore metadata = createMetadataStore(new ClusterMapper().readCluster(new StringReader(clusterXml)),
+                                                     new StoreDefinitionsMapper().readStoreList(new StringReader(storesXml)));
+        return metadata;
     }
 
     public static MetadataStore createMetadataStore(Cluster cluster, List<StoreDefinition> storeDefs) {

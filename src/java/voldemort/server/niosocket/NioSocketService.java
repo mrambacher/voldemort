@@ -75,7 +75,7 @@ public class NioSocketService extends AbstractSocketService {
 
     private final StatusManager statusManager;
 
-    private Thread acceptorThread;
+    private Thread acceptorThread = null;
 
     private ThreadPoolExecutor threadPool;
 
@@ -107,7 +107,6 @@ public class NioSocketService extends AbstractSocketService {
         this.threadPool = threadPool;
         this.parallelProcessingThreshold = parallelProcessingThreshold;
         this.socketListenQueueLength = socketListenQueueLength;
-        this.acceptorThread = new Thread(new Acceptor());
     }
 
     @Override
@@ -120,17 +119,17 @@ public class NioSocketService extends AbstractSocketService {
         if(logger.isEnabledFor(Level.INFO))
             logger.info("Starting Voldemort NIO socket server (" + serviceName + ") on port "
                         + port);
-
         try {
+            InetSocketAddress endpoint = new InetSocketAddress(port);
             for(int i = 0; i < selectorManagers.length; i++) {
                 selectorManagers[i] = new SelectorManager(requestHandlerFactory,
+                                                          endpoint,
                                                           socketBufferSize,
                                                           threadPool,
                                                           parallelProcessingThreshold);
                 selectorManagerThreadPool.execute(selectorManagers[i]);
             }
 
-            InetSocketAddress endpoint = new InetSocketAddress(port);
             if(socketListenQueueLength > 0) {
                 serverSocketChannel.socket().bind(endpoint, socketListenQueueLength);
             } else {
@@ -162,13 +161,15 @@ public class NioSocketService extends AbstractSocketService {
                 logger.trace("Interrupted acceptor thread, waiting " + SHUTDOWN_TIMEOUT_MS
                              + " ms for termination");
 
-            acceptorThread.interrupt();
-            acceptorThread.join(SHUTDOWN_TIMEOUT_MS);
+            if(acceptorThread != null) {
+                acceptorThread.interrupt();
+                acceptorThread.join(SHUTDOWN_TIMEOUT_MS);
 
-            if(acceptorThread.isAlive()) {
-                if(logger.isEnabledFor(Level.WARN))
-                    logger.warn("Acceptor thread pool did not stop cleanly after "
-                                + SHUTDOWN_TIMEOUT_MS + " ms");
+                if(acceptorThread.isAlive()) {
+                    if(logger.isEnabledFor(Level.WARN))
+                        logger.warn("Acceptor thread pool did not stop cleanly after "
+                                    + SHUTDOWN_TIMEOUT_MS + " ms");
+                }
             }
         } catch(Exception e) {
             if(logger.isEnabledFor(Level.WARN))
@@ -230,9 +231,15 @@ public class NioSocketService extends AbstractSocketService {
 
     private class Acceptor implements Runnable {
 
+        private InetSocketAddress endpoint;
+
+        private Acceptor(InetSocketAddress endpoint) {
+            this.endpoint = endpoint;
+        }
+
         public void run() {
             if(logger.isInfoEnabled())
-                logger.info("Server now listening for connections on port " + port);
+                logger.info("Server now listening for connections on " + endpoint);
 
             AtomicInteger counter = new AtomicInteger();
 
@@ -270,7 +277,7 @@ public class NioSocketService extends AbstractSocketService {
             }
 
             if(logger.isInfoEnabled())
-                logger.info("Server has stopped listening for connections on port " + port);
+                logger.info("Server has stopped listening for connections on " + endpoint);
         }
 
     }

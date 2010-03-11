@@ -16,6 +16,8 @@
 
 package voldemort.server.socket;
 
+import java.util.concurrent.ThreadPoolExecutor;
+
 import voldemort.server.AbstractSocketService;
 import voldemort.server.ServiceType;
 import voldemort.server.StatusManager;
@@ -31,17 +33,17 @@ public class SocketService extends AbstractSocketService {
     private final SocketServer server;
 
     public SocketService(RequestHandlerFactory requestHandlerFactory,
+                         ThreadPoolExecutor threadPool,
                          int port,
-                         int coreConnections,
-                         int maxConnections,
                          int socketBufferSize,
+                         int socketListenQueueLength,
                          String serviceName,
                          boolean enableJmx) {
         super(ServiceType.SOCKET, port, serviceName, enableJmx);
         this.server = new SocketServer(port,
-                                       coreConnections,
-                                       maxConnections,
                                        socketBufferSize,
+                                       socketListenQueueLength,
+                                       threadPool,
                                        requestHandlerFactory,
                                        serviceName);
     }

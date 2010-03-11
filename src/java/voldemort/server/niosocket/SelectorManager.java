@@ -22,15 +22,21 @@ import java.nio.channels.ClosedSelectorException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.Queue;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.RejectedExecutionHandler;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 
 import voldemort.server.protocol.RequestHandlerFactory;
+
+import com.google.common.collect.Lists;
 
 /**
  * SelectorManager handles the non-blocking polling of IO events using the
@@ -105,20 +111,39 @@ public class SelectorManager implements Runnable {
 
     private final int socketBufferSize;
 
+    private ThreadPoolExecutor executorService;
+
+    private final int parallelProcessingThrehold;
+
     private final AtomicBoolean isClosed;
 
     private final Logger logger = Logger.getLogger(getClass());
 
-    public SelectorManager(InetSocketAddress endpoint,
-                           RequestHandlerFactory requestHandlerFactory,
-                           int socketBufferSize) throws IOException {
-        this.endpoint = endpoint;
+    public SelectorManager(RequestHandlerFactory requestHandlerFactory,
+                           InetSocketAddress endpoint,
+                           int socketBufferSize,
+                           ThreadPoolExecutor threadPool,
+                           int parallelProcessingThrehold) throws IOException {
         this.selector = Selector.open();
+        this.endpoint = endpoint;
         this.socketChannelQueue = new ConcurrentLinkedQueue<SocketChannel>();
         this.requestHandlerFactory = requestHandlerFactory;
         this.socketBufferSize = socketBufferSize;
+        this.executorService = threadPool;
+        this.executorService.setRejectedExecutionHandler(rejectedExecutionHandler);
+        this.parallelProcessingThrehold = parallelProcessingThrehold;
         this.isClosed = new AtomicBoolean(false);
     }
+
+    private final RejectedExecutionHandler rejectedExecutionHandler = new RejectedExecutionHandler() {
+
+        public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
+            logger.warn("Too many parallel requests. Greater than "
+                        + executor.getMaximumPoolSize()
+                        + ". Need to increase the maximum threads available to server. Running the rejected request inline");
+            r.run();
+        }
+    };
 
     public void accept(SocketChannel socketChannel) {
         if(isClosed.get())
@@ -194,14 +219,34 @@ public class SelectorManager implements Runnable {
                     if(selected > 0) {
                         Iterator<SelectionKey> i = selector.selectedKeys().iterator();
 
-                        while(i.hasNext()) {
-                            SelectionKey selectionKey = i.next();
-                            i.remove();
-
-                            if(selectionKey.isReadable() || selectionKey.isWritable()) {
-                                Runnable worker = (Runnable) selectionKey.attachment();
-                                worker.run();
+                        if(selected < parallelProcessingThrehold) {
+                            while(i.hasNext()) {
+                                SelectionKey selectionKey = i.next();
+                                i.remove();
+                                if(selectionKey.isReadable() || selectionKey.isWritable()) {
+                                    Runnable worker = (Runnable) selectionKey.attachment();
+                                    worker.run();
+                                }
                             }
+                        } else {
+                            // run in parallel if there are too many requests.
+                            Collection<Callable<Void>> runnables = Lists.newArrayList();
+
+                            while(i.hasNext()) {
+                                SelectionKey selectionKey = i.next();
+                                i.remove();
+                                if(selectionKey.isReadable() || selectionKey.isWritable()) {
+                                    final Runnable worker = (Runnable) selectionKey.attachment();
+                                    runnables.add(new Callable<Void>() {
+
+                                        public Void call() throws Exception {
+                                            worker.run();
+                                            return null;
+                                        }
+                                    });
+                                }
+                            }
+                            executorService.invokeAll(runnables);
                         }
                     }
                 } catch(ClosedSelectorException e) {

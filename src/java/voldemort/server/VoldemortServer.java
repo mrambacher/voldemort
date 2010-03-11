@@ -21,6 +21,11 @@ import static voldemort.utils.Utils.croak;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.log4j.Logger;
 
@@ -134,21 +139,30 @@ public class VoldemortServer extends AbstractService {
                                                                                                 this.asyncRunner,
                                                                                                 null);
 
+            ThreadPoolExecutor threadPool = new ThreadPoolExecutor(voldemortConfig.getCoreThreads(),
+                                                                   voldemortConfig.getMaxThreads(),
+                                                                   0,
+                                                                   TimeUnit.MILLISECONDS,
+                                                                   new SynchronousQueue<Runnable>(),
+                                                                   threadFactory);
             if(voldemortConfig.getUseNioConnector()) {
                 logger.info("Using NIO Connector.");
                 services.add(new NioSocketService(socketRequestHandlerFactory,
+                                                  threadPool,
                                                   identityNode.getSocketPort(),
                                                   voldemortConfig.getSocketBufferSize(),
                                                   voldemortConfig.getNioConnectorSelectors(),
+                                                  voldemortConfig.getNioParallelProcessingThreshold(),
+                                                  voldemortConfig.getSocketListenQueueLength(),
                                                   "nio-socket-server",
                                                   voldemortConfig.isJmxEnabled()));
             } else {
                 logger.info("Using BIO Connector.");
                 services.add(new SocketService(socketRequestHandlerFactory,
+                                               threadPool,
                                                identityNode.getSocketPort(),
-                                               voldemortConfig.getCoreThreads(),
-                                               voldemortConfig.getMaxThreads(),
                                                voldemortConfig.getSocketBufferSize(),
+                                               voldemortConfig.getSocketListenQueueLength(),
                                                "socket-server",
                                                voldemortConfig.isJmxEnabled()));
             }
@@ -165,6 +179,12 @@ public class VoldemortServer extends AbstractService {
                 rebalancer = rebalancerService.getRebalancer();
             }
 
+            ThreadPoolExecutor adminThreadPool = new ThreadPoolExecutor(voldemortConfig.getAdminCoreThreads(),
+                                                                        voldemortConfig.getAdminMaxThreads(),
+                                                                        0,
+                                                                        TimeUnit.MILLISECONDS,
+                                                                        new SynchronousQueue<Runnable>(),
+                                                                        threadFactory);
             SocketRequestHandlerFactory adminRequestHandlerFactory = new SocketRequestHandlerFactory(storageService,
                                                                                                      this.storeRepository,
                                                                                                      this.metadata,
@@ -175,18 +195,21 @@ public class VoldemortServer extends AbstractService {
             if(voldemortConfig.getUseNioConnector()) {
                 logger.info("Using NIO Connector for Admin Service.");
                 services.add(new NioSocketService(adminRequestHandlerFactory,
+                                                  adminThreadPool,
                                                   identityNode.getAdminPort(),
                                                   voldemortConfig.getAdminSocketBufferSize(),
                                                   voldemortConfig.getNioAdminConnectorSelectors(),
+                                                  voldemortConfig.getSocketBufferSize(),
+                                                  voldemortConfig.getSocketListenQueueLength(),
                                                   "admin-server",
                                                   voldemortConfig.isJmxEnabled()));
             } else {
                 logger.info("Using BIO Connector for Admin Service.");
                 services.add(new SocketService(adminRequestHandlerFactory,
+                                               adminThreadPool,
                                                identityNode.getAdminPort(),
-                                               voldemortConfig.getAdminCoreThreads(),
-                                               voldemortConfig.getAdminMaxThreads(),
                                                voldemortConfig.getAdminSocketBufferSize(),
+                                               voldemortConfig.getSocketListenQueueLength(),
                                                "admin-server",
                                                voldemortConfig.isJmxEnabled()));
             }
@@ -201,6 +224,18 @@ public class VoldemortServer extends AbstractService {
 
         return ImmutableList.copyOf(services);
     }
+
+    private final ThreadFactory threadFactory = new ThreadFactory() {
+
+        private AtomicLong threadIdSequence = new AtomicLong(0);
+
+        public Thread newThread(Runnable r) {
+            String name = "voldemort-server-" + threadIdSequence.getAndIncrement();
+            Thread t = new Thread(new ThreadGroup("voldemort-socket-server"), r, name);
+            t.setDaemon(true);
+            return t;
+        }
+    };
 
     @Override
     protected void startInner() throws VoldemortException {
