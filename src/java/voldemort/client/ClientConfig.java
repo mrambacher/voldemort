@@ -82,8 +82,6 @@ public class ClientConfig {
     public static final String BOOTSTRAP_URLS_PROPERTY = "bootstrap_urls";
     public static final String REQUEST_FORMAT_PROPERTY = "request_format";
     public static final String ENABLE_JMX_PROPERTY = "enable_jmx";
-    public static final String MAX_KEY_SIZE_PROPERTY = "max_key_size";
-    public static final String MAX_VALUE_SIZE_PROPERTY = "max_value_size";
     public static final String FAILUREDETECTOR_IMPLEMENTATION_PROPERTY = "failuredetector_implementation";
     public static final String FAILUREDETECTOR_BANNAGE_PERIOD_PROPERTY = "failuredetector_bannage_period";
     public static final String FAILUREDETECTOR_THRESHOLD_PROPERTY = "failuredetector_threshold";
@@ -512,14 +510,6 @@ public class ClientConfig {
 
     public int getMaxBootstrapRetries() {
         return maxBootstrapRetries;
-    }
-
-    public int getMaxKeySize() {
-        return props.getInt(MAX_KEY_SIZE_PROPERTY, 0);
-    }
-
-    public int getMaxValueSize() {
-        return props.getInt(MAX_VALUE_SIZE_PROPERTY, 0);
     }
 
     /**
