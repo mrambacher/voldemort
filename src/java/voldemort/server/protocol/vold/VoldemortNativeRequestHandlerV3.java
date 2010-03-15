@@ -38,7 +38,6 @@ public class VoldemortNativeRequestHandlerV3 extends VoldemortNativeRequestHandl
     protected boolean isCompleteRequest(final ByteBuffer buffer, DataInputStream inputStream)
             throws IOException {
         int requestSize = inputStream.readInt();
-        System.out.println("REQUEST SIZE: " + requestSize + "/" + buffer.limit());
 
         // Here we skip over the data (without reading it in) and
         // move our position to just past it.
@@ -47,7 +46,6 @@ public class VoldemortNativeRequestHandlerV3 extends VoldemortNativeRequestHandl
         // If there aren't any remaining, we've "consumed" all the bytes and
         // thus have a complete request...
         boolean complete = !buffer.hasRemaining();
-        System.out.println("REQUEST SIZE: " + requestSize + "/" + complete);
         return complete;
     }
 
