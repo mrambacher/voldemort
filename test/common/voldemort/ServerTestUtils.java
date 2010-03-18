@@ -82,7 +82,7 @@ import com.google.common.collect.ImmutableList;
 public class ServerTestUtils {
 
     public static StoreRepository getStores(String storeName, String clusterXml, String storesXml) {
-        return getStores(storeName, clusterXml, storesXml);
+        return getStores(storeName, clusterXml, storesXml, 0);
     }
 
     public static StoreRepository getStores(String storeName,
@@ -200,7 +200,21 @@ public class ServerTestUtils {
                                              int port,
                                              RequestFormatType type,
                                              boolean isRouted) {
-        SocketPool socketPool = new SocketPool(2, 10000, 100000, 32 * 1024);
+        return getSocketStore(storeName, host, port, type, 2, 10000, 100000, isRouted);
+    }
+
+    public static SocketStore getSocketStore(String storeName,
+                                             String host,
+                                             int port,
+                                             RequestFormatType type,
+                                             int maxConnectionsPerNode,
+                                             int connectTimeout,
+                                             int socketTimeout,
+                                             boolean isRouted) {
+        SocketPool socketPool = new SocketPool(maxConnectionsPerNode,
+                                               connectTimeout,
+                                               socketTimeout,
+                                               32 * 1024);
         return new SocketStore(storeName,
                                new SocketDestination(host, port, type),
                                socketPool,
