@@ -1,3 +1,20 @@
+/*
+ * Copyright 2008-2009 LinkedIn, Inc
+ * 
+ * Portion Copyright © 2010 Nokia Corporation. All rights reserved.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License. You may obtain a copy of
+ * the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations under
+ * the License.
+ */
 package voldemort.store.socket;
 
 import java.util.ArrayList;
@@ -31,6 +48,10 @@ import voldemort.server.socket.SocketService;
 import voldemort.store.Store;
 import voldemort.utils.ByteArray;
 import voldemort.versioning.Versioned;
+
+/**
+ * Tests to test a multi-threaded client against NIO and BIO sockets.
+ */
 
 @RunWith(Parameterized.class)
 public class ThreadedSocketStoreTest extends TestCase {
@@ -117,15 +138,25 @@ public class ThreadedSocketStoreTest extends TestCase {
     }
 
     @Test
-    public void testThreadedStore() {
+    public void test100ThreadsWaiting100ms() {
         testThreadedStore(100, 100, 300, 100, 100, 100);
     }
 
     @Test
-    public void test500ThreadedStore() {
-        testThreadedStore(500, 100, 300, 50, 100, 200);
+    public void test500ThreadsWaiting100ms() {
+        testThreadedStore(500, 300, 300, 50, 500, 100);
     }
 
+    /**
+     * Tests threaded stores
+     * 
+     * @param numberOfThreads Number of client and server threads
+     * @param connectionTimeout How long the client should wait for a socket
+     *        connect
+     * @param socketTimeout How long the client waits for the server to respond
+     * @param queueLength How many listen/bind() operations can be pending
+     * @param sleepMs How long the server should delay before responding
+     */
     protected void testThreadedStore(int numberOfThreads,
                                      int connectionTimeout,
                                      int socketTimeout,
