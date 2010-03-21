@@ -58,7 +58,8 @@ public abstract class AbstractSocketStoreTest extends AbstractByteArrayStoreTest
 
     @Parameters
     public static Collection<Object[]> configs() {
-        return Arrays.asList(new Object[][] { { true }, { false } });
+        return Arrays.asList(new Object[][] { { RequestFormatType.VOLDEMORT_V3, true },
+                { RequestFormatType.VOLDEMORT_V3, false } });
     }
 
     private int socketPort;
@@ -89,6 +90,11 @@ public abstract class AbstractSocketStoreTest extends AbstractByteArrayStoreTest
     @Override
     public Store<ByteArray, byte[]> createStore(String name) {
         return ServerTestUtils.getSocketStore(name, socketPort, requestFormatType);
+    }
+
+    @Override
+    protected boolean supportsSizes(int keySize, int valueSize) {
+        return valueSize < (48 * 1024 * 1024);
     }
 
     @Test

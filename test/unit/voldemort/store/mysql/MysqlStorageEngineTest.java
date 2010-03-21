@@ -59,6 +59,11 @@ public class MysqlStorageEngineTest extends AbstractStorageEngineTest {
         super.tearDown();
     }
 
+    @Override
+    protected boolean supportsSizes(int keySize, int valueSize) {
+        return valueSize < (64 * 1024) && keySize < 200;
+    }
+
     private DataSource getDataSource() {
         BasicDataSource ds = new BasicDataSource();
         ds.setUrl("jdbc:mysql://localhost:3306/test");
