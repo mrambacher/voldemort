@@ -95,6 +95,13 @@ public class AsyncRequestHandler implements Runnable {
                         + socketChannel.socket().getRemoteSocketAddress());
     }
 
+    @Override
+    protected void finalize() throws Throwable {
+        outputStream.close();
+        inputStream.close();
+        super.finalize();
+    }
+
     public void run() {
         SelectionKey selectionKey = socketChannel.keyFor(selector);
 
