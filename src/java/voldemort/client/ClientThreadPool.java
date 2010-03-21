@@ -20,6 +20,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.log4j.Logger;
+
 import voldemort.annotations.jmx.JmxGetter;
 import voldemort.annotations.jmx.JmxManaged;
 import voldemort.utils.DaemonThreadFactory;
@@ -32,6 +34,8 @@ import voldemort.utils.DaemonThreadFactory;
 @JmxManaged(description = "A voldemort client thread pool")
 public class ClientThreadPool extends ThreadPoolExecutor {
 
+    private static final Logger logger = Logger.getLogger(ClientThreadPool.class);
+
     public ClientThreadPool(int maxThreads, long threadIdleMs, int maxQueuedRequests) {
         super(maxThreads,
               maxThreads,
@@ -40,6 +44,12 @@ public class ClientThreadPool extends ThreadPoolExecutor {
               new LinkedBlockingQueue<Runnable>(maxQueuedRequests),
               new DaemonThreadFactory("voldemort-client-thread-"),
               new ThreadPoolExecutor.CallerRunsPolicy());
+
+        if(logger.isDebugEnabled()) {
+            logger.debug("Client thread pool created - maxThreads:" + maxThreads
+                         + ", threadIdleMs:" + threadIdleMs + ", maxQueuedRequests:"
+                         + maxQueuedRequests);
+        }
     }
 
     @JmxGetter(name = "numberOfActiveThreads", description = "The number of active threads.")

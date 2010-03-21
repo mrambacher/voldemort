@@ -55,6 +55,15 @@ public class SocketStoreClientFactory extends AbstractStoreClientFactory {
 
     public SocketStoreClientFactory(ClientConfig config) {
         super(config);
+
+        if(logger.isDebugEnabled()) {
+            logger.debug("creating socket store factory - " + "maxConnectionsPerNode: "
+                         + config.getMaxConnectionsPerNode() + "connectionTimeoutMillis: "
+                         + config.getConnectionTimeout(TimeUnit.MILLISECONDS)
+                         + "socketTimeoutMillis: " + config.getSocketTimeout(TimeUnit.MILLISECONDS)
+                         + "socketBufferSize: " + config.getSocketBufferSize());
+        }
+
         this.routingTier = config.getRoutingTier();
         this.socketPool = new SocketPool(config.getMaxConnectionsPerNode(),
                                          config.getConnectionTimeout(TimeUnit.MILLISECONDS),
@@ -138,7 +147,7 @@ public class SocketStoreClientFactory extends AbstractStoreClientFactory {
     @Override
     public void close() {
         this.socketPool.close();
-        if (failureDetector != null)
+        if(failureDetector != null)
             this.failureDetector.removeFailureDetectorListener(failureDetectorListener);
         this.getThreadPool().shutdown();
 
