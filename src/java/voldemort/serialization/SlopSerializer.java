@@ -52,6 +52,15 @@ public class SlopSerializer implements Serializer<Slop> {
             return byteOutput.toByteArray();
         } catch(IOException e) {
             throw new SerializationException(e);
+        } finally {
+            try {
+                data.close();
+                data = null;
+                byteOutput.close();
+                byteOutput = null;
+            } catch(IOException e) {
+                throw new SerializationException(e);
+            }
         }
     }
 
@@ -74,7 +83,13 @@ public class SlopSerializer implements Serializer<Slop> {
             return new Slop(storeName, op, key, value, nodeId, arrived);
         } catch(IOException e) {
             throw new SerializationException(e);
+        } finally {
+            try {
+                input.close();
+                input = null;
+            } catch(IOException e) {
+                throw new SerializationException(e);
+            }
         }
     }
-
 }
