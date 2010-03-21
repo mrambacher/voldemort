@@ -21,6 +21,7 @@ import java.io.Serializable;
 import voldemort.client.RoutingTier;
 import voldemort.serialization.SerializerDefinition;
 import voldemort.store.views.View;
+import voldemort.utils.Props;
 import voldemort.utils.Utils;
 
 import com.google.common.base.Objects;
@@ -28,6 +29,7 @@ import com.google.common.base.Objects;
 /**
  * The configuration information for a store.
  * 
+ * @author jay
  * 
  */
 public class StoreDefinition implements Serializable {
@@ -48,23 +50,25 @@ public class StoreDefinition implements Serializable {
     private final Integer retentionScanThrottleRate;
     private final String routingStrategyType;
     private final String viewOf;
+    private final Props properties;
     private final View<?, ?, ?> valueTransformation;
 
     public StoreDefinition(String name,
-                           String type,
-                           SerializerDefinition keySerializer,
-                           SerializerDefinition valueSerializer,
-                           RoutingTier routingPolicy,
-                           String routingStrategyType,
-                           int replicationFactor,
-                           Integer preferredReads,
-                           int requiredReads,
-                           Integer preferredWrites,
-                           int requiredWrites,
-                           String viewOfStore,
-                           View<?, ?, ?> valTrans,
-                           Integer retentionDays,
-                           Integer retentionThrottleRate) {
+            String type,
+            SerializerDefinition keySerializer,
+            SerializerDefinition valueSerializer,
+            RoutingTier routingPolicy,
+            String routingStrategyType,
+            int replicationFactor,
+            Integer preferredReads,
+            int requiredReads,
+            Integer preferredWrites,
+            int requiredWrites,
+            String viewOfStore,
+            View<?, ?, ?> valTrans,
+            Integer retentionDays,
+            Integer retentionThrottleRate,
+            Props props) {
         this.name = Utils.notNull(name);
         this.type = Utils.notNull(type);
         this.replicationFactor = replicationFactor;
@@ -80,34 +84,35 @@ public class StoreDefinition implements Serializable {
         this.routingStrategyType = routingStrategyType;
         this.viewOf = viewOfStore;
         this.valueTransformation = valTrans;
+        this.properties = props;
         checkParameterLegality();
     }
 
     private void checkParameterLegality() {
-        if(requiredReads < 1)
+        if (requiredReads < 1)
             throw new IllegalArgumentException("Cannot have a requiredReads number less than 1.");
-        else if(requiredReads > replicationFactor)
+        else if (requiredReads > replicationFactor)
             throw new IllegalArgumentException("Cannot have more requiredReads then there are replicas.");
 
-        if(requiredWrites < 1)
+        if (requiredWrites < 1)
             throw new IllegalArgumentException("Cannot have a requiredWrites number less than 1.");
-        else if(requiredWrites > replicationFactor)
+        else if (requiredWrites > replicationFactor)
             throw new IllegalArgumentException("Cannot have more requiredWrites then there are replicas.");
 
-        if(preferredWrites != null) {
-            if(preferredWrites < requiredWrites)
+        if (preferredWrites != null) {
+            if (preferredWrites < requiredWrites)
                 throw new IllegalArgumentException("preferredWrites must be greater or equal to requiredWrites.");
-            if(preferredWrites > replicationFactor)
+            if (preferredWrites > replicationFactor)
                 throw new IllegalArgumentException("Cannot have more preferredWrites then there are replicas.");
         }
-        if(preferredReads != null) {
-            if(preferredReads < requiredReads)
+        if (preferredReads != null) {
+            if (preferredReads < requiredReads)
                 throw new IllegalArgumentException("preferredReads must be greater or equal to requiredReads.");
-            if(preferredReads > replicationFactor)
+            if (preferredReads > replicationFactor)
                 throw new IllegalArgumentException("Cannot have more preferredReads then there are replicas.");
         }
 
-        if(retentionPeriodDays != null && retentionPeriodDays < 0)
+        if (retentionPeriodDays != null && retentionPeriodDays < 0)
             throw new IllegalArgumentException("Retention days must be non-negative.");
     }
 
@@ -195,64 +200,72 @@ public class StoreDefinition implements Serializable {
         return valueTransformation;
     }
 
+    public Props getProperties() {
+        return this.properties;
+    }
+
+    public int getIntProperty(String name, int dflt) {
+        return properties.getInt(name, dflt);
+    }
+
     @Override
     public boolean equals(Object o) {
-        if(this == o)
+        if (this == o)
             return true;
-        else if(o == null)
+        else if (o == null)
             return false;
-        else if(!(o.getClass() == StoreDefinition.class))
+        else if (!(o.getClass() == StoreDefinition.class))
             return false;
 
         StoreDefinition def = (StoreDefinition) o;
         return getName().equals(def.getName())
-               && getType().equals(def.getType())
-               && getReplicationFactor() == def.getReplicationFactor()
-               && getRequiredReads() == def.getRequiredReads()
-               && Objects.equal(getPreferredReads(), def.getPreferredReads())
-               && getRequiredWrites() == def.getRequiredWrites()
-               && Objects.equal(getPreferredWrites(), def.getPreferredWrites())
-               && getKeySerializer().equals(def.getKeySerializer())
-               && getValueSerializer().equals(def.getValueSerializer())
-               && getRoutingPolicy() == def.getRoutingPolicy()
-               && Objects.equal(getViewTargetStoreName(), def.getViewTargetStoreName())
-               && Objects.equal(getValueTransformation() != null ? getValueTransformation().getClass()
-                                                                : null,
-                                def.getValueTransformation() != null ? def.getValueTransformation()
-                                                                          .getClass() : null)
-               && Objects.equal(getRetentionDays(), def.getRetentionDays())
-               && Objects.equal(getRetentionScanThrottleRate(), def.getRetentionScanThrottleRate());
+                && getType().equals(def.getType())
+                && getReplicationFactor() == def.getReplicationFactor()
+                && getRequiredReads() == def.getRequiredReads()
+                && Objects.equal(getPreferredReads(), def.getPreferredReads())
+                && getRequiredWrites() == def.getRequiredWrites()
+                && Objects.equal(getPreferredWrites(), def.getPreferredWrites())
+                && getKeySerializer().equals(def.getKeySerializer())
+                && getValueSerializer().equals(def.getValueSerializer())
+                && getRoutingPolicy() == def.getRoutingPolicy()
+                && Objects.equal(getViewTargetStoreName(), def.getViewTargetStoreName())
+                && Objects.equal(getValueTransformation() != null ? getValueTransformation().getClass()
+                : null,
+                def.getValueTransformation() != null ? def.getValueTransformation()
+                .getClass() : null)
+                && Objects.equal(getRetentionDays(), def.getRetentionDays())
+                && Objects.equal(getRetentionScanThrottleRate(), def.getRetentionScanThrottleRate());
     }
 
     @Override
     public int hashCode() {
         return Objects.hashCode(getName(),
-                                getType(),
-                                getKeySerializer(),
-                                getValueSerializer(),
-                                getRoutingPolicy(),
-                                getReplicationFactor(),
-                                getRequiredReads(),
-                                getRequiredWrites(),
-                                getPreferredReads(),
-                                getPreferredWrites(),
-                                getViewTargetStoreName(),
-                                getValueTransformation() == null ? null
-                                                                : getValueTransformation().getClass(),
-                                getRetentionDays(),
-                                getRetentionScanThrottleRate());
+                getType(),
+                getKeySerializer(),
+                getValueSerializer(),
+                getRoutingPolicy(),
+                getReplicationFactor(),
+                getRequiredReads(),
+                getRequiredWrites(),
+                getPreferredReads(),
+                getPreferredWrites(),
+                getViewTargetStoreName(),
+                getValueTransformation() == null ? null
+                : getValueTransformation().getClass(),
+                getRetentionDays(),
+                getRetentionScanThrottleRate());
     }
 
     @Override
     public String toString() {
         return "StoreDefinition(name = " + getName() + ", type = " + getType()
-               + ", key-serializer = " + getKeySerializer() + ", value-serializer = "
-               + getValueSerializer() + ", routing = " + getRoutingPolicy() + ", replication = "
-               + getReplicationFactor() + ", required-reads = " + getRequiredReads()
-               + ", preferred-reads = " + getPreferredReads() + ", required-writes = "
-               + getRequiredWrites() + ", preferred-writes = " + getPreferredWrites()
-               + ", view-target = " + getViewTargetStoreName() + ", value-transformation = "
-               + getValueTransformation() + ", retention-days = " + getRetentionDays()
-               + ", throttle-rate = " + getRetentionScanThrottleRate() + ")";
+                + ", key-serializer = " + getKeySerializer() + ", value-serializer = "
+                + getValueSerializer() + ", routing = " + getRoutingPolicy() + ", replication = "
+                + getReplicationFactor() + ", required-reads = " + getRequiredReads()
+                + ", preferred-reads = " + getPreferredReads() + ", required-writes = "
+                + getRequiredWrites() + ", preferred-writes = " + getPreferredWrites()
+                + ", view-target = " + getViewTargetStoreName() + ", value-transformation = "
+                + getValueTransformation() + ", retention-days = " + getRetentionDays()
+                + ", throttle-rate = " + getRetentionScanThrottleRate() + ")";
     }
 }

@@ -22,8 +22,10 @@ import java.io.IOException;
 import java.io.Reader;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 
 import javax.xml.XMLConstants;
 import javax.xml.transform.Source;
@@ -50,6 +52,7 @@ import voldemort.store.StoreDefinitionBuilder;
 import voldemort.store.StoreUtils;
 import voldemort.store.views.View;
 import voldemort.store.views.ViewStorageConfiguration;
+import voldemort.utils.Props;
 import voldemort.utils.ReflectUtils;
 
 /**
@@ -62,6 +65,9 @@ public class StoreDefinitionsMapper {
     public final static String STORES_ELMT = "stores";
     public final static String STORE_ELMT = "store";
     public final static String STORE_NAME_ELMT = "name";
+    public final static String STORE_PROPERTIES_ELMT = "store-properties";
+    public final static String STORE_PROPERTY_ELMT = "property";
+    public final static String STORE_PROPERTY_ATTR = "name";
     public final static String STORE_PERSISTENCE_ELMT = "persistence";
     public final static String STORE_KEY_SERIALIZER_ELMT = "key-serializer";
     public final static String STORE_VALUE_SERIALIZER_ELMT = "value-serializer";
@@ -178,6 +184,17 @@ public class StoreDefinitionsMapper {
             if(throttleRate != null)
                 retentionThrottleRate = Integer.parseInt(throttleRate.getText());
         }
+        Properties properties = new Properties();
+        List<?> props = store.getChildren(STORE_PROPERTY_ELMT);
+        Iterator<?> iter = props.iterator();
+        while(iter.hasNext()) {
+            Element prop = (Element) iter.next();
+            String propName = prop.getAttributeValue(STORE_PROPERTY_ATTR);
+            String propValue = prop.getText();
+            if(propName != null) {
+                properties.setProperty(propName, propValue);
+            }
+        }
 
         return new StoreDefinitionBuilder().setName(name)
                                            .setType(storeType)
@@ -192,6 +209,7 @@ public class StoreDefinitionsMapper {
                                            .setRequiredWrites(requiredWrites)
                                            .setRetentionPeriodDays(retentionPolicyDays)
                                            .setRetentionScanThrottleRate(retentionThrottleRate)
+                                           .setProperties(properties)
                                            .build();
     }
 
@@ -332,6 +350,18 @@ public class StoreDefinitionsMapper {
         if(storeDefinition.hasRetentionScanThrottleRate())
             store.addContent(new Element(STORE_RETENTION_SCAN_THROTTLE_RATE_ELMT).setText(Integer.toString(storeDefinition.getRetentionScanThrottleRate())));
 
+        Props props = storeDefinition.getProperties();
+        if(props.size() > 0) {
+            Element propertiesElement = new Element(STORE_PROPERTIES_ELMT);
+            for(String name: props.keySet()) {
+                String value = props.getString(name);
+                Element property = new Element(STORE_PROPERTY_ELMT);
+                property.setText(value);
+                property.setAttribute(STORE_PROPERTY_ATTR, name);
+                propertiesElement.addContent(property);
+            }
+            store.addContent(propertiesElement);
+        }
         return store;
     }
 

@@ -1,14 +1,18 @@
 package voldemort.store;
 
+import java.util.Properties;
+
 import voldemort.client.RoutingTier;
 import voldemort.serialization.SerializerDefinition;
 import voldemort.store.views.View;
+import voldemort.utils.Props;
 import voldemort.utils.Utils;
 
 /**
  * A simple builder class to avoid having 10k constructor parameters in store
  * definitions
  * 
+ * @author jay
  * 
  */
 public class StoreDefinitionBuilder {
@@ -28,6 +32,7 @@ public class StoreDefinitionBuilder {
     private String routingStrategyType = null;
     private String viewOf = null;
     private View<?, ?, ?> view = null;
+    private Props properties = new Props();
 
     public String getName() {
         return Utils.notNull(name);
@@ -122,6 +127,20 @@ public class StoreDefinitionBuilder {
         return requiredReads;
     }
 
+    public Props getProperties() {
+        return this.properties;
+    }
+
+    public StoreDefinitionBuilder setProperties(Props props) {
+        this.properties = props;
+        return this;
+    }
+
+    public StoreDefinitionBuilder setProperties(Properties properties) {
+        Props props = new Props(properties);
+        return setProperties(props);
+    }
+
     public StoreDefinitionBuilder setRequiredReads(int requiredReads) {
         this.requiredReads = Utils.inRange(requiredReads, 0, Integer.MAX_VALUE);
         return this;
@@ -182,20 +201,21 @@ public class StoreDefinitionBuilder {
 
     public StoreDefinition build() {
         return new StoreDefinition(this.getName(),
-                                   this.getType(),
-                                   this.getKeySerializer(),
-                                   this.getValueSerializer(),
-                                   this.getRoutingPolicy(),
-                                   this.getRoutingStrategyType(),
-                                   this.getReplicationFactor(),
-                                   this.getPreferredReads(),
-                                   this.getRequiredReads(),
-                                   this.getPreferredWrites(),
-                                   this.getRequiredWrites(),
-                                   this.getViewOf(),
-                                   this.getView(),
-                                   this.getRetentionPeriodDays(),
-                                   this.getRetentionScanThrottleRate());
+                this.getType(),
+                this.getKeySerializer(),
+                this.getValueSerializer(),
+                this.getRoutingPolicy(),
+                this.getRoutingStrategyType(),
+                this.getReplicationFactor(),
+                this.getPreferredReads(),
+                this.getRequiredReads(),
+                this.getPreferredWrites(),
+                this.getRequiredWrites(),
+                this.getViewOf(),
+                this.getView(),
+                this.getRetentionPeriodDays(),
+                this.getRetentionScanThrottleRate(),
+                this.getProperties());
     }
 
 }
