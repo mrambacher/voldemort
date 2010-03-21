@@ -61,7 +61,7 @@ public class VelocityEngine {
         OutputStreamWriter writer = new OutputStreamWriter(stream);
         try {
             engine.mergeTemplate(baseTemplateDir + "/" + template, "UTF-8", context, writer);
-            writer.flush();
+            writer.close();
         } catch(Exception e) {
             throw new VoldemortException(e);
         }
