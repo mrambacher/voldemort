@@ -99,7 +99,8 @@ public class JmxService extends AbstractService {
                 JmxUtils.registerMbean(mbeanServer, JmxUtils.createModelMBean(o), name);
                 this.registeredBeans.add(name);
             } catch(Exception e) {
-                logger.error("Error registering bean with name '" + name + "':", e);
+                logger.error("Error registering bean with name '" + name + "': - " + e.getMessage(),
+                             e);
             }
         }
     }
