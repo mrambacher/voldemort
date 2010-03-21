@@ -20,6 +20,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.apache.log4j.Logger;
+
 import voldemort.VoldemortException;
 import voldemort.annotations.jmx.JmxGetter;
 import voldemort.annotations.jmx.JmxManaged;
@@ -39,6 +41,7 @@ import voldemort.utils.pool.ResourcePoolConfig;
 @JmxManaged(description = "Voldemort socket pool.")
 public class SocketPool {
 
+    private static final Logger logger = Logger.getLogger(SocketPool.class);
     private final AtomicInteger monitoringInterval = new AtomicInteger(10000);
     private final AtomicInteger checkouts;
     private final AtomicLong waitNs;
@@ -61,6 +64,15 @@ public class SocketPool {
         this.checkouts = new AtomicInteger(0);
         this.waitNs = new AtomicLong(0);
         this.avgWaitNs = new AtomicLong(0);
+
+        if(logger.isDebugEnabled()) {
+            String format = "Socket Pool created - maxConnectionsPerNode: %d, connectionTimeoutMs: %d, soTimeoutMs: %d, socketBufferSize: %d";
+            logger.debug(String.format(format,
+                                       maxConnectionsPerNode,
+                                       connectionTimeoutMs,
+                                       soTimeoutMs,
+                                       socketBufferSize));
+        }
     }
 
     /**
@@ -79,7 +91,7 @@ public class SocketPool {
             return sas;
         } catch(Exception e) {
             throw new UnreachableStoreException("Failure while checking out socket for "
-                                                + destination + ": ", e);
+                                                + destination + " - " + e.getMessage(), e);
         }
     }
 
@@ -108,7 +120,7 @@ public class SocketPool {
             pool.checkin(destination, socket);
         } catch(Exception e) {
             throw new VoldemortException("Failure while checking in socket for " + destination
-                                         + ": ", e);
+                                         + " - " + e.getMessage(), e);
         }
     }
 

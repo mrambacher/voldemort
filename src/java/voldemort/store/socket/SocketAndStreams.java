@@ -56,6 +56,13 @@ public class SocketAndStreams {
         this.createTimestamp = System.nanoTime();
     }
 
+    @Override
+    protected void finalize() throws Throwable {
+        this.outputStream.close();
+        this.inputStream.close();
+        super.finalize();
+    }
+
     public Socket getSocket() {
         return socket;
     }
