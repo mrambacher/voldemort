@@ -93,4 +93,8 @@ public class VoldemortTestConstants {
     public static String getViewStoreDefinitionXml() {
         return readString("config/view-store.xml");
     }
+
+    public static String getStoreWithPropertiesXml() {
+        return readString("config/store-with-properties.xml");
+    }
 }
