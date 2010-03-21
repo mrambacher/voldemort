@@ -51,11 +51,15 @@ public class Props implements Map<String, String> {
         this.props = new HashMap<String, String>();
         for(int i = files.length - 1; i >= 0; i--) {
             Properties properties = new Properties();
-            InputStream input = new BufferedInputStream(new FileInputStream(files[i].getAbsolutePath()));
-            properties.load(input);
-            for(Entry<Object, Object> e: properties.entrySet())
-                this.props.put((String) e.getKey(), (String) e.getValue());
-            input.close();
+            InputStream input = null;
+            try {
+                input = new BufferedInputStream(new FileInputStream(files[i].getAbsolutePath()));
+                properties.load(input);
+                for(Entry<Object, Object> e: properties.entrySet())
+                    this.props.put((String) e.getKey(), (String) e.getValue());
+            } finally {
+                input.close();
+            }
         }
     }
 
@@ -241,15 +245,12 @@ public class Props implements Map<String, String> {
 
     @Override
     public String toString() {
-        StringBuilder builder = new StringBuilder("{");
+        final String NL = System.getProperty("line.separator");
+        final StringBuilder sb = new StringBuilder();
         for(Entry<String, String> entry: this.props.entrySet()) {
-            builder.append(entry.getKey());
-            builder.append(": ");
-            builder.append(entry.getValue());
-            builder.append(", ");
+            sb.append(entry.getKey()).append(": ").append(entry.getValue()).append(NL);
         }
-        builder.append("}");
-        return builder.toString();
+        return sb.toString();
     }
 
     public long getBytes(String name) {
