@@ -264,7 +264,7 @@ public class VoldemortServer extends AbstractService {
                 service.stop();
             } catch(VoldemortException e) {
                 exceptions.add(e);
-                logger.error(e);
+                logger.error(e.getMessage(), e);
             }
         }
         logger.info("All services stopped for Node:" + getIdentityNode().getId());
@@ -283,8 +283,13 @@ public class VoldemortServer extends AbstractService {
             else
                 croak("USAGE: java " + VoldemortServer.class.getName() + " [voldemort_home_dir]");
         } catch(Exception e) {
-            logger.error(e);
+            logger.error(e.getMessage(), e);
             Utils.croak("Error while loading configuration: " + e.getMessage());
+        }
+
+        if(logger.isDebugEnabled()) {
+            logger.debug("Voldemort Server configuration:" + System.getProperty("line.separator")
+                         + config.getAllProps().toString());
         }
 
         final VoldemortServer server = new VoldemortServer(config);

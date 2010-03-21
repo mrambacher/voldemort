@@ -218,8 +218,7 @@ public class VoldemortConfig implements Serializable {
         // Admin client should have less threads but very high buffer size.
         this.adminMaxThreads = props.getInt("admin.max.threads", 20);
         this.adminCoreThreads = props.getInt("admin.core.threads", Math.max(1, adminMaxThreads / 2));
-        this.adminStreamBufferSize = (int) props.getBytes("admin.streams.buffer.size",
-                                                          10 * 1000 * 1000);
+        this.adminStreamBufferSize = (int) props.getBytes("admin.streams.buffer.size", 32 * 1024);
         this.adminConnectionTimeout = props.getInt("admin.client.connection.timeout.sec", 60);
         this.adminSocketTimeout = props.getInt("admin.client.socket.timeout.sec", 24 * 60 * 60);
 
