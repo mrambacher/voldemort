@@ -48,7 +48,8 @@ public class ChunkedFileSet {
                 new File(baseDir, "0.data").createNewFile();
                 logger.info("No index or data files found, creating empty files 0.index and 0.data.");
             } catch(IOException e) {
-                throw new VoldemortException("Error creating empty read-only files.", e);
+                throw new VoldemortException("Error creating empty read-only files. - "
+                                             + e.getMessage(), e);
             }
         }
 

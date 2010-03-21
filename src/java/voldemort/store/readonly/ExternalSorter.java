@@ -328,7 +328,7 @@ public class ExternalSorter<V> {
             try {
                 this.inputStream.close();
             } catch(IOException e) {
-                throw new VoldemortException("Failed to close input stream.", e);
+                throw new VoldemortException("Failed to close input stream. - " + e.getMessage(), e);
             } finally {
                 this.file.delete();
             }
