@@ -159,7 +159,7 @@ public class SocketServer extends Thread {
                 try {
                     serverSocket.close();
                 } catch(IOException e) {
-                    logger.warn("Error while shutting down server.", e);
+                    logger.warn("Error while shutting down server. - " + e.getMessage(), e);
                 }
             }
 
@@ -198,7 +198,8 @@ public class SocketServer extends Thread {
             if(!completed)
                 logger.warn("Timed out waiting for threadpool to close.");
         } catch(InterruptedException e) {
-            logger.warn("Interrupted while waiting for socket server shutdown to complete: ", e);
+            logger.warn("Interrupted while waiting for socket server shutdown to complete: - "
+                        + e.getMessage(), e);
         }
     }
 
@@ -211,7 +212,7 @@ public class SocketServer extends Thread {
                 logger.debug("Closing session " + entry.getKey());
                 entry.getValue().close();
             } catch(IOException e) {
-                logger.warn("Error while closing session socket: ", e);
+                logger.warn("Error while closing session socket: - " + e.getMessage(), e);
             }
         }
     }

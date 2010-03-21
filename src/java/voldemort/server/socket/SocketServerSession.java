@@ -59,12 +59,14 @@ public class SocketServerSession implements Runnable {
     }
 
     public void run() {
+        DataInputStream inputStream = null;
+        DataOutputStream outputStream = null;
         try {
             activeSessions.put(sessionId, this);
-            DataInputStream inputStream = new DataInputStream(new BufferedInputStream(socket.getInputStream(),
-                                                                                      64000));
-            DataOutputStream outputStream = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream(),
-                                                                                          64000));
+            inputStream = new DataInputStream(new BufferedInputStream(socket.getInputStream(),
+                                                                      64000));
+            outputStream = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream(),
+                                                                         64000));
 
             RequestFormatType protocol = negotiateProtocol(inputStream, outputStream);
             RequestHandler handler = handlerFactory.getRequestHandler(protocol);
@@ -108,7 +110,8 @@ public class SocketServerSession implements Runnable {
                 logger.info(Thread.currentThread().getName()
                             + " has been interrupted, closing session.");
         } catch(EOFException e) {
-            logger.info("Client " + socket.getRemoteSocketAddress() + " disconnected.");
+            logger.info("Client " + socket.getRemoteSocketAddress() + " disconnected - "
+                        + e.getMessage(), e);
         } catch(IOException e) {
             // if this is an unexpected
             if(!isClosed)
@@ -118,7 +121,23 @@ public class SocketServerSession implements Runnable {
                 if(!socket.isClosed())
                     socket.close();
             } catch(Exception e) {
-                logger.error("Error while closing socket", e);
+                logger.error("Error while closing socket - " + e.getMessage(), e);
+            }
+            if(null != inputStream) {
+                try {
+                    inputStream.close();
+                } catch(IOException e) {
+                    logger.error("Error while Data Input Stream - " + e.getMessage(), e);
+                }
+                inputStream = null;
+            }
+            if(null != outputStream) {
+                try {
+                    outputStream.close();
+                } catch(IOException e) {
+                    logger.error("Error while Data Output Stream - " + e.getMessage(), e);
+                }
+                outputStream = null;
             }
             // now remove ourselves from the set of active sessions
             this.activeSessions.remove(sessionId);
