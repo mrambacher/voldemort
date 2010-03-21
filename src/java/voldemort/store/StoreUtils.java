@@ -112,7 +112,7 @@ public class StoreUtils {
             try {
                 stream.close();
             } catch(IOException e) {
-                logger.error("Error closing stream", e);
+                logger.error("Error closing stream - " + e.getMessage(), e);
             }
         }
     }
