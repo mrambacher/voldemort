@@ -7,8 +7,8 @@ package voldemort.routing;
  */
 public class RoutingStrategyType {
 
-    public static String CONSISTENT_STRATEGY = "consistent-routing";
-    public static String TO_ALL_STRATEGY = "all-routing";
+    public static final String CONSISTENT_STRATEGY = "consistent-routing";
+    public static final String TO_ALL_STRATEGY = "all-routing";
 
     private final String name;
 
