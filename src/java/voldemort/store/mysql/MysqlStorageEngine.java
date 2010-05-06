@@ -20,46 +20,41 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.List;
-import java.util.Map;
 
 import javax.sql.DataSource;
 
 import org.apache.log4j.Logger;
 
-import voldemort.VoldemortException;
+import voldemort.store.AbstractStorageEngine;
 import voldemort.store.NoSuchCapabilityException;
 import voldemort.store.PersistenceFailureException;
-import voldemort.store.StorageEngine;
 import voldemort.store.StoreCapabilityType;
-import voldemort.store.StoreUtils;
+import voldemort.store.StoreEntriesIterator;
+import voldemort.store.StoreKeysIterator;
+import voldemort.store.StoreRow;
+import voldemort.store.StoreTransaction;
+import voldemort.store.StoreVersionIterator;
 import voldemort.utils.ByteArray;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
-import voldemort.versioning.ObsoleteVersionException;
-import voldemort.versioning.Occured;
 import voldemort.versioning.Version;
-import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
 
-import com.google.common.collect.Lists;
+import com.sleepycat.je.DatabaseException;
 
 /**
  * A StorageEngine that uses Mysql for persistence
  * 
  * 
  */
-public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
+public class MysqlStorageEngine extends AbstractStorageEngine {
 
     private static final Logger logger = Logger.getLogger(MysqlStorageEngine.class);
-    private static int MYSQL_ERR_DUP_KEY = 1022;
-    private static int MYSQL_ERR_DUP_ENTRY = 1062;
 
-    private final String name;
     private final DataSource datasource;
 
     public MysqlStorageEngine(String name, DataSource datasource) {
-        this.name = name;
+        super(name);
         this.datasource = datasource;
 
         if(!tableExists()) {
@@ -82,9 +77,9 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
             throw new PersistenceFailureException("SQLException while checking for table existence!",
                                                   e);
         } finally {
-            tryClose(rs);
-            tryClose(stmt);
-            tryClose(conn);
+            MysqlUtils.tryClose(rs);
+            MysqlUtils.tryClose(stmt);
+            MysqlUtils.tryClose(conn);
         }
     }
 
@@ -93,10 +88,12 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
     }
 
     public void create() {
-        execute("create table " + getName()
-                + " (key_ varbinary(200) not null, version_ varbinary(200) not null, "
-                + " value_ blob," + " metadata_ blob"
-                + ", primary key(key_, version_)) engine = InnoDB");
+        MysqlUtils.execute(datasource,
+                           "create table "
+                                   + getName()
+                                   + " (key_ varbinary(200) not null, version_ varbinary(200) not null, "
+                                   + " value_ blob," + " metadata_ blob"
+                                   + ", primary key(key_, version_)) engine = InnoDB");
     }
 
     public void execute(String query) {
@@ -110,43 +107,67 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
             System.out.println("Caught SQL Exception " + e.getMessage());
             throw new PersistenceFailureException("SQLException while performing operation.", e);
         } finally {
-            tryClose(stmt);
-            tryClose(conn);
+            MysqlUtils.tryClose(stmt);
+            MysqlUtils.tryClose(conn);
         }
     }
 
-    public ClosableIterator<ByteArray> keys() {
-        return StoreUtils.keys(entries());
+    protected StoreRow getRowsForKey(ByteArray key, String sql) throws PersistenceFailureException {
+        try {
+            return new MysqlKeyedRow(getName(), this.datasource, sql, key);
+        } catch(SQLException ex) {
+            logger.error("Failed to create MySQLstore row - " + ex.getMessage(), ex);
+            throw new PersistenceFailureException("Failed to create SQL store row", ex);
+        }
+    }
+
+    @Override
+    protected StoreRow getRowsForKey(ByteArray key) throws PersistenceFailureException {
+        String select = "select version_, value_, metadata_ from " + getName() + " where key_ = ?";
+        return getRowsForKey(key, select);
+    }
+
+    @Override
+    protected ClosableIterator<Version> getVersionIterator(ByteArray key)
+            throws PersistenceFailureException {
+        String select = "select version_ from " + getName() + " where key_ = ?";
+        StoreRow rows = getRowsForKey(key, select);
+        return new StoreVersionIterator(rows);
     }
 
     public void truncate() {
-        Connection conn = null;
-        PreparedStatement stmt = null;
-        String select = "delete from " + name;
+        MysqlUtils.execute(datasource, "delete from " + getName());
+    }
+
+    @Override
+    protected ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> getEntriesIterator() {
+        String sql = "select key_, version_, value_, metadata_ from " + getName();
         try {
-            conn = datasource.getConnection();
-            stmt = conn.prepareStatement(select);
-            stmt.executeUpdate();
+            StoreRow rows = new MysqlRow(getName(), this.datasource, sql);
+            return new StoreEntriesIterator(rows);
         } catch(SQLException e) {
             throw new PersistenceFailureException("Fix me!", e);
-        } finally {
-            tryClose(stmt);
-            tryClose(conn);
         }
     }
 
-    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries() {
-        Connection conn = null;
-        PreparedStatement stmt = null;
-        ResultSet rs = null;
-        String select = "select key_, version_, value_, metadata_ from " + name;
+    @Override
+    protected ClosableIterator<ByteArray> getKeysIterator() {
+        String sql = "select key_ from " + getName();
         try {
-            conn = datasource.getConnection();
-            stmt = conn.prepareStatement(select);
-            rs = stmt.executeQuery();
-            return new MysqlClosableIterator(conn, stmt, rs);
+            StoreRow rows = new MysqlRow(getName(), this.datasource, sql);
+            return new StoreKeysIterator(rows);
         } catch(SQLException e) {
             throw new PersistenceFailureException("Fix me!", e);
+        }
+    }
+
+    @Override
+    public StoreTransaction<Version> startTransaction(ByteArray key)
+            throws PersistenceFailureException {
+        try {
+            return new MysqlTransaction(getName(), this.datasource, key);
+        } catch(DatabaseException e) {
+            throw new PersistenceFailureException(e);
         }
     }
 
@@ -156,250 +177,5 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[]> {
 
     public Object getCapability(StoreCapabilityType capability) {
         throw new NoSuchCapabilityException(capability, getName());
-    }
-
-    public boolean delete(ByteArray key, Version maxVersion) throws PersistenceFailureException {
-        StoreUtils.assertValidKey(key);
-        Connection conn = null;
-        PreparedStatement selectStmt = null;
-        ResultSet rs = null;
-        String select = "select key_, version_ from " + name + " where key_ = ? for update";
-
-        try {
-            conn = datasource.getConnection();
-            selectStmt = conn.prepareStatement(select);
-            selectStmt.setBytes(1, key.get());
-            rs = selectStmt.executeQuery();
-            boolean deletedSomething = false;
-            while(rs.next()) {
-                byte[] theKey = rs.getBytes("key_");
-                byte[] version = rs.getBytes("version_");
-                Version existing = VersionFactory.toVersion(version);
-                if(existing.compare(maxVersion) == Occured.BEFORE) {
-                    delete(conn, theKey, version);
-                    deletedSomething = true;
-                }
-            }
-
-            return deletedSomething;
-        } catch(SQLException e) {
-            throw new PersistenceFailureException("Fix me!", e);
-        } finally {
-            tryClose(rs);
-            tryClose(selectStmt);
-            tryClose(conn);
-        }
-    }
-
-    private void delete(Connection connection, byte[] key, byte[] version) throws SQLException {
-        String delete = "delete from " + name + " where key_ = ? and version_ = ?";
-        PreparedStatement deleteStmt = null;
-        try {
-
-            deleteStmt = connection.prepareStatement(delete);
-            deleteStmt.setBytes(1, key);
-            deleteStmt.setBytes(2, version);
-            deleteStmt.executeUpdate();
-        } finally {
-            tryClose(deleteStmt);
-        }
-    }
-
-    public Map<ByteArray, List<Versioned<byte[]>>> getAll(Iterable<ByteArray> keys)
-            throws VoldemortException {
-        StoreUtils.assertValidKeys(keys);
-        Connection conn = null;
-        PreparedStatement stmt = null;
-        ResultSet rs = null;
-        String select = "select version_, value_, metadata_ from " + name + " where key_ = ?";
-        try {
-            conn = datasource.getConnection();
-            stmt = conn.prepareStatement(select);
-            Map<ByteArray, List<Versioned<byte[]>>> result = StoreUtils.newEmptyHashMap(keys);
-            for(ByteArray key: keys) {
-                stmt.setBytes(1, key.get());
-                rs = stmt.executeQuery();
-                List<Versioned<byte[]>> found = Lists.newArrayList();
-                while(rs.next()) {
-                    byte[] version = rs.getBytes("version_");
-                    byte[] value = rs.getBytes("value_");
-                    byte[] metadata = rs.getBytes("metadata_");
-                    found.add(new Versioned<byte[]>(value,
-                                                    VersionFactory.toVersion(version),
-                                                    VersionFactory.toMetadata(metadata)));
-                }
-                if(found.size() > 0)
-                    result.put(key, found);
-            }
-            return result;
-        } catch(SQLException e) {
-            throw new PersistenceFailureException("Fix me!", e);
-        } finally {
-            tryClose(rs);
-            tryClose(stmt);
-            tryClose(conn);
-        }
-    }
-
-    public List<Versioned<byte[]>> get(ByteArray key) throws PersistenceFailureException {
-        StoreUtils.assertValidKey(key);
-        return StoreUtils.get(this, key);
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public Version put(ByteArray key, Versioned<byte[]> value) throws PersistenceFailureException {
-        StoreUtils.assertValidKey(key);
-        boolean doCommit = false;
-        Connection conn = null;
-        PreparedStatement insert = null;
-        PreparedStatement select = null;
-        ResultSet results = null;
-        String insertSql = "insert into " + name
-                           + " (key_, version_, value_, metadata_) values (?, ?, ?, ?)";
-        String selectSql = "select key_, version_ from " + name + " where key_ = ?";
-        try {
-            conn = datasource.getConnection();
-            conn.setAutoCommit(false);
-
-            // check for superior versions
-            select = conn.prepareStatement(selectSql);
-            select.setBytes(1, key.get());
-            results = select.executeQuery();
-            while(results.next()) {
-                byte[] thisKey = results.getBytes("key_");
-                Version version = VersionFactory.toVersion(results.getBytes("version_"));
-                Occured occured = value.getVersion().compare(version);
-                if(occured == Occured.BEFORE)
-                    throw new ObsoleteVersionException("Attempt to put version "
-                                                       + value.getVersion()
-                                                       + " which is superceeded by " + version
-                                                       + ".", version);
-                else if(occured == Occured.AFTER)
-                    delete(conn, thisKey, version.toBytes());
-            }
-
-            // Okay, cool, now put the value
-            insert = conn.prepareStatement(insertSql);
-            insert.setBytes(1, key.get());
-            Version clock = value.getVersion();
-            insert.setBytes(2, clock.toBytes());
-            insert.setBytes(3, value.getValue());
-            insert.setBytes(4, value.getMetadata().toBytes());
-            insert.executeUpdate();
-            doCommit = true;
-        } catch(SQLException e) {
-            if(e.getErrorCode() == MYSQL_ERR_DUP_KEY || e.getErrorCode() == MYSQL_ERR_DUP_ENTRY) {
-                throw new ObsoleteVersionException("Key or value already used.", value.getVersion());
-            } else {
-                throw new PersistenceFailureException("Fix me!", e);
-            }
-        } finally {
-            if(conn != null) {
-                try {
-                    if(doCommit)
-                        conn.commit();
-                    else
-                        conn.rollback();
-                } catch(SQLException e) {}
-            }
-            tryClose(results);
-            tryClose(insert);
-            tryClose(select);
-            tryClose(conn);
-        }
-        return value.getVersion();
-    }
-
-    private void tryClose(ResultSet rs) {
-        try {
-            if(rs != null)
-                rs.close();
-        } catch(Exception e) {
-            logger.error("Failed to close resultset.", e);
-        }
-    }
-
-    private void tryClose(Connection c) {
-        try {
-            if(c != null)
-                c.close();
-        } catch(Exception e) {
-            logger.error("Failed to close connection.", e);
-        }
-    }
-
-    private void tryClose(PreparedStatement s) {
-        try {
-            if(s != null)
-                s.close();
-        } catch(Exception e) {
-            logger.error("Failed to close prepared statement.", e);
-        }
-    }
-
-    private class MysqlClosableIterator implements
-            ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> {
-
-        private boolean hasMore;
-        private final ResultSet rs;
-        private final Connection connection;
-        private final PreparedStatement statement;
-
-        public MysqlClosableIterator(Connection connection,
-                                     PreparedStatement statement,
-                                     ResultSet resultSet) {
-            try {
-                // Move to the first item
-                this.hasMore = resultSet.next();
-            } catch(SQLException e) {
-                throw new PersistenceFailureException(e);
-            }
-            this.rs = resultSet;
-            this.connection = connection;
-            this.statement = statement;
-        }
-
-        public void close() {
-            tryClose(rs);
-            tryClose(statement);
-            tryClose(connection);
-        }
-
-        public boolean hasNext() {
-            return this.hasMore;
-        }
-
-        public Pair<ByteArray, Versioned<byte[]>> next() {
-            try {
-                if(!this.hasMore)
-                    throw new PersistenceFailureException("Next called on iterator, but no more items available!");
-                ByteArray key = new ByteArray(rs.getBytes("key_"));
-                byte[] value = rs.getBytes("value_");
-                byte[] metadata = rs.getBytes("metadata_");
-                Version clock = VersionFactory.toVersion(rs.getBytes("version_"));
-                this.hasMore = rs.next();
-                return Pair.create(key, new Versioned<byte[]>(value,
-                                                              clock,
-                                                              VersionFactory.toMetadata(metadata)));
-            } catch(SQLException e) {
-                throw new PersistenceFailureException(e);
-            }
-        }
-
-        public void remove() {
-            try {
-                rs.deleteRow();
-            } catch(SQLException e) {
-                throw new PersistenceFailureException(e);
-            }
-        }
-
-    }
-
-    public List<Version> getVersions(ByteArray key) {
-        return StoreUtils.getVersions(get(key));
     }
 }
