@@ -34,8 +34,9 @@ import voldemort.serialization.Serializer;
 import voldemort.serialization.SerializerFactory;
 import voldemort.store.StoreDefinition;
 import voldemort.utils.*;
-import voldemort.versioning.VectorClock;
+import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
+import voldemort.versioning.VersionFactory;
 import voldemort.xml.StoreDefinitionsMapper;
 
 import java.io.*;
@@ -368,7 +369,7 @@ public class VoldemortAdminTool {
                     ByteUtils.read(dis, valueBytes);
 
                     ByteArray key = new ByteArray(keyBytes);
-                    VectorClock version = new VectorClock(versionBytes);
+                    Version version = VersionFactory.toVersion(versionBytes);
                     Versioned<byte[]> value = new Versioned<byte[]>(valueBytes, version);
 
                     return new Pair<ByteArray, Versioned<byte[]>>(key, value);
@@ -408,7 +409,7 @@ public class VoldemortAdminTool {
             while (iterator.hasNext()) {
                 Pair<ByteArray, Versioned<byte[]>> kvPair = iterator.next();
                 byte[] keyBytes = kvPair.getFirst().get();
-                VectorClock version = (VectorClock) kvPair.getSecond().getVersion();
+                Version version = kvPair.getSecond().getVersion();
                 byte[] valueBytes = kvPair.getSecond().getValue();
 
                 Object keyObject = keySerializer.toObject(keyBytes);
@@ -439,7 +440,7 @@ public class VoldemortAdminTool {
             while (iterator.hasNext()) {
                 Pair<ByteArray, Versioned<byte[]>> kvPair = iterator.next();
                 byte[] keyBytes = kvPair.getFirst().get();
-                byte[] versionBytes = ((VectorClock) kvPair.getSecond().getVersion()).toBytes();
+                byte[] versionBytes = kvPair.getSecond().getVersion().toBytes();
                 byte[] valueBytes = kvPair.getSecond().getValue();
                 dos.writeInt(keyBytes.length);
                 dos.write(keyBytes);
