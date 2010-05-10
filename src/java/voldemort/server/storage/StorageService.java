@@ -128,12 +128,14 @@ public class StorageService extends AbstractService {
         this.socketPool = new SocketPool(config.getClientMaxConnectionsPerNode(),
                                          config.getClientConnectionTimeoutMs(),
                                          config.getSocketTimeoutMs(),
-                                         config.getSocketBufferSize());
+                                         config.getSocketBufferSize(),
+                                         config.getSocketKeepAlive());
 
         FailureDetectorConfig failureDetectorConfig = new FailureDetectorConfig(voldemortConfig).setNodes(metadata.getCluster()
                                                                                                                   .getNodes())
-                                                                                                .setStoreVerifier(new ServerStoreVerifier(storeRepository,
-                                                                                                                                          voldemortConfig.getNodeId()));
+                                                                                                .setStoreVerifier(new ServerStoreVerifier(socketPool,
+                                                                                                                                          metadata,
+                                                                                                                                          config));
         this.failureDetector = create(failureDetectorConfig, config.isJmxEnabled());
         this.storeStats = new StoreStats();
     }

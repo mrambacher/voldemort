@@ -158,7 +158,7 @@ public class VoldemortNativeRequestHandler extends AbstractRequestHandler implem
     protected boolean isCompleteRequest(final ByteBuffer buffer, DataInputStream inputStream)
             throws IOException {
         byte opCode = inputStream.readByte();
-
+        int newPosition;
         checkCompleteRequestHeader(inputStream);
 
         switch(opCode) {
@@ -172,12 +172,25 @@ public class VoldemortNativeRequestHandler extends AbstractRequestHandler implem
                 break;
             case VoldemortOpCode.PUT_OP_CODE:
                 int dataSize = checkCompletePutRequest(inputStream);
+                newPosition = buffer.position() + dataSize;
+
+                //if(newPosition > buffer.limit() || newPosition < 0)
+                   // throw new Exception("Data inconsistency on put - dataSize: " + dataSize
+                   //                     + ", position: " + buffer.position() + ", limit: "
+                   //                     + buffer.limit());
                 // Here we skip over the data (without reading it in) and
                 // move our position to just past it.
                 buffer.position(buffer.position() + dataSize);
                 break;
             case VoldemortOpCode.DELETE_OP_CODE:
                 int versionSize = checkCompleteDeleteRequest(inputStream);
+                newPosition = buffer.position() + versionSize;
+
+                //if(newPosition > buffer.limit() || newPosition < 0)
+                    //throw new Exception("Data inconsistency on delete - versionSize: "
+                    //                    + versionSize + ", position: " + buffer.position()
+                    //                    + ", limit: " + buffer.limit());
+
                 // Here we skip over the version (without reading it in) and
                 // move our position to just past it.
                 buffer.position(buffer.position() + versionSize);

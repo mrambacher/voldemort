@@ -31,7 +31,6 @@ import com.google.common.base.Objects;
 public final class Versioned<T> implements Serializable {
 
     private static final long serialVersionUID = 1;
-
     private Version version;
     private Metadata metadata;
     private volatile T object;
