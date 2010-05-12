@@ -29,6 +29,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.After;
 import org.junit.Before;
@@ -142,25 +143,27 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
                                  VoldemortException e) {
         Map<Integer, Store<ByteArray, byte[]>> subStores = Maps.newHashMap();
         int count = 0;
+        createFailureDetector();
         for(Node n: cluster.getNodes()) {
-            if(count >= cluster.getNumberOfNodes())
+            Store<ByteArray, byte[]> subStore = null;
+            if(count >= cluster.getNumberOfNodes()) {
                 throw new IllegalArgumentException(failing + " failing nodes, " + sleepy
                                                    + " sleepy nodes, but only "
                                                    + cluster.getNumberOfNodes()
                                                    + " nodes in the cluster.");
-            else if(count < failing)
-                subStores.put(n.getId(), new FailingStore<ByteArray, byte[]>("test", e));
-            else if(count < failing + sleepy)
-                subStores.put(n.getId(),
-                              new SleepyStore<ByteArray, byte[]>(Long.MAX_VALUE,
-                                                                 new InMemoryStorageEngine<ByteArray, byte[]>("test")));
-            else
-                subStores.put(n.getId(), new InMemoryStorageEngine<ByteArray, byte[]>("test"));
-
+            } else if(count < failing) {
+                subStore = new FailingStore<ByteArray, byte[]>("test", e);
+            } else if(count < failing + sleepy) {
+                subStore = new SleepyStore<ByteArray, byte[]>(Long.MAX_VALUE,
+                                                              new InMemoryStorageEngine<ByteArray, byte[]>("test"));
+            } else {
+                subStore = new InMemoryStorageEngine<ByteArray, byte[]>("test");
+            }
+            subStores.put(n.getId(), new NodeStore<ByteArray, byte[]>(n, failureDetector, subStore));
             count += 1;
         }
 
-        setFailureDetector(subStores);
+        setFailureDetectorVerifier(subStores);
 
         return new RoutedStore("test",
                                subStores,
@@ -175,12 +178,13 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
                                threads,
                                true,
                                1000L,
+                               TimeUnit.MILLISECONDS,
                                failureDetector);
     }
 
     private int countOccurances(RoutedStore routedStore, ByteArray key, Versioned<byte[]> value) {
         int count = 0;
-        for(Store<ByteArray, byte[]> store: routedStore.getInnerStores().values())
+        for(Store<ByteArray, byte[]> store: routedStore.getNodeStores().values())
             try {
                 if(store.get(key).size() > 0 && Utils.deepEquals(store.get(key).get(0), value))
                     count += 1;
@@ -322,8 +326,8 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
         cluster = getNineNodeCluster();
 
         Store<ByteArray, byte[]> s2 = getStore(cluster,
-                                               1,
                                                9,
+                                               1,
                                                9,
                                                9,
                                                0,
@@ -393,7 +397,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
 
         s2 = getStore(cluster,
                       1,
-                      9,
+                      1,
                       9,
                       9,
                       0,
@@ -464,13 +468,18 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
                                                                2,
                                                                RoutingStrategyType.CONSISTENT_STRATEGY);
 
+        this.createFailureDetector();
         Map<Integer, Store<ByteArray, byte[]>> subStores = Maps.newHashMap();
         subStores.put(Iterables.get(cluster.getNodes(), 0).getId(),
-                      new InMemoryStorageEngine<ByteArray, byte[]>("test"));
+                      new NodeStore<ByteArray, byte[]>(Iterables.get(cluster.getNodes(), 0),
+                                                       failureDetector,
+                                                       new InMemoryStorageEngine<ByteArray, byte[]>("test")));
         subStores.put(Iterables.get(cluster.getNodes(), 1).getId(),
-                      new FailingReadsStore<ByteArray, byte[]>("test"));
+                      new NodeStore<ByteArray, byte[]>(Iterables.get(cluster.getNodes(), 1),
+                                                       failureDetector,
+                                                       new FailingReadsStore<ByteArray, byte[]>("test")));
 
-        setFailureDetector(subStores);
+        setFailureDetectorVerifier(subStores);
 
         RoutedStore routedStore = new RoutedStore("test",
                                                   subStores,
@@ -479,6 +488,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
                                                   1,
                                                   true,
                                                   1000L,
+                                                  TimeUnit.MILLISECONDS,
                                                   failureDetector);
 
         Store<ByteArray, byte[]> store = new InconsistencyResolvingStore<ByteArray, byte[]>(routedStore,
@@ -517,13 +527,18 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
                                                                2,
                                                                RoutingStrategyType.CONSISTENT_STRATEGY);
 
+        createFailureDetector();
         Map<Integer, Store<ByteArray, byte[]>> subStores = Maps.newHashMap();
         subStores.put(Iterables.get(cluster.getNodes(), 0).getId(),
-                      new InMemoryStorageEngine<ByteArray, byte[]>("test"));
+                      new NodeStore<ByteArray, byte[]>(Iterables.get(cluster.getNodes(), 0),
+                                                       this.failureDetector,
+                                                       new InMemoryStorageEngine<ByteArray, byte[]>("test")));
         subStores.put(Iterables.get(cluster.getNodes(), 1).getId(),
-                      new InMemoryStorageEngine<ByteArray, byte[]>("test"));
+                      new NodeStore<ByteArray, byte[]>(Iterables.get(cluster.getNodes(), 1),
+                                                       this.failureDetector,
+                                                       new InMemoryStorageEngine<ByteArray, byte[]>("test")));
 
-        setFailureDetector(subStores);
+        setFailureDetectorVerifier(subStores);
         RoutedStore routedStore = new RoutedStore("test",
                                                   subStores,
                                                   cluster,
@@ -531,6 +546,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
                                                   1,
                                                   true,
                                                   1000L,
+                                                  TimeUnit.MILLISECONDS,
                                                   failureDetector);
 
         Store<ByteArray, byte[]> store = new InconsistencyResolvingStore<ByteArray, byte[]>(routedStore,
@@ -582,8 +598,11 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
         // Read repairs are done asynchronously, so we sleep for a short period.
         // It may be a good idea to use a synchronous executor service.
         Thread.sleep(100);
-        for(Store<ByteArray, byte[]> innerStore: routedStore.getInnerStores().values()) {
-            List<Versioned<byte[]>> innerVersioneds = innerStore.get(aKey);
+        for(Map.Entry<Integer, Store<ByteArray, byte[]>> entry: routedStore.getNodeStores()
+                                                                           .entrySet()) {
+            recordSuccess(failureDetector, Iterables.get(cluster.getNodes(), entry.getKey()));
+            Store<ByteArray, byte[]> inner = entry.getValue();
+            List<Versioned<byte[]>> innerVersioneds = inner.get(aKey);
             assertEquals(1, versioneds.size());
             assertEquals(new ByteArray(anotherValue), new ByteArray(innerVersioneds.get(0)
                                                                                    .getValue()));
@@ -608,20 +627,28 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
                                                                2,
                                                                RoutingStrategyType.CONSISTENT_STRATEGY);
 
+        this.createFailureDetector();
         /* The key used causes the nodes selected for writing to be [2, 0, 1] */
         Map<Integer, Store<ByteArray, byte[]>> subStores = Maps.newHashMap();
         subStores.put(Iterables.get(cluster.getNodes(), 2).getId(),
-                      new InMemoryStorageEngine<ByteArray, byte[]>("test"));
+                      new NodeStore<ByteArray, byte[]>(Iterables.get(cluster.getNodes(), 2),
+                                                       failureDetector,
+                                                       new InMemoryStorageEngine<ByteArray, byte[]>("test")));
         subStores.put(Iterables.get(cluster.getNodes(), 0).getId(),
-                      new FailingStore<ByteArray, byte[]>("test"));
+                      new NodeStore<ByteArray, byte[]>(Iterables.get(cluster.getNodes(), 0),
+                                                       failureDetector,
+                                                       new FailingStore<ByteArray, byte[]>("test")));
         /*
          * The bug would only show itself if the second successful required
          * write was slow (but still within the timeout).
          */
         subStores.put(Iterables.get(cluster.getNodes(), 1).getId(),
-                      new SleepyStore<ByteArray, byte[]>(100,
-                                                         new InMemoryStorageEngine<ByteArray, byte[]>("test")));
-        setFailureDetector(subStores);
+                      new NodeStore<ByteArray, byte[]>(Iterables.get(cluster.getNodes(), 1),
+                                                       failureDetector,
+                                                       new SleepyStore<ByteArray, byte[]>(100,
+                                                                                          new InMemoryStorageEngine<ByteArray, byte[]>("test"))));
+
+        setFailureDetectorVerifier(subStores);
         RoutedStore routedStore = new RoutedStore("test",
                                                   subStores,
                                                   cluster,
@@ -629,6 +656,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
                                                   1,
                                                   true,
                                                   1000L,
+                                                  TimeUnit.MILLISECONDS,
                                                   failureDetector);
 
         Store<ByteArray, byte[]> store = new InconsistencyResolvingStore<ByteArray, byte[]>(routedStore,
@@ -654,17 +682,21 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
         Map<Integer, Store<ByteArray, byte[]>> stores = new HashMap<Integer, Store<ByteArray, byte[]>>();
         List<Node> nodes = new ArrayList<Node>();
         int totalDelay = 0;
+        this.createFailureDetector();
         for(int i = 0; i < 3; i++) {
+            List<Integer> partitions = Arrays.asList(i);
+            Node node = new Node(i, "none", 0, 0, 0, partitions);
             int delay = 4 + i * timeout;
             totalDelay += delay;
             stores.put(i,
-                       new SleepyStore<ByteArray, byte[]>(delay,
-                                                          new InMemoryStorageEngine<ByteArray, byte[]>("test")));
-            List<Integer> partitions = Arrays.asList(i);
-            nodes.add(new Node(i, "none", 0, 0, 0, partitions));
+                       new NodeStore<ByteArray, byte[]>(node,
+                                                        failureDetector,
+                                                        new SleepyStore<ByteArray, byte[]>(delay,
+                                                                                           new InMemoryStorageEngine<ByteArray, byte[]>("test"))));
+            nodes.add(node);
         }
 
-        setFailureDetector(stores);
+        setFailureDetectorVerifier(stores);
 
         RoutedStore routedStore = new RoutedStore("test",
                                                   stores,
@@ -673,6 +705,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
                                                   3,
                                                   false,
                                                   timeout,
+                                                  TimeUnit.MILLISECONDS,
                                                   failureDetector);
 
         long start = System.currentTimeMillis();
@@ -703,14 +736,18 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
 
         Map<Integer, Store<ByteArray, byte[]>> subStores = Maps.newHashMap();
 
+        this.createFailureDetector();
         /* We just need to keep a store from one node */
         StatTrackingStore<ByteArray, byte[]> statTrackingStore = null;
         for(int i = 0; i < 3; ++i) {
             statTrackingStore = new StatTrackingStore<ByteArray, byte[]>(new InMemoryStorageEngine<ByteArray, byte[]>("test"),
                                                                          null);
-            subStores.put(Iterables.get(cluster.getNodes(), i).getId(), statTrackingStore);
+            subStores.put(Iterables.get(cluster.getNodes(), i).getId(),
+                          new NodeStore<ByteArray, byte[]>(Iterables.get(cluster.getNodes(), i),
+                                                           failureDetector,
+                                                           statTrackingStore));
         }
-        setFailureDetector(subStores);
+        setFailureDetectorVerifier(subStores);
         RoutedStore routedStore = new RoutedStore("test",
                                                   subStores,
                                                   cluster,
@@ -718,6 +755,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
                                                   1,
                                                   true,
                                                   1000L,
+                                                  TimeUnit.MILLISECONDS,
                                                   failureDetector);
         ByteArray key1 = aKey;
         routedStore.put(key1, Versioned.value("value1".getBytes()));
@@ -741,16 +779,19 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
         assertEquals("Number of operational nodes not what was expected.", expected, found);
     }
 
-    private void setFailureDetector(Map<Integer, Store<ByteArray, byte[]>> subStores) {
+    private void setFailureDetectorVerifier(Map<Integer, Store<ByteArray, byte[]>> subStores) {
+        failureDetector.getConfig().setStoreVerifier(create(subStores));
+    }
+
+    private void createFailureDetector() {
         // Destroy any previous failure detector before creating the next one
         // (the final one is destroyed in tearDown).
         if(failureDetector != null)
             failureDetector.destroy();
 
         FailureDetectorConfig failureDetectorConfig = new FailureDetectorConfig().setImplementationClassName(failureDetectorClass.getName())
-                                                                                 .setBannagePeriod(1000)
-                                                                                 .setNodes(cluster.getNodes())
-                                                                                 .setStoreVerifier(create(subStores));
+                                                                                 .setBannagePeriod(2000)
+                                                                                 .setNodes(cluster.getNodes());
         failureDetector = create(failureDetectorConfig, false);
     }
 }

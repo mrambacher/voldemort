@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import junit.framework.TestCase;
 
@@ -46,6 +47,7 @@ import voldemort.ServerTestUtils;
 import voldemort.TestUtils;
 import voldemort.VoldemortTestConstants;
 import voldemort.cluster.Cluster;
+import voldemort.cluster.Node;
 import voldemort.cluster.failuredetector.BannagePeriodFailureDetector;
 import voldemort.cluster.failuredetector.FailureDetector;
 import voldemort.cluster.failuredetector.FailureDetectorConfig;
@@ -69,8 +71,8 @@ import com.google.common.collect.Sets;
 @RunWith(Parameterized.class)
 public class ReadRepairerTest extends TestCase {
 
-    private ReadRepairer<String, Integer> repairer = new ReadRepairer<String, Integer>();
-    private List<NodeValue<String, Integer>> empty = new ArrayList<NodeValue<String, Integer>>();
+    private ReadRepairer<Integer, String, Integer> repairer = new ReadRepairer<Integer, String, Integer>();
+    private List<NodeValue<Integer, String, Integer>> empty = new ArrayList<NodeValue<Integer, String, Integer>>();
     private Random random = new Random(1456);
 
     private Time time = new MockTime();
@@ -105,9 +107,9 @@ public class ReadRepairerTest extends TestCase {
 
     @Test
     public void testAllEqual() throws Exception {
-        List<NodeValue<String, Integer>> values = asList(getValue(1, 1, new int[] { 1 }),
-                                                         getValue(2, 1, new int[] { 1 }),
-                                                         getValue(3, 1, new int[] { 1 }));
+        List<NodeValue<Integer, String, Integer>> values = asList(getValue(1, 1, new int[] { 1 }),
+                                                                  getValue(2, 1, new int[] { 1 }),
+                                                                  getValue(3, 1, new int[] { 1 }));
         assertEquals(empty, repairer.getRepairs(values));
     }
 
@@ -129,31 +131,35 @@ public class ReadRepairerTest extends TestCase {
                                                                2,
                                                                2,
                                                                RoutingStrategyType.CONSISTENT_STRATEGY);
-        Map<Integer, Store<ByteArray, byte[]>> subStores = Maps.newHashMap();
-        for(int a = 0; a < 3; a++) {
-            subStores.put(Iterables.get(cluster.getNodes(), a).getId(),
-                          new InMemoryStorageEngine<ByteArray, byte[]>("test"));
-        }
 
         FailureDetectorConfig failureDetectorConfig = new FailureDetectorConfig().setImplementationClassName(failureDetectorClass.getName())
                                                                                  .setBannagePeriod(1000)
                                                                                  .setNodes(cluster.getNodes())
-                                                                                 .setStoreVerifier(create(subStores))
                                                                                  .setTime(time);
 
         failureDetector = create(failureDetectorConfig, false);
+        Map<Integer, Store<ByteArray, byte[]>> subStores = Maps.newHashMap();
+        for(int a = 0; a < 3; a++) {
+            Node node = Iterables.get(cluster.getNodes(), a);
+            subStores.put(node.getId(),
+                          new NodeStore<ByteArray, byte[]>(node,
+                                                           failureDetector,
+                                                           new InMemoryStorageEngine<ByteArray, byte[]>("test")));
+        }
+        failureDetector.getConfig().setStoreVerifier(create(subStores));
 
-        RoutedStore store = new RoutedStore("test",
-                                            subStores,
-                                            cluster,
-                                            storeDef,
-                                            1,
-                                            true,
-                                            1000L,
-                                            failureDetector);
+        ReadRepairStore<Integer> store = new ReadRepairStore<Integer>("test",
+                                                                      subStores,
+                                                                      storeDef,
+                                                                      1,
+                                                                      1000L,
+                                                                      TimeUnit.MILLISECONDS,
+                                                                      true);
 
         recordException(failureDetector, Iterables.get(cluster.getNodes(), 0));
-        store.put(key, new Versioned<byte[]>(value));
+        Versioned<byte[]> versioned = new Versioned<byte[]>(value);
+        versioned.getVersion().incrementClock(1);
+        store.put(key, versioned);
         recordSuccess(failureDetector, Iterables.get(cluster.getNodes(), 0));
         time.sleep(2000);
 
@@ -165,7 +171,7 @@ public class ReadRepairerTest extends TestCase {
         ByteArray anotherKey = TestUtils.toByteArray("anotherKey");
         // Try again, now use getAll to read repair
         recordException(failureDetector, Iterables.get(cluster.getNodes(), 0));
-        store.put(anotherKey, new Versioned<byte[]>(value));
+        store.put(anotherKey, versioned);
         recordSuccess(failureDetector, Iterables.get(cluster.getNodes(), 0));
         assertEquals(2, store.getAll(Arrays.asList(anotherKey)).get(anotherKey).size());
         assertEquals(3, store.get(anotherKey).size());
@@ -175,10 +181,10 @@ public class ReadRepairerTest extends TestCase {
      * See Issue 92: ReadRepairer.getRepairs should not return duplicates.
      */
     public void testNoDuplicates() throws Exception {
-        List<NodeValue<String, Integer>> values = asList(getValue(1, 1, new int[] { 1, 2 }),
-                                                         getValue(2, 1, new int[] { 1, 2 }),
-                                                         getValue(3, 1, new int[] { 1 }));
-        List<NodeValue<String, Integer>> repairs = repairer.getRepairs(values);
+        List<NodeValue<Integer, String, Integer>> values = asList(getValue(1, 1, new int[] { 1, 2 }),
+                                                                  getValue(2, 1, new int[] { 1, 2 }),
+                                                                  getValue(3, 1, new int[] { 1 }));
+        List<NodeValue<Integer, String, Integer>> repairs = repairer.getRepairs(values);
         assertEquals(1, repairs.size());
         assertEquals(getValue(3, 1, new int[] { 1, 2 }), repairs.get(0));
     }
@@ -273,16 +279,16 @@ public class ReadRepairerTest extends TestCase {
      * @param expected List of expected values
      * @param input List of actual values
      */
-    public void assertVariationsEqual(List<NodeValue<String, Integer>> expected,
-                                      List<NodeValue<String, Integer>> input) {
-        List<NodeValue<String, Integer>> copy = new ArrayList<NodeValue<String, Integer>>(input);
+    public void assertVariationsEqual(List<NodeValue<Integer, String, Integer>> expected,
+                                      List<NodeValue<Integer, String, Integer>> input) {
+        List<NodeValue<Integer, String, Integer>> copy = new ArrayList<NodeValue<Integer, String, Integer>>(input);
         for(int i = 0; i < Math.min(5, copy.size()); i++) {
             int j = random.nextInt(copy.size());
             int k = random.nextInt(copy.size());
             Collections.swap(copy, j, k);
-            Set<NodeValue<String, Integer>> expSet = Sets.newHashSet(expected);
-            List<NodeValue<String, Integer>> repairs = repairer.getRepairs(copy);
-            Set<NodeValue<String, Integer>> repairSet = Sets.newHashSet(repairs);
+            Set<NodeValue<Integer, String, Integer>> expSet = Sets.newHashSet(expected);
+            List<NodeValue<Integer, String, Integer>> repairs = repairer.getRepairs(copy);
+            Set<NodeValue<Integer, String, Integer>> repairSet = Sets.newHashSet(repairs);
             assertEquals("Repairs list contains duplicates on iteration" + i + ".",
                          repairs.size(),
                          repairSet.size());
@@ -298,19 +304,20 @@ public class ReadRepairerTest extends TestCase {
      */
     @Test
     public void testMultipleKeys() {
-        List<NodeValue<String, Integer>> nodeValues = Lists.newArrayList();
+        List<NodeValue<Integer, String, Integer>> nodeValues = Lists.newArrayList();
         nodeValues.add(getValue(0, 1, new int[2]));
         nodeValues.add(getValue(0, 2, new int[0]));
         nodeValues.add(getValue(1, 2, new int[0]));
         nodeValues.add(getValue(2, 1, new int[2]));
-        List<NodeValue<String, Integer>> repairs = repairer.getRepairs(nodeValues);
+        List<NodeValue<Integer, String, Integer>> repairs = repairer.getRepairs(nodeValues);
         assertEquals("There should be no repairs.", 0, repairs.size());
     }
 
-    private NodeValue<String, Integer> getValue(int nodeId, int value, int[] version) {
-        return new NodeValue<String, Integer>(nodeId,
-                                              Integer.toString(value),
-                                              new Versioned<Integer>(value, getClock(version)));
+    private NodeValue<Integer, String, Integer> getValue(int nodeId, int value, int[] version) {
+        return new NodeValue<Integer, String, Integer>(nodeId,
+                                                       Integer.toString(value),
+                                                       new Versioned<Integer>(value,
+                                                                              getClock(version)));
     }
 
 }
