@@ -43,7 +43,7 @@ import com.google.common.collect.Multimap;
  * @param <V> The class of the value in the fetch
  */
 @Threadsafe
-public class ReadRepairer<K, V> {
+public class ReadRepairer<N, K, V> {
 
     /**
      * Compute the repair set from the given values and nodes
@@ -51,14 +51,14 @@ public class ReadRepairer<K, V> {
      * @param nodeValues The value found on each node
      * @return A set of repairs to perform
      */
-    public List<NodeValue<K, V>> getRepairs(List<NodeValue<K, V>> nodeValues) {
+    public List<NodeValue<N, K, V>> getRepairs(List<NodeValue<N, K, V>> nodeValues) {
         int size = nodeValues.size();
         if(size <= 1)
             return Collections.emptyList();
 
-        Map<K, List<NodeValue<K, V>>> keyToNodeValues = Maps.newHashMap();
-        for(NodeValue<K, V> nodeValue: nodeValues) {
-            List<NodeValue<K, V>> keyNodeValues = keyToNodeValues.get(nodeValue.getKey());
+        Map<K, List<NodeValue<N, K, V>>> keyToNodeValues = Maps.newHashMap();
+        for(NodeValue<N, K, V> nodeValue: nodeValues) {
+            List<NodeValue<N, K, V>> keyNodeValues = keyToNodeValues.get(nodeValue.getKey());
             if(keyNodeValues == null) {
                 keyNodeValues = Lists.newArrayListWithCapacity(5);
                 keyToNodeValues.put(nodeValue.getKey(), keyNodeValues);
@@ -66,29 +66,29 @@ public class ReadRepairer<K, V> {
             keyNodeValues.add(nodeValue);
         }
 
-        List<NodeValue<K, V>> result = Lists.newArrayList();
-        for(List<NodeValue<K, V>> keyNodeValues: keyToNodeValues.values())
+        List<NodeValue<N, K, V>> result = Lists.newArrayList();
+        for(List<NodeValue<N, K, V>> keyNodeValues: keyToNodeValues.values())
             result.addAll(singleKeyGetRepairs(keyNodeValues));
         return result;
     }
 
-    private List<NodeValue<K, V>> singleKeyGetRepairs(List<NodeValue<K, V>> nodeValues) {
+    private List<NodeValue<N, K, V>> singleKeyGetRepairs(List<NodeValue<N, K, V>> nodeValues) {
         int size = nodeValues.size();
         if(size <= 1)
             return Collections.emptyList();
 
         // A list of obsolete nodes that need to be repaired
-        Set<Integer> obsolete = new HashSet<Integer>(3);
+        Set<N> obsolete = new HashSet<N>(3);
 
         // A Map of Version=>NodeValues that contains the current best estimate
         // of the set of current versions
         // and the nodes containing them
-        Multimap<Version, NodeValue<K, V>> concurrents = HashMultimap.create();
+        Multimap<Version, NodeValue<N, K, V>> concurrents = HashMultimap.create();
         concurrents.put(nodeValues.get(0).getVersion(), nodeValues.get(0));
 
         // check each value against the current set of most current versions
         for(int i = 1; i < nodeValues.size(); i++) {
-            NodeValue<K, V> curr = nodeValues.get(i);
+            NodeValue<N, K, V> curr = nodeValues.get(i);
             boolean concurrentToAll = true;
             Set<Version> versions = new HashSet<Version>(concurrents.keySet());
             for(Version concurrentVersion: versions) {
@@ -105,14 +105,14 @@ public class ReadRepairer<K, V> {
                 if(occured == Occured.BEFORE) {
                     // This value is obsolete! Stop checking against other
                     // values...
-                    obsolete.add(curr.getNodeId());
+                    obsolete.add(curr.getNode());
                     concurrentToAll = false;
                     break;
                 } else if(occured == Occured.AFTER) {
                     // This concurrent value is obsolete and the current value
                     // should replace it
-                    for(NodeValue<K, V> v: concurrents.get(concurrentVersion))
-                        obsolete.add(v.getNodeId());
+                    for(NodeValue<N, K, V> v: concurrents.get(concurrentVersion))
+                        obsolete.add(v.getNode());
                     concurrents.removeAll(concurrentVersion);
                     concurrentToAll = false;
                     concurrents.put(curr.getVersion(), curr);
@@ -125,14 +125,14 @@ public class ReadRepairer<K, V> {
         }
 
         // Construct the list of repairs
-        List<NodeValue<K, V>> repairs = new ArrayList<NodeValue<K, V>>(3);
-        for(Integer id: obsolete) {
+        List<NodeValue<N, K, V>> repairs = new ArrayList<NodeValue<N, K, V>>(3);
+        for(N node: obsolete) {
             // repair all obsolete nodes
             for(Version v: concurrents.keySet()) {
-                NodeValue<K, V> concurrent = concurrents.get(v).iterator().next();
-                NodeValue<K, V> repair = new NodeValue<K, V>(id,
-                                                             concurrent.getKey(),
-                                                             concurrent.getVersioned());
+                NodeValue<N, K, V> concurrent = concurrents.get(v).iterator().next();
+                NodeValue<N, K, V> repair = new NodeValue<N, K, V>(node,
+                                                                   concurrent.getKey(),
+                                                                   concurrent.getVersioned());
                 repairs.add(repair);
             }
         }
@@ -141,13 +141,13 @@ public class ReadRepairer<K, V> {
             // if there are more then one concurrent versions on different
             // nodes,
             // we should repair so all have the same set of values
-            Set<NodeValue<K, V>> existing = new HashSet<NodeValue<K, V>>(repairs);
-            for(NodeValue<K, V> entry1: concurrents.values()) {
-                for(NodeValue<K, V> entry2: concurrents.values()) {
+            Set<NodeValue<N, K, V>> existing = new HashSet<NodeValue<N, K, V>>(repairs);
+            for(NodeValue<N, K, V> entry1: concurrents.values()) {
+                for(NodeValue<N, K, V> entry2: concurrents.values()) {
                     if(!entry1.getVersion().equals(entry2.getVersion())) {
-                        NodeValue<K, V> repair = new NodeValue<K, V>(entry1.getNodeId(),
-                                                                     entry2.getKey(),
-                                                                     entry2.getVersioned());
+                        NodeValue<N, K, V> repair = new NodeValue<N, K, V>(entry1.getNode(),
+                                                                           entry2.getKey(),
+                                                                           entry2.getVersioned());
                         if(!existing.contains(repair))
                             repairs.add(repair);
                     }

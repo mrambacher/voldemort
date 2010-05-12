@@ -44,6 +44,7 @@ import voldemort.store.compress.CompressionStrategyFactory;
 import voldemort.store.limiting.LimitingStore;
 import voldemort.store.logging.LoggingStore;
 import voldemort.store.metadata.MetadataStore;
+import voldemort.store.routed.NodeStore;
 import voldemort.store.routed.RoutedStore;
 import voldemort.store.serialized.SerializingStore;
 import voldemort.store.stats.StatTrackingStore;
@@ -146,6 +147,7 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
                                                       node.getHost(),
                                                       getPort(node),
                                                       this.requestFormatType);
+            store = new NodeStore<ByteArray, byte[]>(node, getFailureDetector(), store);
             store = new LoggingStore(store);
             clientMapping.put(node.getId(), store);
         }
@@ -155,10 +157,11 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
                                                          clientMapping,
                                                          cluster,
                                                          storeDef,
-                                                         repairReads,
                                                          threadPool,
-                                                         routingTimeoutMs,
                                                          getFailureDetector(),
+                                                         repairReads,
+                                                         routingTimeoutMs,
+                                                         TimeUnit.MILLISECONDS,
                                                          SystemTime.INSTANCE);
 
         // Do Vector-Clock Inconsistency resolution at a higher-level

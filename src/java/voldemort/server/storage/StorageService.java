@@ -31,6 +31,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 import javax.management.MBeanOperationInfo;
 import javax.management.MBeanServer;
@@ -65,6 +66,7 @@ import voldemort.store.metadata.MetadataStore;
 import voldemort.store.readonly.ReadOnlyStorageEngine;
 import voldemort.store.rebalancing.RebootstrappingStore;
 import voldemort.store.rebalancing.RedirectingStore;
+import voldemort.store.routed.NodeStore;
 import voldemort.store.routed.RoutedStore;
 import voldemort.store.serialized.SerializingStorageEngine;
 import voldemort.store.socket.SocketDestination;
@@ -286,17 +288,19 @@ public class StorageService extends AbstractService {
         for(Node node: cluster.getNodes()) {
             Store<ByteArray, byte[]> store = getNodeStore(def.getName(), node, localNode);
             this.storeRepository.addNodeStore(node.getId(), store);
-            nodeStores.put(node.getId(), store);
+            nodeStores.put(node.getId(), new NodeStore<ByteArray, byte[]>(node,
+                                                                          failureDetector,
+                                                                          store));
         }
-
         Store<ByteArray, byte[]> routedStore = new RoutedStore(def.getName(),
                                                                nodeStores,
                                                                metadata.getCluster(),
                                                                def,
-                                                               true,
                                                                this.clientThreadPool,
-                                                               voldemortConfig.getRoutingTimeoutMs(),
                                                                failureDetector,
+                                                               true,
+                                                               voldemortConfig.getRoutingTimeoutMs(),
+                                                               TimeUnit.MILLISECONDS,
                                                                SystemTime.INSTANCE);
 
         routedStore = new RebootstrappingStore(metadata,
