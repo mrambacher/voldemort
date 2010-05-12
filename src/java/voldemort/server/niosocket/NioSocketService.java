@@ -142,8 +142,10 @@ public class NioSocketService extends AbstractSocketService {
             acceptorThread = new Thread(new Acceptor(endpoint));
             acceptorThread.start();
         } catch(Exception e) {
-            if(logger.isEnabledFor(Level.ERROR))
+            if(logger.isEnabledFor(Level.ERROR)) {
                 logger.error(e.getMessage(), e);
+            }
+            throw new VoldemortException(e);
         }
 
         enableJmx(this);
