@@ -68,7 +68,8 @@ public class MockStoreClientFactory implements StoreClientFactory {
 
     public <K, V> StoreClient<K, V> getStoreClient(String storeName,
                                                    InconsistencyResolver<Versioned<V>> resolver) {
-        return new DefaultStoreClient(storeName, resolver, this, 3);
+        Store<K, V> metadataStore = new MetadataRefreshingStore<K, V>(storeName, resolver, this, 3);
+        return new DefaultStoreClient<K, V>(metadataStore);
     }
 
     public <K1, V1> Store<K1, V1> getRawStore(String storeName,

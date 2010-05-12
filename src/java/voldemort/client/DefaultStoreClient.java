@@ -22,17 +22,14 @@ import java.util.Map.Entry;
 
 import org.apache.log4j.Logger;
 
-import voldemort.VoldemortException;
 import voldemort.annotations.concurrency.Threadsafe;
 import voldemort.annotations.jmx.JmxManaged;
 import voldemort.annotations.jmx.JmxOperation;
 import voldemort.cluster.Node;
 import voldemort.routing.RoutingStrategy;
 import voldemort.serialization.Serializer;
-import voldemort.store.InvalidMetadataException;
 import voldemort.store.Store;
 import voldemort.store.StoreCapabilityType;
-import voldemort.utils.Utils;
 import voldemort.versioning.InconsistencyResolver;
 import voldemort.versioning.InconsistentDataException;
 import voldemort.versioning.ObsoleteVersionException;
@@ -55,29 +52,35 @@ import com.google.common.collect.Maps;
 @JmxManaged(description = "A voldemort client")
 public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
 
-    private final Logger logger = Logger.getLogger(DefaultStoreClient.class);
-    private final StoreClientFactory storeFactory;
+    private final Logger logger = Logger.getLogger(MetadataRefreshingStore.class);
 
-    private final int metadataRefreshAttempts;
-    private final String storeName;
-    private final InconsistencyResolver<Versioned<V>> resolver;
     private volatile Store<K, V> store;
+
+    public DefaultStoreClient(Store<K, V> store) {
+        this.store = store;
+    }
 
     public DefaultStoreClient(String storeName,
                               InconsistencyResolver<Versioned<V>> resolver,
                               StoreClientFactory storeFactory,
                               int maxMetadataRefreshAttempts) {
-        this.storeName = Utils.notNull(storeName);
-        this.resolver = resolver;
-        this.storeFactory = Utils.notNull(storeFactory);
-        this.metadataRefreshAttempts = maxMetadataRefreshAttempts;
-        bootStrap();
+        this(new MetadataRefreshingStore<K, V>(storeName,
+                                               resolver,
+                                               storeFactory,
+                                               maxMetadataRefreshAttempts));
     }
 
     @JmxOperation(description = "bootstrap metadata from the cluster.")
+    @SuppressWarnings("unchecked")
     public void bootStrap() {
-        logger.info("bootstrapping metadata.");
-        this.store = storeFactory.getRawStore(storeName, resolver);
+        try {
+            logger.info("bootstrapping metadata.");
+            MetadataRefreshingStore<K, V> metadata = (MetadataRefreshingStore<K, V>) store.getCapability(StoreCapabilityType.BOOT_STRAP);
+            metadata.bootStrap();
+        } catch(Exception e) {
+            logger.error("Caught exception while bootstrapping metadata. - " + e.getMessage(), e);
+
+        }
     }
 
     public boolean delete(K key) {
@@ -88,15 +91,7 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
     }
 
     public boolean delete(K key, Version version) {
-        for(int attempts = 0; attempts < this.metadataRefreshAttempts; attempts++) {
-            try {
-                return store.delete(key, version);
-            } catch(InvalidMetadataException e) {
-                bootStrap();
-            }
-        }
-        throw new VoldemortException(this.metadataRefreshAttempts
-                                     + " metadata refresh attempts failed.");
+        return store.delete(key, version);
     }
 
     public V getValue(K key, V defaultValue) {
@@ -116,28 +111,12 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
     }
 
     public Versioned<V> get(K key, Versioned<V> defaultValue) {
-        for(int attempts = 0; attempts < this.metadataRefreshAttempts; attempts++) {
-            try {
-                List<Versioned<V>> items = store.get(key);
-                return getItemOrThrow(key, defaultValue, items);
-            } catch(InvalidMetadataException e) {
-                bootStrap();
-            }
-        }
-        throw new VoldemortException(this.metadataRefreshAttempts
-                                     + " metadata refresh attempts failed.");
+        List<Versioned<V>> items = store.get(key);
+        return getItemOrThrow(key, defaultValue, items);
     }
 
     private List<Version> getVersions(K key) {
-        for(int attempts = 0; attempts < this.metadataRefreshAttempts; attempts++) {
-            try {
-                return store.getVersions(key);
-            } catch(InvalidMetadataException e) {
-                bootStrap();
-            }
-        }
-        throw new VoldemortException(this.metadataRefreshAttempts
-                                     + " metadata refresh attempts failed.");
+        return store.getVersions(key);
     }
 
     private Versioned<V> getItemOrThrow(K key, Versioned<V> defaultValue, List<Versioned<V>> items) {
@@ -155,18 +134,7 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
     }
 
     public Map<K, Versioned<V>> getAll(Iterable<K> keys) {
-        Map<K, List<Versioned<V>>> items = null;
-        for(int attempts = 0;; attempts++) {
-            if(attempts >= this.metadataRefreshAttempts)
-                throw new VoldemortException(this.metadataRefreshAttempts
-                                             + " metadata refresh attempts failed.");
-            try {
-                items = store.getAll(keys);
-                break;
-            } catch(InvalidMetadataException e) {
-                bootStrap();
-            }
-        }
+        Map<K, List<Versioned<V>>> items = store.getAll(keys);
         Map<K, Versioned<V>> result = Maps.newHashMapWithExpectedSize(items.size());
 
         for(Entry<K, List<Versioned<V>>> mapEntry: items.entrySet()) {
@@ -203,16 +171,8 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
     }
 
     public Versioned<V> put(K key, Versioned<V> versioned) throws ObsoleteVersionException {
-        for(int attempts = 0; attempts < this.metadataRefreshAttempts; attempts++) {
-            try {
-                Version version = store.put(key, versioned);
-                return new Versioned<V>(versioned.getValue(), version);
-            } catch(InvalidMetadataException e) {
-                bootStrap();
-            }
-        }
-        throw new VoldemortException(this.metadataRefreshAttempts
-                                     + " metadata refresh attempts failed.");
+        Version version = store.put(key, versioned);
+        return new Versioned<V>(versioned.getValue(), version);
     }
 
     public boolean applyUpdate(UpdateAction<K, V> action) {
