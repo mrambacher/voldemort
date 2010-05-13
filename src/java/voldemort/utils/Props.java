@@ -290,4 +290,11 @@ public class Props implements Map<String, String> {
         return getList(key, null);
     }
 
+    public Properties toProperties() {
+        Properties properties = new Properties();
+        for(String key: this.keySet()) {
+            properties.setProperty(key, this.get(key));
+        }
+        return properties;
+    }
 }

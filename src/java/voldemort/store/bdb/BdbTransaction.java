@@ -6,10 +6,10 @@ import java.util.List;
 import voldemort.serialization.IdentitySerializer;
 import voldemort.serialization.VersionedSerializer;
 import voldemort.store.PersistenceFailureException;
+import voldemort.store.StoreIterator;
 import voldemort.store.StoreTransaction;
 import voldemort.store.StoreVersionIterator;
 import voldemort.utils.ByteArray;
-import voldemort.utils.ClosableIterator;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
@@ -38,7 +38,7 @@ public class BdbTransaction implements StoreTransaction<Version> {
         this.updates = null;
     }
 
-    public ClosableIterator<Version> getIterator() throws PersistenceFailureException {
+    public StoreIterator<Version> getIterator() throws PersistenceFailureException {
         BdbStoreRow rows = new BdbStoreKeyedRow(key, cursor, LockMode.RMW);
         return new StoreVersionIterator(rows);
     }
@@ -105,12 +105,12 @@ public class BdbTransaction implements StoreTransaction<Version> {
         }
     }
 
-    public void insert(ClosableIterator<Version> iter, Versioned<byte[]> value)
+    public void insert(StoreIterator<Version> iter, Versioned<byte[]> value)
             throws PersistenceFailureException {
         insert(cursor, value);
     }
 
-    public void update(ClosableIterator<Version> iter, Versioned<byte[]> value)
+    public void update(StoreIterator<Version> iter, Versioned<byte[]> value)
             throws PersistenceFailureException {
         if(updates == null) {
             updates = new ArrayList<Versioned<byte[]>>();

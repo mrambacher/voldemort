@@ -23,10 +23,8 @@ import org.apache.log4j.Logger;
 import voldemort.VoldemortException;
 import voldemort.annotations.jmx.JmxOperation;
 import voldemort.store.AbstractStorageEngine;
-import voldemort.store.NoSuchCapabilityException;
 import voldemort.store.PersistenceFailureException;
 import voldemort.store.StorageInitializationException;
-import voldemort.store.StoreCapabilityType;
 import voldemort.store.StoreEntriesIterator;
 import voldemort.store.StoreKeysIterator;
 import voldemort.store.StoreRow;
@@ -201,10 +199,6 @@ public class BdbStorageEngine extends AbstractStorageEngine {
         } catch(DatabaseException e) {
             throw new PersistenceFailureException(e);
         }
-    }
-
-    public Object getCapability(StoreCapabilityType capability) {
-        throw new NoSuchCapabilityException(capability, getName());
     }
 
     public void close() throws PersistenceFailureException {

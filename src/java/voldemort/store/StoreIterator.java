@@ -18,6 +18,10 @@ abstract public class StoreIterator<T> implements ClosableIterator<T> {
         close();
     }
 
+    public StoreRow getRow() {
+        return row;
+    }
+
     public ByteArray getKey() throws PersistenceFailureException {
         return row.getKey();
     }

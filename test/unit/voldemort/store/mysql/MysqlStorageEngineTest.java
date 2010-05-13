@@ -16,12 +16,6 @@
 
 package voldemort.store.mysql;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
-
-import javax.sql.DataSource;
-
 import org.apache.commons.dbcp.BasicDataSource;
 import org.junit.Test;
 
@@ -32,14 +26,103 @@ import voldemort.utils.ByteArray;
 
 public class MysqlStorageEngineTest extends AbstractStorageEngineTest {
 
+    protected String databaseJDBCHost = null;
+    protected String databaseJDBCUser = null;
+    protected String databaseJDBCPswd = null;
+
+    protected final static String DBCONN_PROPS = "configs/DBConnection.properties";
+    protected final static String DBCONN_HOST_ENV_NAME = "VOLD_JDBC_HOST";
+    protected final static String DBCONN_USER_ENV_NAME = "VOLD_JDBC_USER";
+    protected final static String DBCONN_PSWD_ENV_NAME = "VOLD_JDBC_PSWD";
+    protected final static String DEFAULT_JDBC_HOST = "localhost:3306/test";
+    protected final static String DEFAULT_JDBC_USER = "root";
+    protected final static String DEFAULT_JDBC_PSWD = "";
+
+    protected MysqlStorageEngineTest(String storeName) {
+        super(storeName);
+        configureDatabaseProperties();
+    }
+
     public MysqlStorageEngineTest() {
-        super("test_store");
+        super("test_store_" + System.getProperty("user.name", "mysql"));
+        configureDatabaseProperties();
     }
 
     @Override
     public void setUp() throws Exception {
-        // this.engine = (MysqlStorageEngine) createStorageEngine("test_store");
+        StorageEngine<ByteArray, byte[]> engine = getStorageEngine();
+        destroyEngine(engine);
+        createEngine(engine);
         super.setUp();
+    }
+
+    protected void destroyEngine(StorageEngine<ByteArray, byte[]> engine) {
+        MysqlStorageEngine mysql = (MysqlStorageEngine) engine;
+        mysql.destroy();
+    }
+
+    protected void createEngine(StorageEngine<ByteArray, byte[]> engine) {
+        MysqlStorageEngine mysql = (MysqlStorageEngine) engine;
+        mysql.create();
+    }
+
+    /**
+     * If VOLD_JDBC_HOST is set, use it as the <host:port/database> postfix in
+     * JDBC connection URL.
+     * 
+     * Otherwise, use the default from the properties bundle
+     * 
+     * Finally, use the static constants from this class as the ultimate
+     * fallback option
+     */
+    protected void configureDatabaseProperties() {
+
+        String defaultJDBCHost = null;
+        String defaultJDBCUser = null;
+        String defaultJDBCPswd = null;
+
+        // Now get all the defaults.
+        Properties props = new Properties();
+        ClassLoader classLoader = AbstractStorageEngineTest.class.getClassLoader();
+        InputStream inStream = null;
+
+        try {
+            inStream = classLoader.getResourceAsStream(DBCONN_PROPS);
+            if(inStream != null) {
+                props.load(inStream);
+            }
+        } catch(IOException e) {
+            e.printStackTrace();
+        } finally {
+            if(null != inStream) {
+                try {
+                    inStream.close();
+                } catch(IOException e1) {
+                    e1.printStackTrace();
+                }
+                inStream = null;
+            }
+        }
+        defaultJDBCHost = props.getProperty("database.jdbc.host", DEFAULT_JDBC_HOST);
+        defaultJDBCUser = props.getProperty("database.jdbc.user", DEFAULT_JDBC_USER);
+        defaultJDBCPswd = props.getProperty("database.jdbc.password", DEFAULT_JDBC_PSWD);
+
+        String host = System.getenv(DBCONN_HOST_ENV_NAME);
+        if(null == host || host.isEmpty()) {
+            host = defaultJDBCHost;
+        }
+        String user = System.getenv(DBCONN_USER_ENV_NAME);
+        if(null == user || user.isEmpty()) {
+            user = defaultJDBCUser;
+        }
+        String pswd = System.getenv(DBCONN_PSWD_ENV_NAME);
+        if(null == pswd || pswd.isEmpty()) {
+            pswd = defaultJDBCPswd;
+        }
+
+        databaseJDBCHost = host;
+        databaseJDBCUser = user;
+        databaseJDBCPswd = pswd;
     }
 
     @Override
@@ -53,8 +136,8 @@ public class MysqlStorageEngineTest extends AbstractStorageEngineTest {
     @Override
     public void tearDown() throws Exception {
         for(String engine: this.engines.keySet()) {
-            MysqlStorageEngine mysql = (MysqlStorageEngine) engines.get(engine);
-            mysql.destroy();
+            StorageEngine<ByteArray, byte[]> storageEngine = engines.get(engine);
+            destroyEngine(storageEngine);
         }
         super.tearDown();
     }
@@ -64,29 +147,29 @@ public class MysqlStorageEngineTest extends AbstractStorageEngineTest {
         return valueSize < (64 * 1024) && keySize < 200;
     }
 
-    private DataSource getDataSource() {
+    protected DataSource getDataSource() {
         BasicDataSource ds = new BasicDataSource();
-        ds.setUrl("jdbc:mysql://localhost:3306/test");
-        ds.setUsername("root");
-        ds.setPassword("");
+        ds.setUrl("jdbc:mysql://" + databaseJDBCHost);
+        ds.setUsername(databaseJDBCUser);
+        ds.setPassword(databaseJDBCPswd);
         ds.setDriverClassName("com.mysql.jdbc.Driver");
         return ds;
     }
 
-    public void executeQuery(DataSource datasource, String query) throws SQLException {
-        Connection c = datasource.getConnection();
+    public boolean executeQuery(String query) throws SQLException {
+        DataSource ds = getDataSource();
+        Connection c = ds.getConnection();
         PreparedStatement s = c.prepareStatement(query);
-        s.execute();
+        return s.execute();
     }
 
     @Test
     public void testOpenNonExistantStoreCreatesTable() throws SQLException {
         String newStore = TestUtils.randomLetters(15);
         /* Create the engine for side-effect */
-        new MysqlStorageEngine(newStore, getDataSource());
-        DataSource ds = getDataSource();
-        executeQuery(ds, "select 1 from " + newStore + " limit 1");
-        executeQuery(ds, "drop table " + newStore);
+        this.createStorageEngine(newStore);
+        executeQuery("select 1 from " + newStore + " limit 1");
+        executeQuery("drop table " + newStore);
     }
 
     @Override
