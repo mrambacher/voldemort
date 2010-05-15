@@ -16,6 +16,13 @@
 
 package voldemort.store.mysql;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.util.Properties;
+import javax.sql.DataSource;
 import org.apache.commons.dbcp.BasicDataSource;
 import org.junit.Test;
 

@@ -91,7 +91,7 @@ public abstract class AbstractRequestFormatTest extends TestCase {
 
     }
 
-    public void testGetRequest(ByteArray key, byte[] value, VectorClock version, boolean isPresent)
+    public void testGetRequest(ByteArray key, byte[] value, Version version, boolean isPresent)
             throws Exception {
         try {
             if(isPresent)
@@ -120,19 +120,16 @@ public abstract class AbstractRequestFormatTest extends TestCase {
 
     @Test
     public void testGetAllRequests() throws Exception {
-        testGetAllRequest(new ByteArray[] {},
-                          new byte[][] {},
-                          new VectorClock[] {},
-                          new boolean[] {});
+        testGetAllRequest(new ByteArray[] {}, new byte[][] {}, new Version[] {}, new boolean[] {});
 
         testGetAllRequest(new ByteArray[] { new ByteArray() },
                           new byte[][] { new byte[] {} },
-                          new VectorClock[] { new VectorClock() },
+                          new Version[] { new VectorClock() },
                           new boolean[] { true });
 
         testGetAllRequest(new ByteArray[] { TestUtils.toByteArray("hello") },
                           new byte[][] { "world".getBytes() },
-                          new VectorClock[] { new VectorClock() },
+                          new Version[] { new VectorClock() },
                           new boolean[] { true });
 
         testGetAllRequest(new ByteArray[] { TestUtils.toByteArray("hello"),
@@ -143,7 +140,7 @@ public abstract class AbstractRequestFormatTest extends TestCase {
 
     public void testGetAllRequest(ByteArray[] keys,
                                   byte[][] values,
-                                  VectorClock[] versions,
+                                  Version[] versions,
                                   boolean[] isFound) throws Exception {
         try {
             for(int i = 0; i < keys.length; i++) {
@@ -177,6 +174,25 @@ public abstract class AbstractRequestFormatTest extends TestCase {
     }
 
     @Test
+    public void testExceptions() throws Exception {
+        // test obsolete exception
+        Version saved = this.store.put(TestUtils.toByteArray("hello"),
+                                       new Versioned<byte[]>("world".getBytes(),
+                                                             TestUtils.getClock(1, 1)));
+        Version obsolete = testPutRequest(TestUtils.toByteArray("hello"),
+                                          "world".getBytes(),
+                                          TestUtils.getClock(1),
+                                          ObsoleteVersionException.class);
+        if(this.supportsMetadata()) {
+            assertEquals("Saved equals obsolete", saved, obsolete);
+        }
+        testPutStoreRequest("",
+                            TestUtils.toByteArray("hello"),
+                            new Versioned<byte[]>("world".getBytes(), TestUtils.getClock(1)),
+                            VoldemortException.class);
+    }
+
+    @Test
     public void testPutRequests() throws Exception {
         testPutRequest(new ByteArray(), new byte[0], new VectorClock(), null);
         testPutRequest(TestUtils.toByteArray("hello"), "world".getBytes(), new VectorClock(), null);
@@ -201,11 +217,19 @@ public abstract class AbstractRequestFormatTest extends TestCase {
     public Version testPutRequest(ByteArray key,
                                   Versioned<byte[]> versioned,
                                   Class<? extends VoldemortException> exception) throws Exception {
+        return testPutStoreRequest(this.storeName, key, versioned, exception);
+    }
+
+    public Version testPutStoreRequest(String name,
+                                       ByteArray key,
+                                       Versioned<byte[]> versioned,
+                                       Class<? extends VoldemortException> exception)
+            throws Exception {
         Version result = null;
         try {
             ByteArrayOutputStream putRequest = new ByteArrayOutputStream();
             this.clientWireFormat.writePutRequest(new DataOutputStream(putRequest),
-                                                  storeName,
+                                                  name,
                                                   key,
                                                   versioned,
                                                   RequestRoutingType.NORMAL);
@@ -225,6 +249,7 @@ public abstract class AbstractRequestFormatTest extends TestCase {
                 if(e instanceof ObsoleteVersionException) {
                     ObsoleteVersionException ove = (ObsoleteVersionException) e;
                     assertNotNull("Obsolete version set", ove.getExistingVersion());
+                    result = ove.getExistingVersion();
                 }
             }
         } finally {

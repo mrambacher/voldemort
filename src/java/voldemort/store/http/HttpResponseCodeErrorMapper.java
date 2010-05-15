@@ -37,7 +37,7 @@ public class HttpResponseCodeErrorMapper {
         if(responseCode >= 200 && responseCode < 300)
             return null;
         else if(responseCode == HttpURLConnection.HTTP_CONFLICT)
-            throw new ObsoleteVersionException(message);
+            throw new ObsoleteVersionException(message, null);
         else
             throw new UnknownFailure("Unknown failure occured in HTTP operation: " + responseCode
                                      + " - " + message);

@@ -1,7 +1,7 @@
 /*
  * Copyright 2008-2009 LinkedIn, Inc
  * 
- * Portion Copyright © 2010 Nokia Corporation. All rights reserved.
+ * Portion Copyright 2010 Nokia Corporation. All rights reserved.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of

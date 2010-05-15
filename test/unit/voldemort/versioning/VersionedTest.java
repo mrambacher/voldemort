@@ -18,12 +18,15 @@ package voldemort.versioning;
 
 import static voldemort.TestUtils.getClock;
 import junit.framework.TestCase;
+
+import org.junit.Test;
+
 import voldemort.TestUtils;
 import voldemort.serialization.StringSerializer;
 
 public class VersionedTest extends TestCase {
 
-    private Versioned<Integer> getVersioned(Integer value, int... versionIncrements) {
+    protected Versioned<Integer> getVersioned(Integer value, int... versionIncrements) {
         return new Versioned<Integer>(value, TestUtils.getClock(versionIncrements));
     }
 
@@ -36,6 +39,7 @@ public class VersionedTest extends TestCase {
         }
     }
 
+    @Test
     public void testEquals() {
         assertEquals("Null versioneds not equal.", getVersioned(null), getVersioned(null));
         assertEquals("equal versioneds not equal.", getVersioned(1), getVersioned(1));
@@ -54,6 +58,7 @@ public class VersionedTest extends TestCase {
                      new Versioned<byte[]>(new byte[] { 1 }));
     }
 
+    @Test
     public void testClone() {
         Versioned<Integer> v1 = getVersioned(2, 1, 2, 3);
         Versioned<Integer> v2 = v1.cloneVersioned();
@@ -71,6 +76,7 @@ public class VersionedTest extends TestCase {
         assertTrue(message, TestUtils.bytesEqual(expected.getValue(), result.getValue()));
     }
 
+    @Test
     public void testByteSerialization() {
         Version version = getClock(2, 1, 2, 3);
         Versioned<byte[]> versioned = new Versioned<byte[]>("abcde".getBytes(), version);
@@ -84,6 +90,7 @@ public class VersionedTest extends TestCase {
                      VersionFactory.toVersioned(serialized));
     }
 
+    @Test
     public void testStringSerialization() {
         Version version = getClock(2, 1, 2, 3);
         Versioned<String> versioned = new Versioned<String>("abcde", version);
@@ -96,6 +103,37 @@ public class VersionedTest extends TestCase {
         assertEquals("The versioned serializes to itself using protobuf protocol.",
                      versioned,
                      VersionFactory.toVersioned(serialized, serializer));
+    }
 
+    protected void compareMerged(Versioned<Integer> one, Versioned<Integer> two) {
+        assertEquals("Merged is after",
+                     Occured.BEFORE,
+                     one.getVersion().compare(one.mergeVersion(two.getVersion()).getVersion()));
+        assertEquals("Merged is after",
+                     Occured.BEFORE,
+                     two.getVersion().compare(one.mergeVersion(two.getVersion()).getVersion()));
+        assertEquals("Merged order does not matter",
+                     one.mergeVersion(two.getVersion()).getVersion(),
+                     two.mergeVersion(one.getVersion()).getVersion());
+    }
+
+    @Test
+    public void testMerge() {
+        // Null versions merge to the same value
+        compareMerged(getVersioned(null), getVersioned(null));
+
+        assertEquals("Empty versioneds merge the same.",
+                     getVersioned(null),
+                     getVersioned(null).mergeVersion(getVersioned(null).getVersion()));
+
+        // Identical versions merge to the same value
+        compareMerged(getVersioned(1, 1, 2), getVersioned(1, 1, 2));
+        assertEquals("Equal versioneds merge the same.",
+                     getVersioned(1, 1, 2),
+                     getVersioned(1, 1, 2).mergeVersion(getVersioned(1, 1, 2).getVersion()));
+
+        compareMerged(getVersioned(1, 1, 2), getVersioned(1, 3, 3));
+
+        compareMerged(getVersioned(1, 1, 2), getVersioned(1, 1, 1, 2, 2, 2));
     }
 }
