@@ -16,9 +16,6 @@
 
 package voldemort.store.socket;
 
-import java.io.DataInputStream;
-import java.io.IOException;
-import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketException;
@@ -27,9 +24,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.log4j.Logger;
 
-import voldemort.VoldemortException;
-import voldemort.client.protocol.RequestFormatType;
-import voldemort.utils.ByteUtils;
 import voldemort.utils.Time;
 import voldemort.utils.pool.ResourceFactory;
 
@@ -86,28 +80,8 @@ public class SocketResourceFactory implements ResourceFactory<SocketDestination,
         recordSocketCreation(dest, socket);
 
         SocketAndStreams sands = new SocketAndStreams(socket, dest.getRequestFormatType());
-        negotiateProtocol(sands, dest.getRequestFormatType());
 
         return sands;
-    }
-
-    private void negotiateProtocol(SocketAndStreams socket, RequestFormatType type)
-            throws IOException {
-        OutputStream outputStream = socket.getOutputStream();
-        byte[] proposal = ByteUtils.getBytes(type.getCode(), "UTF-8");
-        outputStream.write(proposal);
-        outputStream.flush();
-        DataInputStream inputStream = socket.getInputStream();
-        byte[] responseBytes = new byte[2];
-        inputStream.readFully(responseBytes);
-        String response = ByteUtils.getString(responseBytes, "UTF-8");
-        if(response.equals("ok"))
-            return;
-        else if(response.equals("no"))
-            throw new VoldemortException(type.getDisplayName()
-                                         + " is not an acceptable protcol for the server.");
-        else
-            throw new VoldemortException("Unknown server response: " + response);
     }
 
     /* Log relevant socket creation details */

@@ -97,6 +97,7 @@ public class SocketPool {
             // time checkout
             long start = System.nanoTime();
             SocketAndStreams sas = pool.checkout(destination);
+            sas.negotiateProtocol();
             updateStats(System.nanoTime() - start);
 
             return sas;

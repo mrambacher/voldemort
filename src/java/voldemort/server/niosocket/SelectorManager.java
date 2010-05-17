@@ -219,7 +219,7 @@ public class SelectorManager implements Runnable {
                     if(selected > 0) {
                         Iterator<SelectionKey> i = selector.selectedKeys().iterator();
 
-                        if(selected < parallelProcessingThrehold) {
+                        if(parallelProcessingThrehold < 0 || selected < parallelProcessingThrehold) {
                             while(i.hasNext()) {
                                 SelectionKey selectionKey = i.next();
                                 i.remove();

@@ -117,10 +117,10 @@ public class SocketServer extends Thread {
         logger.info("Starting voldemort socket server (" + serverName + ") on port " + port);
         try {
             serverSocket = new ServerSocket();
-            if(socketListenQueueLength > 0) {
+            if(socketListenQueueLength <= 0) {
+                // let jdk default kick in
                 serverSocket.bind(new InetSocketAddress(port));
             } else {
-                // let jdk default kick in
                 serverSocket.bind(new InetSocketAddress(port), socketListenQueueLength);
             }
             serverSocket.setReceiveBufferSize(this.socketBufferSize);
