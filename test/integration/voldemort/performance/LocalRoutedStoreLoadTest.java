@@ -21,6 +21,7 @@ import static voldemort.cluster.failuredetector.FailureDetectorUtils.create;
 import java.io.File;
 import java.io.FileReader;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import voldemort.ServerTestUtils;
 import voldemort.StaticStoreClientFactory;
@@ -83,6 +84,7 @@ public class LocalRoutedStoreLoadTest extends AbstractLoadTestHarness {
                                                          10,
                                                          true,
                                                          10000L,
+                                                         TimeUnit.MILLISECONDS,
                                                          failureDetector);
         /*
          * public DefaultStoreClient(String storeName,

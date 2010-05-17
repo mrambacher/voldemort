@@ -92,13 +92,13 @@ public class RebootstrappingStore extends MetadataCheckingStore<ByteArray, byte[
     private void checkAndAddNodeStore() {
 
         for(Node node: metadata.getCluster().getNodes()) {
-            if(!routedStore.getInnerStores().containsKey(node)) {
+            if(!routedStore.getNodeStores().containsKey(node.getId())) {
                 if(!storeRepository.hasNodeStore(getName(), node.getId())) {
                     storeRepository.addNodeStore(node.getId(), createNodeStore(node));
                 }
-                routedStore.getInnerStores().put(node.getId(),
-                                                 storeRepository.getNodeStore(getName(),
-                                                                              node.getId()));
+                routedStore.getNodeStores().put(node.getId(),
+                                                storeRepository.getNodeStore(getName(),
+                                                                             node.getId()));
             }
         }
     }

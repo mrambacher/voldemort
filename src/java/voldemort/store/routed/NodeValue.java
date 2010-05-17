@@ -33,22 +33,22 @@ import com.google.common.base.Preconditions;
  * @param <V> The type of the value
  * 
  */
-final class NodeValue<K, V> implements Serializable, Cloneable {
+final class NodeValue<N, K, V> implements Serializable, Cloneable {
 
     private static final long serialVersionUID = 1;
 
-    private final int nodeId;
+    private final N node;
     private final K key;
     private final Versioned<V> value;
 
-    public NodeValue(int nodeId, K key, Versioned<V> value) {
-        this.nodeId = nodeId;
+    public NodeValue(N node, K key, Versioned<V> value) {
+        this.node = node;
         this.key = Preconditions.checkNotNull(key);
         this.value = Preconditions.checkNotNull(value);
     }
 
-    public int getNodeId() {
-        return nodeId;
+    public N getNode() {
+        return node;
     }
 
     public K getKey() {
@@ -64,29 +64,29 @@ final class NodeValue<K, V> implements Serializable, Cloneable {
     }
 
     @Override
-    public NodeValue<K, V> clone() {
-        return new NodeValue<K, V>(nodeId, key, value);
+    public NodeValue<N, K, V> clone() {
+        return new NodeValue<N, K, V>(node, key, value);
     }
 
     @Override
     public String toString() {
-        return "NodeValue(id=" + nodeId + ", key=" + key + ", versioned= " + value + ")";
+        return "NodeValue(id=" + node + ", key=" + key + ", versioned= " + value + ")";
     }
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(nodeId, key, value.getVersion());
+        return Objects.hashCode(node, key, value.getVersion());
     }
 
     @Override
     public boolean equals(Object o) {
         if(o == this)
             return true;
-        if(!(o instanceof NodeValue<?, ?>))
+        if(!(o instanceof NodeValue<?, ?, ?>))
             return false;
 
-        NodeValue<?, ?> v = (NodeValue<?, ?>) o;
-        return getNodeId() == v.getNodeId() && Objects.equal(getKey(), v.getKey())
+        NodeValue<?, ?, ?> v = (NodeValue<?, ?, ?>) o;
+        return Objects.equal(getNode(), v.getNode()) && Objects.equal(getKey(), v.getKey())
                && Objects.equal(getVersion(), v.getVersion());
     }
 }
