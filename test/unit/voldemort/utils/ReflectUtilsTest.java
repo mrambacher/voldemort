@@ -67,4 +67,10 @@ public class ReflectUtilsTest extends TestCase {
         assertEquals(str, str2);
     }
 
+    public void testGetProperty() {
+        assertEquals("me", ReflectUtils.getPropertyName("getMe"));
+        assertEquals("me", ReflectUtils.getPropertyName("setMe"));
+        assertEquals("Me", ReflectUtils.getPropertyName("Me"));
+        assertNotNull("Not supposed to return null", ReflectUtils.getPropertyName(""));
+    }
 }
