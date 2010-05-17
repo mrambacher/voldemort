@@ -145,7 +145,7 @@ public class NioSocketService extends AbstractSocketService {
             if(logger.isEnabledFor(Level.ERROR)) {
                 logger.error(e.getMessage(), e);
             }
-            throw new VoldemortException(e);
+            throw new VoldemortException(e.getMessage(), e);
         }
 
         enableJmx(this);
@@ -174,8 +174,9 @@ public class NioSocketService extends AbstractSocketService {
                 }
             }
         } catch(Exception e) {
-            if(logger.isEnabledFor(Level.WARN))
+            if(logger.isEnabledFor(Level.WARN)) {
                 logger.warn(e.getMessage(), e);
+            }
         }
 
         try {
