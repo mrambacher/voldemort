@@ -146,8 +146,12 @@ public class ConsistentRoutingStrategy implements RoutingStrategy {
         return tags;
     }
 
+    public int getPrimaryPartition(byte[] key) {
+        return abs(hash.hash(key)) % (Math.max(1, this.partitionToNode.length));
+    }
+
     public List<Integer> getPartitionList(byte[] key) {
-        int index = abs(hash.hash(key)) % (Math.max(1, this.partitionToNode.length));
+        int index = getPrimaryPartition(key);
         return getReplicatingPartitionList(index);
     }
 }
