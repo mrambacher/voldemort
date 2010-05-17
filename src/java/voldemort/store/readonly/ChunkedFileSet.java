@@ -102,7 +102,7 @@ public class ChunkedFileSet {
             try {
                 channel.close();
             } catch(IOException e) {
-                logger.error("Error while closing file.", e);
+                logger.error("Error while closing file. - " + e.getMessage(), e);
             }
         }
     }
