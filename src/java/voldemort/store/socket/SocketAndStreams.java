@@ -21,9 +21,12 @@ import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.Socket;
 
+import voldemort.VoldemortException;
 import voldemort.client.protocol.RequestFormatType;
+import voldemort.utils.ByteUtils;
 
 /**
  * A wrapper class that wraps a socket with its DataInputStream and
@@ -34,7 +37,7 @@ import voldemort.client.protocol.RequestFormatType;
 public class SocketAndStreams {
 
     private static final int DEFAULT_BUFFER_SIZE = 1000;
-
+    private boolean initialized;
     private final Socket socket;
     private final RequestFormatType requestFormatType;
     private final DataInputStream inputStream;
@@ -54,6 +57,7 @@ public class SocketAndStreams {
                                                                           bufferSizeBytes));
         this.requestFormatType = type;
         this.createTimestamp = System.nanoTime();
+        this.initialized = false;
     }
 
     @Override
@@ -91,4 +95,25 @@ public class SocketAndStreams {
         return createTimestamp;
     }
 
+    public void negotiateProtocol() throws IOException {
+        if(!initialized) {
+            OutputStream outputStream = socket.getOutputStream();
+            byte[] proposal = ByteUtils.getBytes(requestFormatType.getCode(), "UTF-8");
+            outputStream.write(proposal);
+            outputStream.flush();
+            DataInputStream inputStream = getInputStream();
+            byte[] responseBytes = new byte[2];
+            inputStream.readFully(responseBytes);
+            String response = ByteUtils.getString(responseBytes, "UTF-8");
+            if(response.equals("ok")) {
+                initialized = true;
+                return;
+            } else if(response.equals("no")) {
+                throw new VoldemortException(requestFormatType.getDisplayName()
+                                             + " is not an acceptable protcol for the server.");
+            } else {
+                throw new VoldemortException("Unknown server response: " + response);
+            }
+        }
+    }
 }
