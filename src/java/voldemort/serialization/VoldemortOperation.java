@@ -23,7 +23,6 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 
 import voldemort.utils.ByteUtils;
-import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
 import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
@@ -35,7 +34,7 @@ public final class VoldemortOperation {
     private final byte[] value;
     private final Version version;
 
-    private VoldemortOperation(byte opCode, String key, byte[] value, VectorClock version) {
+    private VoldemortOperation(byte opCode, String key, byte[] value, Version version) {
         this.opCode = opCode;
         this.key = key;
         this.value = value;
@@ -100,14 +99,11 @@ public final class VoldemortOperation {
         return new VoldemortOperation(VoldemortOpCode.PUT_OP_CODE,
                                       key,
                                       versioned.getValue(),
-                                      (VectorClock) versioned.getVersion());
+                                      versioned.getVersion());
     }
 
     public VoldemortOperation makeDeleteOperation(String key, Version version) {
-        return new VoldemortOperation(VoldemortOpCode.DELETE_OP_CODE,
-                                      key,
-                                      null,
-                                      (VectorClock) version);
+        return new VoldemortOperation(VoldemortOpCode.DELETE_OP_CODE, key, null, version);
     }
 
 }
