@@ -100,7 +100,8 @@ public class Node implements Serializable, Comparable<Node> {
         try {
             return new URI("http://" + getHost() + ":" + getHttpPort());
         } catch(URISyntaxException e) {
-            throw new IllegalStateException("Invalid host format for node " + id + ".", e);
+            throw new IllegalStateException("Invalid host format for node " + id + ". - "
+                                            + e.getMessage(), e);
         }
     }
 
@@ -108,7 +109,8 @@ public class Node implements Serializable, Comparable<Node> {
         try {
             return new URI("tcp://" + getHost() + ":" + getSocketPort());
         } catch(URISyntaxException e) {
-            throw new IllegalStateException("Invalid host format for node " + id + ".", e);
+            throw new IllegalStateException("Invalid host format for node " + id + ". - "
+                                            + e.getMessage(), e);
         }
     }
 

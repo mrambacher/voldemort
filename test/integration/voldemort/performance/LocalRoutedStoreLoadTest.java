@@ -39,6 +39,7 @@ import voldemort.server.VoldemortConfig;
 import voldemort.store.StorageConfiguration;
 import voldemort.store.Store;
 import voldemort.store.bdb.BdbStorageConfiguration;
+import voldemort.store.routed.NodeStore;
 import voldemort.store.routed.RoutedStore;
 import voldemort.store.serialized.SerializingStore;
 import voldemort.store.versioned.InconsistencyResolvingStore;
@@ -59,17 +60,20 @@ public class LocalRoutedStoreLoadTest extends AbstractLoadTestHarness {
                                                                          + File.separator
                                                                          + "/cluster.xml"));
         Map<Integer, Store<ByteArray, byte[]>> clientMapping = Maps.newHashMap();
+
         VoldemortConfig voldemortConfig = new VoldemortConfig(propsA);
         StorageConfiguration conf = new BdbStorageConfiguration(voldemortConfig);
-        for(Node node: cluster.getNodes())
-            clientMapping.put(node.getId(), conf.getStore("test" + node.getId()));
-
-        InconsistencyResolver<Versioned<String>> resolver = new VectorClockInconsistencyResolver<String>();
-
-        FailureDetectorConfig failureDetectorConfig = new FailureDetectorConfig(voldemortConfig).setNodes(cluster.getNodes())
-                                                                                                .setStoreVerifier(new BasicStoreVerifier<ByteArray, byte[]>(clientMapping,
-                                                                                                                                                            new ByteArray("key".getBytes())));
+        FailureDetectorConfig failureDetectorConfig = new FailureDetectorConfig(voldemortConfig).setNodes(cluster.getNodes());
         FailureDetector failureDetector = create(failureDetectorConfig, false);
+        for(Node node: cluster.getNodes()) {
+            clientMapping.put(node.getId(),
+                              new NodeStore<ByteArray, byte[]>(node,
+                                                               failureDetector,
+                                                               conf.getStore("test" + node.getId())));
+        }
+        failureDetector.getConfig()
+                       .setStoreVerifier(new BasicStoreVerifier<ByteArray, byte[]>(clientMapping,
+                                                                                   new ByteArray("key".getBytes())));
 
         Store<ByteArray, byte[]> store = new RoutedStore("test",
                                                          clientMapping,
@@ -94,6 +98,7 @@ public class LocalRoutedStoreLoadTest extends AbstractLoadTestHarness {
         Store<String, String> serializingStore = SerializingStore.wrap(store,
                                                                        new StringSerializer(),
                                                                        new StringSerializer());
+        InconsistencyResolver<Versioned<String>> resolver = new VectorClockInconsistencyResolver<String>();
         Store<String, String> resolvingStore = new InconsistencyResolvingStore<String, String>(serializingStore,
                                                                                                resolver);
         StoreClientFactory factory = new StaticStoreClientFactory(resolvingStore);
