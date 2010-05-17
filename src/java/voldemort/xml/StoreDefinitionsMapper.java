@@ -184,15 +184,19 @@ public class StoreDefinitionsMapper {
             if(throttleRate != null)
                 retentionThrottleRate = Integer.parseInt(throttleRate.getText());
         }
+
         Properties properties = new Properties();
-        List<?> props = store.getChildren(STORE_PROPERTY_ELMT);
-        Iterator<?> iter = props.iterator();
-        while(iter.hasNext()) {
-            Element prop = (Element) iter.next();
-            String propName = prop.getAttributeValue(STORE_PROPERTY_ATTR);
-            String propValue = prop.getText();
-            if(propName != null) {
-                properties.setProperty(propName, propValue);
+        Element storeProps = store.getChild(STORE_PROPERTIES_ELMT);
+        if(storeProps != null) {
+            List<?> props = storeProps.getChildren(STORE_PROPERTY_ELMT);
+            Iterator<?> iter = props.iterator();
+            while(iter.hasNext()) {
+                Element prop = (Element) iter.next();
+                String propName = prop.getAttributeValue(STORE_PROPERTY_ATTR);
+                String propValue = prop.getText();
+                if(propName != null) {
+                    properties.setProperty(propName, propValue);
+                }
             }
         }
 
