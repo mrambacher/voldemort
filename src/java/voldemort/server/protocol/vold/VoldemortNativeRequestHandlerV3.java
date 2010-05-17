@@ -39,6 +39,13 @@ public class VoldemortNativeRequestHandlerV3 extends VoldemortNativeRequestHandl
             throws IOException {
         int requestSize = inputStream.readInt();
 
+        if(requestSize > buffer.limit() || requestSize < 0) {
+            return false;
+            // throw new
+            // Exception("Data inconsistency on delete - versionSize: "
+            // + versionSize + ", position: " + buffer.position()
+            // + ", limit: " + buffer.limit());
+        }
         // Here we skip over the data (without reading it in) and
         // move our position to just past it.
         buffer.position(buffer.position() + requestSize);
