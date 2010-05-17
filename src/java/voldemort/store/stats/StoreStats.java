@@ -53,4 +53,7 @@ public class StoreStats {
         return Collections.unmodifiableMap(counters);
     }
 
+    public String getLatencyStats(Tracked op, float percentile) {
+        return counters.get(op).getLatency(percentile);
+    }
 }
