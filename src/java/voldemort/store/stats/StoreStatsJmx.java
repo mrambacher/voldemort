@@ -112,4 +112,98 @@ public class StoreStatsJmx {
                + stats.getThroughput(Tracked.GET_ALL) + stats.getThroughput(Tracked.PUT);
     }
 
+    // -----------------------------------------------------------------------------
+    // PUT Percentiles -
+    // Note the dot "." in the JMX's name sort the methods names in ascending
+    // order
+    // -----------------------------------------------------------------------------
+    @JmxGetter(name = "Put50.0PercentileInMs", description = "PUT for 50 percentile")
+    public String getPut50PercentileInMs() {
+        return stats.getLatencyStats(Tracked.PUT, 0.50F);
+    }
+
+    @JmxGetter(name = "Put90.0PercentileInMs", description = "PUT for 90 percentile")
+    public String getPut90PercentileInMs() {
+        return stats.getLatencyStats(Tracked.PUT, 0.90F);
+    }
+
+    @JmxGetter(name = "Put99.0PercentileInMs", description = "PUT for 99 percentile")
+    public String getPut99PercentileInMs() {
+        return stats.getLatencyStats(Tracked.PUT, 0.99F);
+    }
+
+    @JmxGetter(name = "Put99.5PercentileInMs", description = "PUT for 99.5 percentile")
+    public String getPut995PercentileInMs() {
+        return stats.getLatencyStats(Tracked.PUT, 0.995F);
+    }
+
+    @JmxGetter(name = "Put99.9PercentileInMs", description = "PUT for 99.9 percentile")
+    public String getPut999PercentileInMs() {
+        return stats.getLatencyStats(Tracked.PUT, 0.999F);
+    }
+
+    // -----------------------------------------------------------------------------
+    // GET Percentiles
+    // Note the dot "." in the JMX's name sort the methods names in ascending
+    // order
+    // -----------------------------------------------------------------------------
+    @JmxGetter(name = "Get50.0PercentileInMs", description = "GET for 50 percentile")
+    public String getGet50PercentileInMs() {
+        return stats.getLatencyStats(Tracked.GET, 0.50F);
+    }
+
+    @JmxGetter(name = "Get90.0PercentileInMs", description = "GET for 90 percentile")
+    public String getGet90PercentileInMs() {
+        return stats.getLatencyStats(Tracked.GET, 090F);
+    }
+
+    @JmxGetter(name = "Get99.0PercentileInMs", description = "GET for 99 percentile")
+    public String getGet99PercentileInMs() {
+        return stats.getLatencyStats(Tracked.GET, 0.99F);
+    }
+
+    @JmxGetter(name = "Get99.5PercentileInMs", description = "GET for 99.5 percentile")
+    public String getGet995PercentileInMs() {
+        return stats.getLatencyStats(Tracked.GET, 0.995F);
+    }
+
+    @JmxGetter(name = "Get99.9PercentileInMs", description = "GET for 99.9 percentile")
+    public String getGet999PercentileInMs() {
+        return stats.getLatencyStats(Tracked.GET, 0.999F);
+    }
+
+    // -----------------------------------------------------------------------------
+    // DELETE Percentiles
+    // Note the dot "." in the JMX's name sort the methods names in ascending
+    // order
+    // -----------------------------------------------------------------------------
+    @JmxGetter(name = "Delete50.0PercentileInMs", description = "DELETE for 50 percentile")
+    public String getDelete50PercentileInMs() {
+        return stats.getLatencyStats(Tracked.DELETE, 0.50F);
+    }
+
+    @JmxGetter(name = "Delete90.0PercentileInMs", description = "DELETE for 90 percentile")
+    public String getDelete90PercentileInMs() {
+        return stats.getLatencyStats(Tracked.DELETE, 090F);
+    }
+
+    @JmxGetter(name = "Delete99.0PercentileInMs", description = "DELETE for 99 percentile")
+    public String getDelete99PercentileInMs() {
+        return stats.getLatencyStats(Tracked.DELETE, 0.99F);
+    }
+
+    @JmxGetter(name = "Delete99.5PercentileInMs", description = "DELETE for 99.5 percentile")
+    public String getDelete995PercentileInMs() {
+        return stats.getLatencyStats(Tracked.DELETE, 0.995F);
+    }
+
+    @JmxGetter(name = "Delete99.9PercentileInMs", description = "DELETE for 99.9 percentile")
+    public String getDelete999PercentileInMs() {
+        return stats.getLatencyStats(Tracked.DELETE, 0.999F);
+    }
+
+    @JmxGetter(name = "numberOfInconsistentGet", description = "The number of inconsistent calls to GET or GET_ALL since the last reset.")
+    public long getNumberOfInconsistentGet() {
+        return stats.getCount(Tracked.INCONSISTENT_GET);
+    }
 }

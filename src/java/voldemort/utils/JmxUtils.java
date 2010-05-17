@@ -331,7 +331,9 @@ public class JmxUtils {
      */
     public static void unregisterMbean(MBeanServer server, ObjectName name) {
         try {
-            server.unregisterMBean(name);
+            if(server.isRegistered(name)) {
+                server.unregisterMBean(name);
+            }
         } catch(Exception e) {
             logger.error("Error unregistering mbean", e);
         }

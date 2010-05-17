@@ -16,10 +16,21 @@
 
 package voldemort.store.stats;
 
+import java.lang.management.ManagementFactory;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
+import javax.management.InstanceAlreadyExistsException;
 import javax.management.MBeanOperationInfo;
+import javax.management.MBeanRegistrationException;
+import javax.management.MBeanServer;
+import javax.management.MalformedObjectNameException;
+import javax.management.NotCompliantMBeanException;
+import javax.management.ObjectName;
+
+import org.apache.log4j.LogManager;
+import org.apache.log4j.Logger;
 
 import voldemort.VoldemortException;
 import voldemort.annotations.jmx.JmxOperation;
@@ -37,11 +48,14 @@ import voldemort.versioning.Versioned;
  */
 public class StatTrackingStore<K, V> extends DelegatingStore<K, V> {
 
+    private static final Logger logger = LogManager.getLogger(StatTrackingStore.class);
+
     private StoreStats stats;
 
     public StatTrackingStore(Store<K, V> innerStore, StoreStats parentStats) {
         super(innerStore);
         this.stats = new StoreStats(parentStats);
+        initNotification();
     }
 
     @Override
@@ -61,7 +75,11 @@ public class StatTrackingStore<K, V> extends DelegatingStore<K, V> {
     public List<Versioned<V>> get(K key) throws VoldemortException {
         long start = System.nanoTime();
         try {
-            return super.get(key);
+            List<Versioned<V>> list = super.get(key);
+            if(list.size() > 1) {
+                stats.recordTime(Tracked.INCONSISTENT_GET, System.nanoTime() - start);
+            }
+            return list;
         } catch(VoldemortException e) {
             stats.recordTime(Tracked.EXCEPTION, System.nanoTime() - start);
             throw e;
@@ -74,7 +92,16 @@ public class StatTrackingStore<K, V> extends DelegatingStore<K, V> {
     public Map<K, List<Versioned<V>>> getAll(Iterable<K> keys) throws VoldemortException {
         long start = System.nanoTime();
         try {
-            return super.getAll(keys);
+            Map<K, List<Versioned<V>>> map = super.getAll(keys);
+            Collection<List<Versioned<V>>> values;
+            if(((values = map.values()) != null)) {
+                for(List<Versioned<V>> list: values) {
+                    if(list != null && list.size() > 1) {
+                        stats.recordTime(Tracked.INCONSISTENT_GET, System.nanoTime() - start);
+                    }
+                }
+            }
+            return map;
         } catch(VoldemortException e) {
             stats.recordTime(Tracked.EXCEPTION, System.nanoTime() - start);
             throw e;
@@ -114,5 +141,63 @@ public class StatTrackingStore<K, V> extends DelegatingStore<K, V> {
     @JmxOperation(description = "Reset statistics.", impact = MBeanOperationInfo.ACTION)
     public void resetStatistics() {
         this.stats = new StoreStats();
+    }
+
+    private void initNotification() {
+        // This class knows the underline store's name. Store name is important
+        // to make JMX's object name unique per operation.
+        // Any other class participating in the stats. gathering won't have this
+        // knowledge, like:
+        // a) StoreStat
+        // b) RequestCounter
+        // c) Accumulator.
+        //
+        final Map<Tracked, RequestCounter> jmxEmiters = stats.getCounters();
+        for(Map.Entry<Tracked, RequestCounter> entry: jmxEmiters.entrySet()) {
+            final Tracked op = entry.getKey();
+            final RequestCounter reqCounter = entry.getValue();
+
+            ObjectName mbeanName = null;
+            try {
+                final MBeanServer mbs = ManagementFactory.getPlatformMBeanServer();
+                final String objName = StatTrackingStore.class.getPackage().getName() + "."
+                                       + this.getName() + ":type=notificationFor" + op.name();
+                mbeanName = new ObjectName(objName);
+
+                // Bug 110659 - JMX Instance Exception on Server Restart
+                // Only if the object name is NOT previously registered then
+                // register with the MBean Server
+                // This is a situation found in unit-test, in which you have
+                // multiple Voldemort Servers running
+                // in the same machine locally to the same MBeanServer resulting
+                // in the same object name
+                // being registered multiple times using the same obj. name.
+                if(!mbs.isRegistered(mbeanName)) {
+                    mbs.registerMBean(reqCounter, mbeanName);
+                }
+
+            } catch(InstanceAlreadyExistsException e) {
+                // fall-through, You can't have this situation (store's name and
+                // operation name combination are unique.
+                logger.error("Object name already registered - " + mbeanName.getCanonicalName()
+                             + " - " + e.getMessage(), e);
+
+            } catch(MBeanRegistrationException e) {
+                // fall-though - do not stop the execution of the server.
+                logger.error("Impossible to register obj. name: " + mbeanName.getCanonicalName()
+                             + " - " + e.getMessage(), e);
+
+            } catch(NotCompliantMBeanException e) {
+                // fall-through - You can not have this situation an less you
+                // have a proxy o dynamic mbean.
+                logger.error("Interface not complient for obj. name: "
+                             + mbeanName.getCanonicalName() + " - " + e.getMessage(), e);
+
+            } catch(MalformedObjectNameException e) {
+                // fall-though - same comments as InstanceAlreadyExistsException
+                logger.error("Object Name not compliant with DynamicMBean - " + e.getMessage(), e);
+            }
+        }
+
     }
 }
