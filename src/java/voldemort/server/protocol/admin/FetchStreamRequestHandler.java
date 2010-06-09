@@ -1,5 +1,6 @@
 package voldemort.server.protocol.admin;
 
+import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.List;
@@ -72,6 +73,15 @@ public abstract class FetchStreamRequestHandler implements StreamRequestHandler 
 
     public final StreamRequestDirection getDirection() {
         return StreamRequestDirection.WRITING;
+    }
+
+    public StreamRequestHandlerState getRequestState(DataInputStream inputStream)
+            throws IOException {
+        if(keyIterator.hasNext()) {
+            return StreamRequestHandlerState.WRITING;
+        } else {
+            return StreamRequestHandlerState.COMPLETE;
+        }
     }
 
     public final void close(DataOutputStream outputStream) throws IOException {

@@ -148,14 +148,9 @@ public class VoldemortServer extends AbstractService {
             if(voldemortConfig.getUseNioConnector()) {
                 logger.info("Using NIO Connector.");
                 services.add(new NioSocketService(socketRequestHandlerFactory,
-                                                  threadPool,
                                                   identityNode.getSocketPort(),
-                                                  voldemortConfig.getSocketBufferSize(),
-                                                  voldemortConfig.getNioConnectorSelectors(),
-                                                  voldemortConfig.getNioParallelProcessingThreshold(),
-                                                  voldemortConfig.getSocketListenQueueLength(),
                                                   "nio-socket-server",
-                                                  voldemortConfig.isJmxEnabled()));
+                                                  voldemortConfig));
             } else {
                 logger.info("Using BIO Connector.");
                 services.add(new SocketService(socketRequestHandlerFactory,
@@ -195,11 +190,10 @@ public class VoldemortServer extends AbstractService {
             if(voldemortConfig.getUseNioConnector()) {
                 logger.info("Using NIO Connector for Admin Service.");
                 services.add(new NioSocketService(adminRequestHandlerFactory,
-                                                  adminThreadPool,
                                                   identityNode.getAdminPort(),
                                                   voldemortConfig.getAdminSocketBufferSize(),
                                                   voldemortConfig.getNioAdminConnectorSelectors(),
-                                                  voldemortConfig.getSocketBufferSize(),
+                                                  voldemortConfig.getNioAdminWorkerThreads(),
                                                   voldemortConfig.getSocketListenQueueLength(),
                                                   "admin-server",
                                                   voldemortConfig.isJmxEnabled()));

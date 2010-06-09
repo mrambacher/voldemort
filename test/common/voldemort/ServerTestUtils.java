@@ -159,12 +159,11 @@ public class ServerTestUtils {
                                                                new SynchronousQueue<Runnable>());
         if(useNio) {
             socketService = new NioSocketService(requestHandlerFactory,
-                                                 threadPool,
                                                  port,
                                                  bufferSize,
+                                                 2,
                                                  coreConnections,
                                                  50,
-                                                 0,
                                                  "client-request-service",
                                                  false);
         } else {

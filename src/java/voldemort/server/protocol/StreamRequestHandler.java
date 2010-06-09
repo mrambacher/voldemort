@@ -36,6 +36,9 @@ public interface StreamRequestHandler {
 
     public StreamRequestDirection getDirection();
 
+    public StreamRequestHandlerState getRequestState(DataInputStream inputStream)
+            throws IOException;
+
     public enum StreamRequestHandlerState {
 
         COMPLETE,

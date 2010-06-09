@@ -16,27 +16,26 @@
 
 package voldemort.server.niosocket;
 
+import java.io.EOFException;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.nio.channels.AsynchronousCloseException;
+import java.nio.channels.CancelledKeyException;
 import java.nio.channels.ClosedSelectorException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
-import java.util.Collection;
 import java.util.Iterator;
 import java.util.Queue;
-import java.util.concurrent.Callable;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.RejectedExecutionHandler;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 
 import voldemort.server.protocol.RequestHandlerFactory;
-
-import com.google.common.collect.Lists;
+import voldemort.server.protocol.StreamRequestHandler.StreamRequestHandlerState;
 
 /**
  * SelectorManager handles the non-blocking polling of IO events using the
@@ -105,45 +104,37 @@ public class SelectorManager implements Runnable {
 
     private final Selector selector;
 
+    private final BlockingQueue<AsyncRequestHandler> pendingRequests;
     private final Queue<SocketChannel> socketChannelQueue;
+    private final Queue<SocketChannel> socketReadQueue;
+    private final Queue<SocketChannel> socketWriteQueue;
+    private final Queue<SocketChannel> socketCloseQueue;
 
     private final RequestHandlerFactory requestHandlerFactory;
 
     private final int socketBufferSize;
 
-    private ThreadPoolExecutor executorService;
-
-    private final int parallelProcessingThrehold;
-
     private final AtomicBoolean isClosed;
+
+    private long myThreadId;
 
     private final Logger logger = Logger.getLogger(getClass());
 
     public SelectorManager(RequestHandlerFactory requestHandlerFactory,
                            InetSocketAddress endpoint,
                            int socketBufferSize,
-                           ThreadPoolExecutor threadPool,
-                           int parallelProcessingThrehold) throws IOException {
+                           BlockingQueue<AsyncRequestHandler> requests) throws IOException {
         this.selector = Selector.open();
         this.endpoint = endpoint;
+        this.pendingRequests = requests;
         this.socketChannelQueue = new ConcurrentLinkedQueue<SocketChannel>();
+        this.socketReadQueue = new ConcurrentLinkedQueue<SocketChannel>();
+        this.socketWriteQueue = new ConcurrentLinkedQueue<SocketChannel>();
+        this.socketCloseQueue = new ConcurrentLinkedQueue<SocketChannel>();
         this.requestHandlerFactory = requestHandlerFactory;
         this.socketBufferSize = socketBufferSize;
-        this.executorService = threadPool;
-        this.executorService.setRejectedExecutionHandler(rejectedExecutionHandler);
-        this.parallelProcessingThrehold = parallelProcessingThrehold;
         this.isClosed = new AtomicBoolean(false);
     }
-
-    private final RejectedExecutionHandler rejectedExecutionHandler = new RejectedExecutionHandler() {
-
-        public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
-            logger.warn("Too many parallel requests. Greater than "
-                        + executor.getMaximumPoolSize()
-                        + ". Need to increase the maximum threads available to server. Running the rejected request inline");
-            r.run();
-        }
-    };
 
     public void accept(SocketChannel socketChannel) {
         if(isClosed.get())
@@ -153,12 +144,7 @@ public class SelectorManager implements Runnable {
         selector.wakeup();
     }
 
-    public void close() {
-        // Attempt to close, but if already closed, then we've been beaten to
-        // the punch...
-        if(!isClosed.compareAndSet(false, true))
-            return;
-
+    private void processClose() {
         try {
             for(SelectionKey sk: selector.keys()) {
                 try {
@@ -194,10 +180,22 @@ public class SelectorManager implements Runnable {
         }
     }
 
+    public void close() {
+        // Attempt to close, but if already closed, then we've been beaten to
+        // the punch...
+        if(isClosed.compareAndSet(false, true)) {
+            selector.wakeup();
+            return;
+        }
+
+    }
+
     public void run() {
+        myThreadId = Thread.currentThread().getId();
         try {
             while(true) {
                 if(isClosed.get()) {
+                    processClose();
                     if(logger.isInfoEnabled())
                         logger.info("Closed, exiting" + " for " + endpoint);
 
@@ -219,41 +217,44 @@ public class SelectorManager implements Runnable {
                     if(selected > 0) {
                         Iterator<SelectionKey> i = selector.selectedKeys().iterator();
 
-                        if(parallelProcessingThrehold < 0 || selected < parallelProcessingThrehold) {
-                            while(i.hasNext()) {
-                                SelectionKey selectionKey = i.next();
-                                i.remove();
-                                if(selectionKey.isReadable() || selectionKey.isWritable()) {
-                                    Runnable worker = (Runnable) selectionKey.attachment();
-                                    worker.run();
-                                }
-                            }
-                        } else {
-                            // run in parallel if there are too many requests.
-                            Collection<Callable<Void>> runnables = Lists.newArrayList();
-
-                            while(i.hasNext()) {
-                                SelectionKey selectionKey = i.next();
-                                i.remove();
-                                if(selectionKey.isReadable() || selectionKey.isWritable()) {
-                                    final Runnable worker = (Runnable) selectionKey.attachment();
-                                    runnables.add(new Callable<Void>() {
-
-                                        public Void call() throws Exception {
-                                            worker.run();
-                                            return null;
+                        while(i.hasNext()) {
+                            SelectionKey selectionKey = i.next();
+                            AsyncRequestHandler handler = (AsyncRequestHandler) selectionKey.attachment();
+                            i.remove();
+                            try {
+                                if(selectionKey.isReadable()) {
+                                    StreamRequestHandlerState state = handler.read();
+                                    if(state != StreamRequestHandlerState.INCOMPLETE_READ) {
+                                        if(pendingRequests != null) {
+                                            selectionKey.interestOps(selectionKey.interestOps()
+                                                                     & (~SelectionKey.OP_READ));
+                                            this.pendingRequests.add(handler);
+                                        } else {
+                                            handler.run();
                                         }
-                                    });
+                                    }
+                                } else if(selectionKey.isWritable()) {
+                                    StreamRequestHandlerState state = handler.write();
+                                    if(state == StreamRequestHandlerState.COMPLETE) {
+                                        selectionKey.interestOps(SelectionKey.OP_READ);
+                                    }
+                                } else if(!selectionKey.isValid()) {
+                                    handler.close();
                                 }
+                            } catch(AsynchronousCloseException e) {
+                                handler.close();
+                            } catch(CancelledKeyException e) {
+                                handler.close();
+                            } catch(EOFException e) {
+                                handler.close();
+                            } catch(Throwable t) {
+                                if(logger.isEnabledFor(Level.ERROR))
+                                    logger.error(t.getMessage(), t);
+
+                                handler.close();
                             }
-                            executorService.invokeAll(runnables);
                         }
                     }
-                } catch(ClosedSelectorException e) {
-                    if(logger.isDebugEnabled())
-                        logger.debug("Selector is closed, exiting for " + endpoint);
-
-                    break;
                 } catch(Throwable t) {
                     if(logger.isEnabledFor(Level.ERROR))
                         logger.error(t.getMessage(), t);
@@ -273,9 +274,18 @@ public class SelectorManager implements Runnable {
     }
 
     private void processSockets() {
-        try {
-            SocketChannel socketChannel = null;
+        SocketChannel socketChannel = null;
+        while((socketChannel = socketCloseQueue.poll()) != null) {
+            markForClose(socketChannel);
+        }
 
+        while((socketChannel = socketWriteQueue.poll()) != null) {
+            markForWrite(socketChannel);
+        }
+        while((socketChannel = socketReadQueue.poll()) != null) {
+            markForRead(socketChannel);
+        }
+        try {
             while((socketChannel = socketChannelQueue.poll()) != null) {
                 if(isClosed.get()) {
                     if(logger.isInfoEnabled())
@@ -307,7 +317,7 @@ public class SelectorManager implements Runnable {
                                          + socketChannel.socket().getSendBufferSize() + " bytes.");
 
                     socketChannel.configureBlocking(false);
-                    AsyncRequestHandler attachment = new AsyncRequestHandler(selector,
+                    AsyncRequestHandler attachment = new AsyncRequestHandler(this,
                                                                              socketChannel,
                                                                              requestHandlerFactory,
                                                                              socketBufferSize);
@@ -332,4 +342,57 @@ public class SelectorManager implements Runnable {
         }
     }
 
+    public void markForWrite(SocketChannel socketChannel) {
+        if(this.myThreadId != Thread.currentThread().getId()) {
+            this.socketWriteQueue.add(socketChannel);
+            this.selector.wakeup();
+        } else {
+            try {
+                SelectionKey selectionKey = socketChannel.keyFor(selector);
+                if(selectionKey != null) {
+                    selectionKey.interestOps(SelectionKey.OP_WRITE);
+                }
+            } catch(CancelledKeyException e) {
+
+            } catch(Exception e) {
+                if(logger.isEnabledFor(Level.WARN))
+                    logger.warn(e.getMessage(), e);
+            }
+        }
+    }
+
+    public void markForRead(SocketChannel socketChannel) {
+        if(this.myThreadId != Thread.currentThread().getId()) {
+            this.socketReadQueue.add(socketChannel);
+            this.selector.wakeup();
+        } else {
+            try {
+                SelectionKey selectionKey = socketChannel.keyFor(selector);
+                if(selectionKey != null) {
+                    selectionKey.interestOps(SelectionKey.OP_READ);
+                }
+            } catch(CancelledKeyException e) {} catch(Exception e) {
+                if(logger.isEnabledFor(Level.WARN))
+                    logger.warn(e.getMessage(), e);
+            }
+        }
+    }
+
+    public void markForClose(SocketChannel socketChannel) {
+        if(this.myThreadId != Thread.currentThread().getId()) {
+            this.socketCloseQueue.add(socketChannel);
+            this.selector.wakeup();
+        } else {
+            SelectionKey selectionKey = socketChannel.keyFor(selector);
+            if(selectionKey != null) {
+                try {
+                    selectionKey.attach(null);
+                    selectionKey.cancel();
+                } catch(Exception e) {
+                    if(logger.isEnabledFor(Level.WARN))
+                        logger.warn(e.getMessage(), e);
+                }
+            }
+        }
+    }
 }

@@ -69,8 +69,7 @@ public class UpdatePartitionEntriesStreamRequestHandler implements StreamRequest
         startTime = System.currentTimeMillis();
     }
 
-    public StreamRequestHandlerState handleRequest(DataInputStream inputStream,
-                                                   DataOutputStream outputStream)
+    public StreamRequestHandlerState getRequestState(DataInputStream inputStream)
             throws IOException {
         if(request == null) {
             int size = 0;
@@ -109,7 +108,17 @@ public class UpdatePartitionEntriesStreamRequestHandler implements StreamRequest
             builder.mergeFrom(input);
             request = builder.build();
         }
+        return StreamRequestHandlerState.READING;
+    }
 
+    public StreamRequestHandlerState handleRequest(DataInputStream inputStream,
+                                                   DataOutputStream outputStream)
+            throws IOException {
+
+        StreamRequestHandlerState state = this.getRequestState(inputStream);
+        if(state != StreamRequestHandlerState.READING) {
+            return state;
+        }
         VAdminProto.PartitionEntry partitionEntry = request.getPartitionEntry();
         ByteArray key = ProtoUtils.decodeBytes(partitionEntry.getKey());
         Versioned<byte[]> value = ProtoUtils.decodeVersioned(partitionEntry.getVersioned());
