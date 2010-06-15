@@ -235,18 +235,18 @@ public class RoutedStore extends ReadRepairStore<Integer> {
             long remaining = timeout - timeUnit.convert(elapsed, TimeUnit.NANOSECONDS);
             if(replicas.size() > 0) {
                 retVersion = super.put(key,
-                                           versionedCopy,
-                                           replicas,
-                                           this.preferredWrites - 1,
-                                           this.requiredWrites - 1,
-                                           remaining,
-                                           timeUnit);
+                                       versionedCopy,
+                                       replicas,
+                                       this.preferredWrites - 1,
+                                       this.requiredWrites - 1,
+                                       remaining,
+                                       timeUnit);
             }
             // Okay looks like it worked, increment the version for the caller
             // This is just for test cases failure prevention
             // TODO: Remove this
             VectorClock versionedClock = (VectorClock) versioned.getVersion();
-            versionedClock.incrementClock(master, time.getMilliseconds());
+            versionedClock.incrementClock(nodes.get(master), time.getMilliseconds());
 
             if(logger.isDebugEnabled()) {
                 logger.debug("successfully terminated PUT based on quorum requirements.");
