@@ -79,6 +79,7 @@ public class ReadRepairer<K, V> {
 
         // A list of obsolete nodes that need to be repaired
         Set<Integer> obsolete = new HashSet<Integer>(3);
+        Set<NodeValue<K, V>> existing = new HashSet<NodeValue<K, V>>(nodeValues);
 
         // A Map of Version=>NodeValues that contains the current best estimate
         // of the set of current versions
@@ -133,7 +134,10 @@ public class ReadRepairer<K, V> {
                 NodeValue<K, V> repair = new NodeValue<K, V>(id,
                                                              concurrent.getKey(),
                                                              concurrent.getVersioned());
-                repairs.add(repair);
+                if(!existing.contains(repair)) {
+                    repairs.add(repair);
+                    existing.add(repair);
+                }
             }
         }
 
@@ -141,15 +145,16 @@ public class ReadRepairer<K, V> {
             // if there are more then one concurrent versions on different
             // nodes,
             // we should repair so all have the same set of values
-            Set<NodeValue<K, V>> existing = new HashSet<NodeValue<K, V>>(repairs);
             for(NodeValue<K, V> entry1: concurrents.values()) {
                 for(NodeValue<K, V> entry2: concurrents.values()) {
                     if(!entry1.getVersion().equals(entry2.getVersion())) {
                         NodeValue<K, V> repair = new NodeValue<K, V>(entry1.getNodeId(),
                                                                      entry2.getKey(),
                                                                      entry2.getVersioned());
-                        if(!existing.contains(repair))
+                        if(!existing.contains(repair)) {
                             repairs.add(repair);
+                            existing.add(repair);
+                        }
                     }
                 }
             }

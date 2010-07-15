@@ -618,11 +618,16 @@ public class RoutedStore implements Store<ByteArray, byte[]> {
             public void run() {
                 for(NodeValue<ByteArray, byte[]> v: toReadRepair) {
                     try {
+                        System.out.println("Doing read repair on node " + v.getNodeId()
+                                           + " for key '" + v.getKey() + "' with version "
+                                           + v.getVersion() + ":"
+                                           + new String(v.getVersioned().getValue()));
                         if(logger.isDebugEnabled())
                             logger.debug("Doing read repair on node " + v.getNodeId()
                                          + " for key '" + v.getKey() + "' with version "
                                          + v.getVersion() + ".");
                         innerStores.get(v.getNodeId()).put(v.getKey(), v.getVersioned());
+                        System.out.println("Completed read repair on node " + v.getNodeId());
                     } catch(VoldemortApplicationException e) {
                         if(logger.isDebugEnabled())
                             logger.debug("Read repair cancelled due to application level exception on node "
