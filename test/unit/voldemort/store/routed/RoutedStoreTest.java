@@ -50,6 +50,7 @@ import voldemort.cluster.failuredetector.FailureDetectorConfig;
 import voldemort.routing.RoutingStrategyType;
 import voldemort.serialization.SerializerDefinition;
 import voldemort.store.AbstractByteArrayStoreTest;
+import voldemort.store.FailingDeleteStore;
 import voldemort.store.FailingReadsStore;
 import voldemort.store.FailingStore;
 import voldemort.store.InsufficientOperationalNodesException;
@@ -753,4 +754,101 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
                                                                                  .setStoreVerifier(create(subStores));
         failureDetector = create(failureDetectorConfig, false);
     }
+
+    @Test
+    public void testMasterMissingVersion() {
+        ByteArray key = TestUtils.toByteArray("key"); // Node 1 is the master
+        // for this key
+        byte[] value = "foo".getBytes();
+
+        Cluster cluster = VoldemortTestConstants.getThreeNodeCluster();
+        StoreDefinition storeDef = ServerTestUtils.getStoreDef("test",
+                                                               3,
+                                                               3,
+                                                               3,
+                                                               2,
+                                                               2,
+                                                               RoutingStrategyType.CONSISTENT_STRATEGY);
+        Map<Integer, Store<ByteArray, byte[]>> subStores = Maps.newHashMap();
+        subStores.put(0, new InMemoryStorageEngine<ByteArray, byte[]>("test-0"));
+        subStores.put(1, new InMemoryStorageEngine<ByteArray, byte[]>("test-1"));
+        subStores.put(2,
+                      new FailingDeleteStore<ByteArray, byte[]>(new InMemoryStorageEngine<ByteArray, byte[]>("test-2")));
+
+        this.setFailureDetector(subStores);
+        Store<ByteArray, byte[]> store = new RoutedStore("test",
+                                                         subStores,
+                                                         cluster,
+                                                         storeDef,
+                                                         2,
+                                                         true,
+                                                         1000L,
+                                                         failureDetector);
+
+        store = new InconsistencyResolvingStore<ByteArray, byte[]>(store,
+                                                                   new VectorClockInconsistencyResolver<byte[]>());
+        try {
+            Version version = store.put(key, new Versioned<byte[]>("bar".getBytes()));
+            store.delete(key, version);
+            version = store.put(key, new Versioned<byte[]>("foo".getBytes()));
+            List<Versioned<byte[]>> results = store.get(key);
+            for(Store<ByteArray, byte[]> subStore: subStores.values()) {
+                List<Versioned<byte[]>> subResults = subStore.get(key);
+                assertEquals("One result", results.size(), subResults.size());
+                assertEquals("Versions match", results.get(0).getVersion(), subResults.get(0)
+                                                                                      .getVersion());
+                assertEquals("Values match",
+                             new String(results.get(0).getValue()),
+                             new String(subResults.get(0).getValue()));
+            }
+        } catch(Exception e) {
+            fail("Unexpected exception " + e.getMessage());
+        }
+    }
+
+    @Test
+    public void testSlowStoreDuringReadRepair() {
+        ByteArray key = TestUtils.toByteArray("key");
+        byte[] value = "foo".getBytes();
+
+        Cluster cluster = VoldemortTestConstants.getThreeNodeCluster();
+        StoreDefinition storeDef = ServerTestUtils.getStoreDef("test",
+                                                               3,
+                                                               3,
+                                                               3,
+                                                               2,
+                                                               2,
+                                                               RoutingStrategyType.CONSISTENT_STRATEGY);
+        Map<Integer, Store<ByteArray, byte[]>> subStores = Maps.newHashMap();
+        Store<ByteArray, byte[]> sleepy = new InMemoryStorageEngine<ByteArray, byte[]>("sleepy");
+        subStores.put(0, new InMemoryStorageEngine<ByteArray, byte[]>("test-0"));
+        subStores.put(1,
+                      new SleepyStore<ByteArray, byte[]>(900L,
+                                                         new InMemoryStorageEngine<ByteArray, byte[]>("test-1")));
+        subStores.put(2, new SleepyStore<ByteArray, byte[]>(1000L, sleepy));
+        this.setFailureDetector(subStores);
+
+        subStores.get(0).put(key, new Versioned<byte[]>(value, TestUtils.getClock(3, 3)));
+
+        Store<ByteArray, byte[]> store = new RoutedStore("test",
+                                                         subStores,
+                                                         cluster,
+                                                         storeDef,
+                                                         2,
+                                                         true,
+                                                         1200L,
+                                                         failureDetector);
+        List<Versioned<byte[]>> results = store.get(key);
+        results.get(0).setObject("bar".getBytes());
+        results.get(0).getValue()[0] = 'b';
+        try {
+            Thread.sleep(2000);
+        } catch(Exception e) {}
+        List<Versioned<byte[]>> sleepyResults = sleepy.get(key);
+        assertEquals("Sleepy store has all results", results.size(), sleepyResults.size());
+        assertEquals("Sleepy results unchanged",
+                     new String(value),
+                     new String(sleepyResults.get(0).getValue()));
+    }
+
 }
