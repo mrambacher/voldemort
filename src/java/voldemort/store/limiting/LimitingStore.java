@@ -1,5 +1,5 @@
 /*
- * Copyright © 2010 Nokia Corporation. All rights reserved.
+ * Copyright 2010 Nokia Corporation. All rights reserved.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
@@ -33,6 +33,7 @@ import voldemort.versioning.Versioned;
  * 
  */
 public class LimitingStore extends DelegatingStore<ByteArray, byte[]> {
+
     private final int maxKeySize;
     private final int maxMetadataSize;
     private final int maxValueSize;
@@ -47,14 +48,15 @@ public class LimitingStore extends DelegatingStore<ByteArray, byte[]> {
     /**
      * Create a limiting store that wraps the given store
      * 
-     * @param store
-     *            The store to wrap
-     * @param keyLimit
-     *            The limit to the size of the key (<= 0 means unlimited)
-     * @param valueLimit
-     *            The limit to the size of the value (<= 0 means unlimited)
+     * @param store The store to wrap
+     * @param keyLimit The limit to the size of the key (<= 0 means unlimited)
+     * @param valueLimit The limit to the size of the value (<= 0 means
+     *        unlimited)
      */
-    public LimitingStore(Store<ByteArray, byte[]> store, int keyLimit, int valueLimit, int metadataLimit) {
+    public LimitingStore(Store<ByteArray, byte[]> store,
+                         int keyLimit,
+                         int valueLimit,
+                         int metadataLimit) {
         super(store);
         this.maxKeySize = keyLimit;
         this.maxValueSize = valueLimit;
@@ -81,24 +83,27 @@ public class LimitingStore extends DelegatingStore<ByteArray, byte[]> {
     }
 
     private void checkKeyValidity(ByteArray key) throws VoldemortException {
-        if (maxKeySize > 0) {
-            if (key != null && key.length() > maxKeySize) {
-                throw new LimitExceededException("Key is too large max=" + maxKeySize + "<" + key.length());
+        if(maxKeySize > 0) {
+            if(key != null && key.length() > maxKeySize) {
+                throw new LimitExceededException("Key is too large max=" + maxKeySize + "<"
+                                                 + key.length());
             }
         }
     }
 
     private void checkValueValidity(Versioned<byte[]> versioned) throws VoldemortException {
-        if (maxValueSize > 0) {
+        if(maxValueSize > 0) {
             byte[] value = versioned.getValue();
-            if (value != null && value.length > maxValueSize) {
-                throw new LimitExceededException("Value is too large max=" + maxValueSize + "<" + value.length);
+            if(value != null && value.length > maxValueSize) {
+                throw new LimitExceededException("Value is too large max=" + maxValueSize + "<"
+                                                 + value.length);
             }
         }
-        if (maxMetadataSize > 0) {
+        if(maxMetadataSize > 0) {
             byte[] metadata = versioned.getMetadata().toBytes();
-            if (metadata != null && metadata.length > maxMetadataSize) {
-                throw new LimitExceededException("Metadata is too large max=" + maxMetadataSize + "<" + metadata.length);
+            if(metadata != null && metadata.length > maxMetadataSize) {
+                throw new LimitExceededException("Metadata is too large max=" + maxMetadataSize
+                                                 + "<" + metadata.length);
 
             }
         }

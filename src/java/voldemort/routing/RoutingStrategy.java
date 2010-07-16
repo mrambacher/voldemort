@@ -40,6 +40,14 @@ public interface RoutingStrategy {
     public List<Node> routeRequest(byte[] key);
 
     /**
+     * Gets the primary partition for the given key.
+     * 
+     * @param key The key the operation is operating on
+     * @return The master partition for the given key
+     */
+    public int getPrimaryPartition(byte[] key);
+
+    /**
      * Get the partition list for the given key.
      * 
      * @param key The key the operation is operating on

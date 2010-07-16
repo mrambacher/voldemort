@@ -7,11 +7,11 @@ import java.sql.SQLException;
 import javax.sql.DataSource;
 
 import voldemort.store.PersistenceFailureException;
+import voldemort.store.StoreIterator;
 import voldemort.store.StoreRow;
 import voldemort.store.StoreTransaction;
 import voldemort.store.StoreVersionIterator;
 import voldemort.utils.ByteArray;
-import voldemort.utils.ClosableIterator;
 import voldemort.versioning.ObsoleteVersionException;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
@@ -42,7 +42,7 @@ public class MysqlTransaction implements StoreTransaction<Version> {
         }
     }
 
-    public ClosableIterator<Version> getIterator() throws PersistenceFailureException {
+    public StoreIterator<Version> getIterator() throws PersistenceFailureException {
         try {
             String sql = "select version_ from " + storeName + " where key_ = ? for update";
             StoreRow rows = new MysqlKeyedRow(storeName, this.connection, sql, key);
@@ -52,12 +52,12 @@ public class MysqlTransaction implements StoreTransaction<Version> {
         }
     }
 
-    public void update(ClosableIterator<Version> iter, Versioned<byte[]> value) {
+    public void update(StoreIterator<Version> iter, Versioned<byte[]> value) {
         iter.remove();
         insert(iter, value);
     }
 
-    public void insert(ClosableIterator<Version> iter, Versioned<byte[]> value)
+    public void insert(StoreIterator<Version> iter, Versioned<byte[]> value)
             throws PersistenceFailureException {
         String insertSql = "insert into " + storeName
                            + " (key_, version_, value_, metadata_) values (?, ?, ?, ?)";

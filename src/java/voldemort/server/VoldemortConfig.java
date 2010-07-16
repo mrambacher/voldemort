@@ -898,6 +898,7 @@ public class VoldemortConfig implements Serializable {
     public void setSocketListenQueueLength(int socketListenQueueLength) {
         this.socketListenQueueLength = socketListenQueueLength;
     }
+
     public boolean getSocketKeepAlive() {
         return this.socketKeepAlive;
     }
@@ -1142,4 +1143,18 @@ public class VoldemortConfig implements Serializable {
         this.maxParallelStoresRebalancing = maxParallelStoresRebalancing;
     }
 
+    public Props getProperties(String prefix, boolean clip) {
+        Props result = new Props();
+
+        for(String key: allProps.keySet()) {
+            if(key.startsWith(prefix)) {
+                if(clip) {
+                    result.put(key.substring(prefix.length()), allProps.get(key));
+                } else {
+                    result.put(key, allProps.get(key));
+                }
+            }
+        }
+        return result;
+    }
 }

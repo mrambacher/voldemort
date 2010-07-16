@@ -95,7 +95,7 @@ public abstract class AbstractStorageEngine implements StorageEngine<ByteArray, 
 
         boolean succeeded = false;
         StoreTransaction<Version> transaction = startTransaction(key);
-        ClosableIterator<Version> iter = transaction.getIterator();
+        StoreIterator<Version> iter = transaction.getIterator();
         try {
             boolean updated = false;
             // Check existing values
@@ -162,6 +162,10 @@ public abstract class AbstractStorageEngine implements StorageEngine<ByteArray, 
             attemptClose(iter);
             attemptClose(transaction, success);
         }
+    }
+
+    public Object getCapability(StoreCapabilityType capability) {
+        throw new NoSuchCapabilityException(capability, getName());
     }
 
     abstract protected ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> getEntriesIterator();
