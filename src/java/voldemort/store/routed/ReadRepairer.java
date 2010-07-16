@@ -79,6 +79,7 @@ public class ReadRepairer<N, K, V> {
 
         // A list of obsolete nodes that need to be repaired
         Set<N> obsolete = new HashSet<N>(3);
+        Set<NodeValue<N, K, V>> existing = new HashSet<NodeValue<N, K, V>>(nodeValues);
 
         // A Map of Version=>NodeValues that contains the current best estimate
         // of the set of current versions
@@ -133,7 +134,10 @@ public class ReadRepairer<N, K, V> {
                 NodeValue<N, K, V> repair = new NodeValue<N, K, V>(node,
                                                                    concurrent.getKey(),
                                                                    concurrent.getVersioned());
-                repairs.add(repair);
+                if(!existing.contains(repair)) {
+                    repairs.add(repair);
+                    existing.add(repair);
+                }
             }
         }
 
@@ -141,15 +145,16 @@ public class ReadRepairer<N, K, V> {
             // if there are more then one concurrent versions on different
             // nodes,
             // we should repair so all have the same set of values
-            Set<NodeValue<N, K, V>> existing = new HashSet<NodeValue<N, K, V>>(repairs);
             for(NodeValue<N, K, V> entry1: concurrents.values()) {
                 for(NodeValue<N, K, V> entry2: concurrents.values()) {
                     if(!entry1.getVersion().equals(entry2.getVersion())) {
                         NodeValue<N, K, V> repair = new NodeValue<N, K, V>(entry1.getNode(),
                                                                            entry2.getKey(),
                                                                            entry2.getVersioned());
-                        if(!existing.contains(repair))
+                        if(!existing.contains(repair)) {
                             repairs.add(repair);
+                            existing.add(repair);
+                        }
                     }
                 }
             }
@@ -157,5 +162,4 @@ public class ReadRepairer<N, K, V> {
 
         return repairs;
     }
-
 }

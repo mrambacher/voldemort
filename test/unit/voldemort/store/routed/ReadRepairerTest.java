@@ -57,6 +57,7 @@ import voldemort.store.StoreDefinition;
 import voldemort.store.memory.InMemoryStorageEngine;
 import voldemort.utils.ByteArray;
 import voldemort.utils.Time;
+import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
 import com.google.common.collect.Iterables;
@@ -314,10 +315,82 @@ public class ReadRepairerTest extends TestCase {
     }
 
     private NodeValue<Integer, String, Integer> getValue(int nodeId, int value, int[] version) {
-        return new NodeValue<Integer, String, Integer>(nodeId,
-                                                       Integer.toString(value),
-                                                       new Versioned<Integer>(value,
-                                                                              getClock(version)));
+        return toValue(nodeId, value, getClock(version));
     }
 
+    private NodeValue<Integer, String, Integer> toValue(int nodeId, int value, Version version) {
+        return new NodeValue<Integer, String, Integer>(nodeId,
+                                                       Integer.toString(value),
+                                                       new Versioned<Integer>(value, version));
+    }
+
+    boolean checkForExpectedRepair(String message,
+                                   NodeValue<Integer, String, Integer> expected,
+                                   List<NodeValue<Integer, String, Integer>> repairs) {
+        for(NodeValue<Integer, String, Integer> repair: repairs) {
+            if(repair.equals(expected)) {
+                return true;
+            }
+        }
+        fail(message + ":" + expected);
+        return false;
+    }
+
+    /**
+     * Test the equality with a few variations on ordering
+     * 
+     * @param expected List of expected values
+     * @param input List of actual values
+     */
+    public void assertVariationsEqual(String message,
+                                      List<NodeValue<Integer, String, Integer>> expected,
+                                      List<NodeValue<Integer, String, Integer>> results) {
+        assertEquals("Repairs list matches expected", expected.size(), results.size());
+        for(NodeValue<Integer, String, Integer> ex: expected) {
+            checkForExpectedRepair(message, ex, results);
+        }
+    }
+
+    /**
+     * Test the equality with a few variations on ordering
+     * 
+     * @param expected List of expected values
+     * @param input List of actual values
+     */
+    public void assertVariationsEqual(String message,
+                                      NodeValue<Integer, String, Integer> expected,
+                                      List<NodeValue<Integer, String, Integer>> results) {
+        assertEquals("Repairs list matches expected", 1, results.size());
+        checkForExpectedRepair(message, expected, results);
+    }
+
+    public void testEqualEqualButNotIdenticalValues() throws Exception {
+        ReadRepairer<Integer, String, byte[]> repairer = new ReadRepairer<Integer, String, byte[]>();
+        List<NodeValue<Integer, String, byte[]>> nodeValues = Lists.newArrayList();
+        byte[] value1 = new byte[256];
+        byte[] value2 = new byte[256];
+        for(int i = 0; i < 256; i++) {
+            value1[i] = (byte) i;
+            value2[i] = (byte) i;
+        }
+        nodeValues.add(new NodeValue<Integer, String, byte[]>(1,
+                                                              "key1",
+                                                              new Versioned<byte[]>(value1,
+                                                                                    getClock(1, 1))));
+        nodeValues.add(new NodeValue<Integer, String, byte[]>(1,
+                                                              "key1",
+                                                              new Versioned<byte[]>(value2,
+                                                                                    getClock(2, 2))));
+
+        nodeValues.add(new NodeValue<Integer, String, byte[]>(2,
+                                                              "key1",
+                                                              new Versioned<byte[]>(value2,
+                                                                                    getClock(1, 1))));
+        nodeValues.add(new NodeValue<Integer, String, byte[]>(2,
+                                                              "key1",
+                                                              new Versioned<byte[]>(value1,
+                                                                                    getClock(2, 2))));
+
+        assertEquals("Empty list", 0, repairer.getRepairs(nodeValues).size());
+    }
 }
