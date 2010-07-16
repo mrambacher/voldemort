@@ -93,7 +93,8 @@ public class VoldemortConfig implements Serializable {
     private boolean useNioConnector;
     private int nioConnectorSelectors;
     private int nioAdminConnectorSelectors;
-    private int nioParallelProcessingThreshold;
+    private int nioWorkerThreads;
+    private int nioAdminWorkerThreads;
 
     private int clientRoutingTimeoutMs;
     private int clientMaxConnectionsPerNode;
@@ -238,7 +239,9 @@ public class VoldemortConfig implements Serializable {
         this.nioAdminConnectorSelectors = props.getInt("nio.admin.connector.selectors",
                                                        Math.max(8, Runtime.getRuntime()
                                                                           .availableProcessors()));
-        this.nioParallelProcessingThreshold = props.getInt("nio.parallel.processing.threshold", 50);
+        this.nioWorkerThreads = props.getInt("nio.worker.threads", nioConnectorSelectors * 2);
+        this.nioAdminWorkerThreads = props.getInt("nio.admin.worker.threads",
+                                                  nioAdminConnectorSelectors * 2);
 
         this.clientMaxConnectionsPerNode = props.getInt("client.max.connections.per.node", 5);
         this.clientConnectionTimeoutMs = props.getInt("client.connection.timeout.ms", 400);
@@ -931,12 +934,20 @@ public class VoldemortConfig implements Serializable {
         this.nioAdminConnectorSelectors = nioAdminConnectorSelectors;
     }
 
-    public int getNioParallelProcessingThreshold() {
-        return nioParallelProcessingThreshold;
+    public int getNioWorkerThreads() {
+        return nioWorkerThreads;
     }
 
-    public void setNioParallelProcessingThreshold(int nioParallelProcessingThreshold) {
-        this.nioParallelProcessingThreshold = nioParallelProcessingThreshold;
+    public void setNioWorkerThreads(int nioWorkerThreads) {
+        this.nioWorkerThreads = nioWorkerThreads;
+    }
+
+    public int getNioAdminWorkerThreads() {
+        return nioAdminWorkerThreads;
+    }
+
+    public void setNioAdminWorkerThreads(int count) {
+        this.nioAdminWorkerThreads = count;
     }
 
     public int getAdminSocketBufferSize() {
