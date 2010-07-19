@@ -20,6 +20,8 @@ import java.util.List;
 import java.util.Map;
 
 import voldemort.VoldemortException;
+import voldemort.utils.ClosableIterator;
+import voldemort.utils.Pair;
 import voldemort.utils.Utils;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
@@ -29,7 +31,7 @@ import voldemort.versioning.Versioned;
  * 
  * 
  */
-public class DoNothingStore<K, V> implements Store<K, V> {
+public class DoNothingStore<K, V> implements StorageEngine<K, V> {
 
     private final String name;
 
@@ -72,4 +74,34 @@ public class DoNothingStore<K, V> implements Store<K, V> {
         return null;
     }
 
+    private class DoNothingIterator<T> implements ClosableIterator<T> {
+
+        public void close() {
+        // Do nothing
+        }
+
+        public boolean hasNext() {
+            return false;
+        }
+
+        public void remove() {
+        // Do nothing
+        }
+
+        public T next() {
+            throw new IllegalArgumentException("oops");
+        }
+    }
+
+    public ClosableIterator<Pair<K, Versioned<V>>> entries() {
+        return new DoNothingIterator<Pair<K, Versioned<V>>>();
+    }
+
+    public ClosableIterator<K> keys() {
+        return new DoNothingIterator<K>();
+    }
+
+    public void truncate() {
+    // Do nothing
+    }
 }
