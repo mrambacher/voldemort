@@ -99,10 +99,10 @@ public class NodeValueTest extends TestCase {
 
     @Test
     public void testClone() throws Exception {
-        NodeValue<String, Integer> value = new NodeValue<String, Integer>(1,
-                                                                          "hello",
-                                                                          new Versioned<Integer>(1));
-        NodeValue<String, Integer> clone = value.clone();
+        NodeValue<Integer, String, Integer> value = new NodeValue<Integer, String, Integer>(1,
+                                                                                            "hello",
+                                                                                            new Versioned<Integer>(1));
+        NodeValue<Integer, String, Integer> clone = value.clone();
 
         assertEquals("Clones match", value, clone);
         assertEquals("Hashes match", value.hashCode(), clone.hashCode());
@@ -110,12 +110,12 @@ public class NodeValueTest extends TestCase {
 
     @Test
     public void testNodeInequality() throws Exception {
-        NodeValue<String, Integer> value1 = new NodeValue<String, Integer>(1,
-                                                                           "hello",
-                                                                           new Versioned<Integer>(1));
-        NodeValue<String, Integer> value2 = new NodeValue<String, Integer>(2,
-                                                                           "hello",
-                                                                           new Versioned<Integer>(1));
+        NodeValue<Integer, String, Integer> value1 = new NodeValue<Integer, String, Integer>(1,
+                                                                                             "hello",
+                                                                                             new Versioned<Integer>(1));
+        NodeValue<Integer, String, Integer> value2 = new NodeValue<Integer, String, Integer>(2,
+                                                                                             "hello",
+                                                                                             new Versioned<Integer>(1));
 
         assertNotSame("Values match", value1, value2);
         assertNotSame("Hashes match", value1.hashCode(), value2.hashCode());
@@ -123,14 +123,14 @@ public class NodeValueTest extends TestCase {
 
     @Test
     public void testVersionInequality() throws Exception {
-        NodeValue<String, Integer> value1 = new NodeValue<String, Integer>(1,
-                                                                           "hello",
-                                                                           new Versioned<Integer>(1,
-                                                                                                  TestUtils.getClock(1)));
-        NodeValue<String, Integer> value2 = new NodeValue<String, Integer>(1,
-                                                                           "hello",
-                                                                           new Versioned<Integer>(1,
-                                                                                                  TestUtils.getClock(2)));
+        NodeValue<Integer, String, Integer> value1 = new NodeValue<Integer, String, Integer>(1,
+                                                                                             "hello",
+                                                                                             new Versioned<Integer>(1,
+                                                                                                                    TestUtils.getClock(1)));
+        NodeValue<Integer, String, Integer> value2 = new NodeValue<Integer, String, Integer>(1,
+                                                                                             "hello",
+                                                                                             new Versioned<Integer>(1,
+                                                                                                                    TestUtils.getClock(2)));
 
         assertNotSame("Values match", value1, value2);
         assertNotSame("Hashes match", value1.hashCode(), value2.hashCode());
@@ -138,14 +138,14 @@ public class NodeValueTest extends TestCase {
 
     @Test
     public void testKeyInequality() throws Exception {
-        NodeValue<String, Integer> value1 = new NodeValue<String, Integer>(1,
-                                                                           "hello",
-                                                                           new Versioned<Integer>(1,
-                                                                                                  TestUtils.getClock(1)));
-        NodeValue<String, Integer> value2 = new NodeValue<String, Integer>(1,
-                                                                           "so long",
-                                                                           new Versioned<Integer>(1,
-                                                                                                  TestUtils.getClock(1)));
+        NodeValue<Integer, String, Integer> value1 = new NodeValue<Integer, String, Integer>(1,
+                                                                                             "hello",
+                                                                                             new Versioned<Integer>(1,
+                                                                                                                    TestUtils.getClock(1)));
+        NodeValue<Integer, String, Integer> value2 = new NodeValue<Integer, String, Integer>(1,
+                                                                                             "so long",
+                                                                                             new Versioned<Integer>(1,
+                                                                                                                    TestUtils.getClock(1)));
 
         assertNotSame("Values match", value1, value2);
         assertNotSame("Hashes match", value1.hashCode(), value2.hashCode());
