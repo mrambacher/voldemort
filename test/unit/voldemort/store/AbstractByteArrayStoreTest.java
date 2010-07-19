@@ -60,10 +60,12 @@ public abstract class AbstractByteArrayStoreTest extends AbstractStoreTest<ByteA
     public void testEmptyByteArray() throws Exception {
         Store<ByteArray, byte[]> store = getStore();
         Versioned<byte[]> bytes = new Versioned<byte[]>(new byte[0]);
-        store.put(new ByteArray(new byte[0]), bytes);
+        Version stored = store.put(new ByteArray(new byte[0]), bytes);
         List<Versioned<byte[]>> found = store.get(new ByteArray(new byte[0]));
         assertEquals("Incorrect number of results.", 1, found.size());
-        assertEquals("Get doesn't equal put.", bytes, found.get(0));
+        assertEquals("Get doesn't equal put.",
+                     new Versioned<byte[]>(bytes.getValue(), stored),
+                     found.get(0));
     }
 
     @Test

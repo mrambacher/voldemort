@@ -233,9 +233,10 @@ public abstract class AbstractStoreTest<K, V> extends TestCase {
         return null;
     }
 
-    protected int testFetchedEqualsPut(Store<K, V> store, K key, Versioned<V> versioned) {
+    protected int testFetchedEqualsPut(Store<K, V> store, K key, Versioned<V> put) {
         boolean found = false;
-        Version version = store.put(key, versioned);
+        Version version = store.put(key, put);
+        Versioned<V> versioned = new Versioned<V>(put.getValue(), version, put.getMetadata());
         List<Versioned<V>> results = store.get(key);
         for(Versioned<V> result: results) {
             if(version.equals(result.getVersion())) {
