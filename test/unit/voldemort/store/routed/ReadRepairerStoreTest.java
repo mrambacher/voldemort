@@ -8,6 +8,7 @@ import static voldemort.cluster.failuredetector.FailureDetectorUtils.create;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import junit.framework.TestCase;
 
@@ -98,6 +99,7 @@ public class ReadRepairerStoreTest extends TestCase {
                                             1,
                                             true,
                                             1000L,
+                                            TimeUnit.MILLISECONDS,
                                             failureDetector);
 
         recordException(failureDetector, Iterables.get(cluster.getNodes(), 0));
