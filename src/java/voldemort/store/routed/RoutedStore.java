@@ -17,6 +17,7 @@
 package voldemort.store.routed;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -33,7 +34,6 @@ import voldemort.cluster.failuredetector.FailureDetector;
 import voldemort.routing.RoutingStrategy;
 import voldemort.routing.RoutingStrategyFactory;
 import voldemort.store.InsufficientOperationalNodesException;
-import voldemort.store.InsufficientSuccessfulNodesException;
 import voldemort.store.Store;
 import voldemort.store.StoreCapabilityType;
 import voldemort.store.StoreDefinition;
@@ -43,7 +43,6 @@ import voldemort.utils.ByteArray;
 import voldemort.utils.SystemTime;
 import voldemort.utils.Time;
 import voldemort.versioning.ObsoleteVersionException;
-import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
 import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
@@ -163,7 +162,7 @@ public class RoutedStore extends ReadRepairStore<Integer> {
     }
 
     /**
-     * Update a key valu ensuring required writes. It ensures that it first
+     * Update a key value ensuring required writes. It ensures that it first
      * succeeds on one node before firing off to other nodes to meet required
      * writes criteria.
      * 
@@ -189,6 +188,8 @@ public class RoutedStore extends ReadRepairStore<Integer> {
         int numNodes = nodes.size();
         int currentNode = 0;
         long startNs = System.nanoTime();
+        // A list of thrown exceptions, indicating the number of failures
+        final List<Exception> failures = Lists.newArrayList();
         Version retVersion = null;
         for(; currentNode < numNodes; currentNode++) {
             checkRequiredWrites(numNodes - currentNode);
@@ -200,9 +201,8 @@ public class RoutedStore extends ReadRepairStore<Integer> {
                 master = currentNode;
                 break;
             } catch(UnreachableStoreException e) {
-                if(logger.isDebugEnabled()) {
-                    logger.debug("impossible to reach the node - It's marked unavailable.");
-                }
+                logger.warn("impossible to reach the node - It's marked unavailable - " + e.getMessage(), e);
+                failures.add(e);
             } catch(ObsoleteVersionException e) {
                 if(logger.isDebugEnabled()) {
                     logger.debug("Obsolete version for key: " + key);
@@ -211,10 +211,9 @@ public class RoutedStore extends ReadRepairStore<Integer> {
                 // of this operation
                 throw e;
             } catch(Exception e) {
-                if(logger.isDebugEnabled()) {
-                    logger.debug("Exception found during PUT in master node Id: " + currentNode
-                                 + " - " + e.getMessage(), e);
-                }
+                logger.warn("Exception found during PUT in master node Id: " + nodes.get(currentNode)
+                             + " - " + e.getMessage(), e);
+                failures.add(e);
             }
         }
 
@@ -222,7 +221,8 @@ public class RoutedStore extends ReadRepairStore<Integer> {
             if(logger.isDebugEnabled()) {
                 logger.debug("Impossible to complete PUT from master node");
             }
-            throw new InsufficientOperationalNodesException("No master node succeeded!");
+            throw new InsufficientOperationalNodesException("No master node succeeded!",
+                                                            failures, 0, requiredWrites);
         }
 
         final List<Integer> replicas = new ArrayList<Integer>(numNodes);
@@ -230,36 +230,26 @@ public class RoutedStore extends ReadRepairStore<Integer> {
             replicas.add(nodes.get(currentNode));
         }
 
-        try {
-            long elapsed = System.nanoTime() - startNs;
-            long remaining = timeout - timeUnit.convert(elapsed, TimeUnit.NANOSECONDS);
-            if(replicas.size() > 0) {
-                retVersion = super.put(key,
-                                       versionedCopy,
-                                       replicas,
-                                       this.preferredWrites - 1,
-                                       this.requiredWrites - 1,
-                                       remaining,
-                                       timeUnit);
-            }
-            // Okay looks like it worked, increment the version for the caller
-            // This is just for test cases failure prevention
-            // TODO: Remove this
-            VectorClock versionedClock = (VectorClock) versioned.getVersion();
-            versionedClock.incrementClock(nodes.get(master), time.getMilliseconds());
-
-            if(logger.isDebugEnabled()) {
-                logger.debug("successfully terminated PUT based on quorum requirements.");
-            }
-            return retVersion;
-        } catch(InsufficientSuccessfulNodesException e) {
-            // If we got an insufficient, update the number
-            // success/required/failed to account for the master
-            e.setAvailable(e.getAvailable() + 1);
-            e.setRequired(e.getRequired() + 1);
-            e.setSuccessful(e.getSuccessful() + 1);
-            throw e;
+        long elapsed = System.nanoTime() - startNs;
+        long remaining = timeout - timeUnit.convert(elapsed, TimeUnit.NANOSECONDS);
+        if(replicas.size() > 0) {
+            Map<Integer, VoldemortException> exceptions = new HashMap<Integer, VoldemortException>();
+            ParallelTask<Integer, Version> job = putJob(key, versionedCopy, replicas);
+            Map<Integer, Version> results = job.get(preferredWrites - 1,
+                                                    requiredWrites - 1,
+                                                    remaining,
+                                                    timeUnit,
+                                                    exceptions);
+            job.checkQuorum(requiredWrites,
+                               nodes.size(),
+                               results.size() + 1,
+                               exceptions.values());
         }
+
+        if(logger.isDebugEnabled()) {
+            logger.debug("successfully terminated PUT based on quorum requirements.");
+        }
+        return retVersion;
     }
 
     /**
