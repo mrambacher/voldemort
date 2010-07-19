@@ -18,6 +18,7 @@
 package voldemort.store.routed;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +30,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.apache.log4j.LogManager;
+import org.apache.log4j.Logger;
 
 import voldemort.VoldemortApplicationException;
 import voldemort.VoldemortException;
@@ -38,6 +43,8 @@ import voldemort.store.InsufficientSuccessfulNodesException;
  * Runs multiple callable
  */
 public class ParallelTask<N, V> implements Future<Map<N, V>> {
+
+    private static final Logger logger = LogManager.getLogger(ParallelTask.class);
 
     // FutureTask to release Semaphore as completed
     private class NodeFuture extends FutureTask<V> {
@@ -52,6 +59,9 @@ public class ParallelTask<N, V> implements Future<Map<N, V>> {
         @Override
         protected void done() {
             completed.add(this);
+            if(running.decrementAndGet() == 0) {
+                taskCompletedTime = System.nanoTime();
+            }
             super.done();
         }
     }
@@ -65,9 +75,17 @@ public class ParallelTask<N, V> implements Future<Map<N, V>> {
     /** The name of the jobs */
     private final String taskName;
     /** The number of jobs that have been harvested */
-    private int retrieved;
+    int retrieved;
     /** True if the set of jobs has been canceled, false otherwise */
     private boolean cancelled = false;
+
+    /** The number of tasks which are still running */
+
+    AtomicInteger running;
+    /** The time at which all of the tasks completed */
+    long taskCompletedTime;
+    /** The time (in nanoseconds at which the tasks were started */
+    final long taskStartTime;
 
     /**
      * Creates and starts the set of parallel tasks
@@ -86,7 +104,8 @@ public class ParallelTask<N, V> implements Future<Map<N, V>> {
             NodeFuture f = new NodeFuture(entry.getKey(), entry.getValue());
             this.submitted.add(f);
         }
-
+        this.running = new AtomicInteger(submitted.size());
+        taskStartTime = System.nanoTime();
         for(NodeFuture f: submitted) {
             pool.execute(f);
         }
@@ -103,6 +122,20 @@ public class ParallelTask<N, V> implements Future<Map<N, V>> {
                                                         ExecutorService pool,
                                                         Map<S, Callable<T>> tasks) {
         return new ParallelTask<S, T>(taskName, pool, tasks);
+    }
+
+    /**
+     * Returns the total time the tasks have been running. This may be the
+     * current time or the time at which tasks completed.
+     */
+    public long getTaskDuration(TimeUnit unit) {
+        long completed;
+        if(this.running.get() > 0) { // Task is still running, use current time
+            completed = System.nanoTime();
+        } else { // All tasks have completed, use completion time
+            completed = this.taskCompletedTime;
+        }
+        return unit.convert(completed - this.taskStartTime, TimeUnit.NANOSECONDS);
     }
 
     /**
@@ -224,18 +257,26 @@ public class ParallelTask<N, V> implements Future<Map<N, V>> {
      *         nodes completed successfully.
      */
     public Map<N, V> get(int preferred, int required, long timeout, TimeUnit unit) {
-        List<VoldemortException> exceptions = new ArrayList<VoldemortException>();
-        Map<N, V> results = get(preferred, timeout, unit, exceptions);
-        if(results.size() < required) {
+        Map<N, VoldemortException> exceptions = new HashMap<N, VoldemortException>();
+        Map<N, V> results = get(preferred, required, timeout, unit, exceptions);
+        checkQuorum(required, this.size, results.size(), exceptions.values());
+        return results;
+    }
+
+    public void checkQuorum(int required,
+                               int attempted,
+                               int succeeded,
+                               Collection<VoldemortException> exceptions) {
+        if(succeeded < required) {
             throw new InsufficientSuccessfulNodesException(taskName + ": Required " + required
-                                                                   + " but only " + results.size()
+                                                                   + " but only " + succeeded
                                                                    + " succeeded",
                                                            exceptions,
-                                                           this.size,
+                                                           attempted,
                                                            required,
-                                                           results.size());
+                                                           succeeded);
         }
-        return results;
+
     }
 
     /**
@@ -247,7 +288,7 @@ public class ParallelTask<N, V> implements Future<Map<N, V>> {
      * @return The results of successfully completed tasks.
      */
     public Map<N, V> get(long timeout, TimeUnit unit) {
-        return get(this.size, timeout, unit, null);
+        return get(this.size, 0, timeout, unit, null);
     }
 
     /**
@@ -261,41 +302,63 @@ public class ParallelTask<N, V> implements Future<Map<N, V>> {
      * @return The results of successfully completed tasks.
      */
     public Map<N, V> get(int preferred,
+                         int required,
                          long timeout,
                          TimeUnit unit,
-                         List<VoldemortException> exceptions) {
+                         Map<N, VoldemortException> exceptions) {
         // timeout handling isn't perfect, but it's an attempt to
         // replicate the behavior found in AbstractExecutorService
+        int collected = 0;
         Map<N, V> results = new HashMap<N, V>(preferred);
 
         long start = System.nanoTime();
         long nanoTimeout = unit.toNanos(timeout);
-        while(results.size() < preferred) {
+        while(results.size() < preferred && getRemaining() > 0) {
             if(this.isCancelled()) {
                 break;
             }
             long current = System.nanoTime();
             long elapsed = current - start;
             if(elapsed >= nanoTimeout) {
+                if(logger.isDebugEnabled()) {
+                    logger.debug("Operation timed out after " + elapsed + " ns");
+                }
                 break;
             }
             NodeFuture f = getNextResult(nanoTimeout - elapsed, TimeUnit.NANOSECONDS);
-            if(f != null) {
+            if(f == null) {
+                if(logger.isDebugEnabled()) {
+                    logger.debug("Next result timed out after " + (nanoTimeout - elapsed) + " ns");
+                }
+                break;
+            } else {
+                collected++;
                 try {
                     V result = getResult(f);
                     results.put(f.node, result);
                 } catch(VoldemortApplicationException e) {
                     throw e;
                 } catch(VoldemortException e) {
+                    if(logger.isDebugEnabled()) {
+                        logger.debug("Node " + f.node + " returned exception " + e.getMessage());
+                    }
                     if(exceptions != null) {
-                        exceptions.add(e);
+                        exceptions.put(f.node, e);
                         // If the number of failures precludes the operation
                         // from being successful,
                         // stop waiting for more successful results, as we
                         // cannot reach the number of
                         // preferred operations (there are too few jobs left to
                         // reach that level).
-                        if(preferred > this.size - exceptions.size()) {
+                        // if(required > this.size - exceptions.size()) {
+                        // if(required > this.getRemaining() +
+                        // exceptions.size()) {
+                        if(required > this.size - exceptions.size()) {
+                            if(logger.isDebugEnabled()) {
+                                logger.debug("Too many failures to complete task successfully: "
+                                             + exceptions.size() + "/" + size
+                                             + " failed, required " + required);
+                            }
                             break;
                         }
                     }
@@ -305,15 +368,17 @@ public class ParallelTask<N, V> implements Future<Map<N, V>> {
         // OK, at this point, we either have the correct number of results or
         // have timed out.
         // Now, check if there are any results left (without blocking)
-        for(NodeFuture f = getNextResult(0, unit); f != null; f = getNextResult(0, unit)) {
-            try {
-                V result = getResult(f);
-                results.put(f.node, result);
-            } catch(VoldemortApplicationException e) {
-                throw e;
-            } catch(VoldemortException e) {
-                if(exceptions != null) {
-                    exceptions.add(e);
+        if(getRemaining() > 0) {
+            for(NodeFuture f = getNextResult(0, unit); f != null; f = getNextResult(0, unit)) {
+                try {
+                    V result = getResult(f);
+                    results.put(f.node, result);
+                } catch(VoldemortApplicationException e) {
+                    throw e;
+                } catch(VoldemortException e) {
+                    if(exceptions != null) {
+                        exceptions.put(f.node, e);
+                    }
                 }
             }
         }
@@ -334,7 +399,7 @@ public class ParallelTask<N, V> implements Future<Map<N, V>> {
      * @return The number of tasks still remaining.
      */
     public int getRemaining() {
-        return completed.size() + size - retrieved;
+        return size - retrieved;
     }
 
     /**
