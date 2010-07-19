@@ -1,8 +1,6 @@
 package voldemort.store.routed;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import junit.framework.TestCase;
 
 import org.apache.log4j.Logger;
 import org.junit.Test;
@@ -16,7 +14,7 @@ import voldemort.versioning.Versioned;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 
-public class NodeValueTest {
+public class NodeValueTest extends TestCase {
 
     private final static Logger logger = Logger.getLogger(NodeValueTest.class);
 
@@ -99,4 +97,57 @@ public class NodeValueTest {
 
     }
 
+    @Test
+    public void testClone() throws Exception {
+        NodeValue<String, Integer> value = new NodeValue<String, Integer>(1,
+                                                                          "hello",
+                                                                          new Versioned<Integer>(1));
+        NodeValue<String, Integer> clone = value.clone();
+
+        assertEquals("Clones match", value, clone);
+        assertEquals("Hashes match", value.hashCode(), clone.hashCode());
+    }
+
+    @Test
+    public void testNodeInequality() throws Exception {
+        NodeValue<String, Integer> value1 = new NodeValue<String, Integer>(1,
+                                                                           "hello",
+                                                                           new Versioned<Integer>(1));
+        NodeValue<String, Integer> value2 = new NodeValue<String, Integer>(2,
+                                                                           "hello",
+                                                                           new Versioned<Integer>(1));
+
+        assertNotSame("Values match", value1, value2);
+        assertNotSame("Hashes match", value1.hashCode(), value2.hashCode());
+    }
+
+    @Test
+    public void testVersionInequality() throws Exception {
+        NodeValue<String, Integer> value1 = new NodeValue<String, Integer>(1,
+                                                                           "hello",
+                                                                           new Versioned<Integer>(1,
+                                                                                                  TestUtils.getClock(1)));
+        NodeValue<String, Integer> value2 = new NodeValue<String, Integer>(1,
+                                                                           "hello",
+                                                                           new Versioned<Integer>(1,
+                                                                                                  TestUtils.getClock(2)));
+
+        assertNotSame("Values match", value1, value2);
+        assertNotSame("Hashes match", value1.hashCode(), value2.hashCode());
+    }
+
+    @Test
+    public void testKeyInequality() throws Exception {
+        NodeValue<String, Integer> value1 = new NodeValue<String, Integer>(1,
+                                                                           "hello",
+                                                                           new Versioned<Integer>(1,
+                                                                                                  TestUtils.getClock(1)));
+        NodeValue<String, Integer> value2 = new NodeValue<String, Integer>(1,
+                                                                           "so long",
+                                                                           new Versioned<Integer>(1,
+                                                                                                  TestUtils.getClock(1)));
+
+        assertNotSame("Values match", value1, value2);
+        assertNotSame("Hashes match", value1.hashCode(), value2.hashCode());
+    }
 }

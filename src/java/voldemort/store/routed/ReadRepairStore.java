@@ -193,11 +193,18 @@ public class ReadRepairStore<N> extends DistributingStore<N> {
     private void repairReads(final List<NodeValue<N, ByteArray, byte[]>> nodeValues) {
         if(!repairReads)
             return;
-
-        final List<NodeValue<N, ByteArray, byte[]>> repairList = readRepairer.getRepairs(nodeValues);
+        final List<NodeValue<N, ByteArray, byte[]>> repairList = Lists.newArrayList();
+        /*
+         * We clone after computing read repairs in the assumption that the
+         * output will be smaller than the input. Note that we clone the
+         * version, but not the key or value as the latter two are not mutated.
+         */
+        for(NodeValue<N, ByteArray, byte[]> v: readRepairer.getRepairs(nodeValues)) {
+            Versioned<byte[]> cloned = v.getVersioned().cloneVersioned();
+            repairList.add(new NodeValue<N, ByteArray, byte[]>(v.getNode(), v.getKey(), cloned));
+        }
 
         if(repairList.size() > 0) {
-
             this.executor.execute(new Runnable() {
 
                 public void run() {

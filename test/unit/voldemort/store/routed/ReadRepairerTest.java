@@ -1,6 +1,8 @@
 /*
  * Copyright 2008-2009 LinkedIn, Inc
  * 
+ * Portion Copyright (c) 2010 Nokia Corporation. All rights reserved.
+ * 
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
  * the License at
@@ -17,7 +19,6 @@
 package voldemort.store.routed;
 
 import static java.util.Arrays.asList;
-import static java.util.Collections.singletonList;
 import static voldemort.FailureDetectorTestUtils.recordException;
 import static voldemort.FailureDetectorTestUtils.recordSuccess;
 import static voldemort.MutableStoreVerifier.create;
@@ -57,6 +58,7 @@ import voldemort.store.StoreDefinition;
 import voldemort.store.memory.InMemoryStorageEngine;
 import voldemort.utils.ByteArray;
 import voldemort.utils.Time;
+import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
@@ -190,90 +192,6 @@ public class ReadRepairerTest extends TestCase {
         assertEquals(getValue(3, 1, new int[] { 1, 2 }), repairs.get(0));
     }
 
-    public void testSingleSuccessor() throws Exception {
-        assertVariationsEqual(singletonList(getValue(1, 1, new int[] { 1, 1 })),
-                              asList(getValue(1, 1, new int[] { 1 }), getValue(2, 1, new int[] { 1,
-                                      1 })));
-    }
-
-    public void testAllConcurrent() throws Exception {
-        assertVariationsEqual(asList(getValue(1, 1, new int[] { 2 }),
-                                     getValue(1, 1, new int[] { 3 }),
-                                     getValue(2, 1, new int[] { 1 }),
-                                     getValue(2, 1, new int[] { 3 }),
-                                     getValue(3, 1, new int[] { 1 }),
-                                     getValue(3, 1, new int[] { 2 })),
-                              asList(getValue(1, 1, new int[] { 1 }),
-                                     getValue(2, 1, new int[] { 2 }),
-                                     getValue(3, 1, new int[] { 3 })));
-    }
-
-    public void testTwoAncestorsToOneSuccessor() throws Exception {
-        int[] expected = new int[] { 1, 1, 2, 2 };
-        assertVariationsEqual(asList(getValue(2, 1, expected), getValue(3, 1, expected)),
-                              asList(getValue(1, 1, expected),
-                                     getValue(2, 1, new int[] { 1 }),
-                                     getValue(3, 1, new int[] { 2 })));
-    }
-
-    public void testOneAcestorToTwoSuccessors() throws Exception {
-        int[] expected = new int[] { 1, 1, 2, 2 };
-        assertVariationsEqual(asList(getValue(2, 1, expected), getValue(3, 1, expected)),
-                              asList(getValue(1, 1, expected),
-                                     getValue(2, 1, new int[] { 1 }),
-                                     getValue(3, 1, new int[] { 2 })));
-    }
-
-    public void testEqualObsoleteVersions() throws Exception {
-        int[] expected = new int[] { 1, 1 };
-        assertVariationsEqual(asList(getValue(1, 1, expected),
-                                     getValue(2, 1, expected),
-                                     getValue(3, 1, expected)),
-                              asList(getValue(1, 1, new int[] {}),
-                                     getValue(2, 1, new int[] { 1 }),
-                                     getValue(3, 1, new int[] { 1 }),
-                                     getValue(4, 1, expected)));
-    }
-
-    public void testDiamondPattern() throws Exception {
-        int[] expected = new int[] { 1, 1, 2, 2 };
-        assertVariationsEqual(asList(getValue(1, 1, expected),
-                                     getValue(2, 1, expected),
-                                     getValue(3, 1, expected)),
-                              asList(getValue(1, 1, new int[] {}),
-                                     getValue(2, 1, new int[] { 1 }),
-                                     getValue(3, 1, new int[] { 2 }),
-                                     getValue(4, 1, expected)));
-    }
-
-    public void testConcurrentToOneDoesNotImplyConcurrentToAll() throws Exception {
-        assertVariationsEqual(asList(getValue(1, 1, new int[] { 1, 3, 3 }),
-                                     getValue(1, 1, new int[] { 1, 2 }),
-                                     getValue(2, 1, new int[] { 1, 3, 3 }),
-                                     getValue(3, 1, new int[] { 1, 2 })),
-                              asList(getValue(1, 1, new int[] { 3, 3 }), getValue(2, 1, new int[] {
-                                      1, 2 }), getValue(3, 1, new int[] { 1, 3, 3 })));
-    }
-
-    public void testLotsOfVersions() throws Exception {
-        assertVariationsEqual(asList(getValue(1, 1, new int[] { 1, 2, 2, 3 }),
-                                     getValue(1, 1, new int[] { 1, 2, 3, 3 }),
-                                     getValue(2, 1, new int[] { 1, 2, 2, 3 }),
-                                     getValue(2, 1, new int[] { 1, 2, 3, 3 }),
-                                     getValue(3, 1, new int[] { 1, 2, 2, 3 }),
-                                     getValue(3, 1, new int[] { 1, 2, 3, 3 }),
-                                     getValue(4, 1, new int[] { 1, 2, 3, 3 }),
-                                     getValue(5, 1, new int[] { 1, 2, 2, 3 }),
-                                     getValue(6, 1, new int[] { 1, 2, 2, 3 }),
-                                     getValue(6, 1, new int[] { 1, 2, 3, 3 })),
-                              asList(getValue(1, 1, new int[] { 1, 3 }),
-                                     getValue(2, 1, new int[] { 1, 2 }),
-                                     getValue(3, 1, new int[] { 2, 2 }),
-                                     getValue(4, 1, new int[] { 1, 2, 2, 3 }),
-                                     getValue(5, 1, new int[] { 1, 2, 3, 3 }),
-                                     getValue(6, 1, new int[] { 3, 3 })));
-    }
-
     /**
      * Test the equality with a few variations on ordering
      * 
@@ -364,6 +282,7 @@ public class ReadRepairerTest extends TestCase {
         checkForExpectedRepair(message, expected, results);
     }
 
+    @Test
     public void testEqualEqualButNotIdenticalValues() throws Exception {
         ReadRepairer<Integer, String, byte[]> repairer = new ReadRepairer<Integer, String, byte[]>();
         List<NodeValue<Integer, String, byte[]>> nodeValues = Lists.newArrayList();
@@ -392,5 +311,302 @@ public class ReadRepairerTest extends TestCase {
                                                                                     getClock(2, 2))));
 
         assertEquals("Empty list", 0, repairer.getRepairs(nodeValues).size());
+    }
+
+    @Test
+    public void testOneNodeOneKeyObsolete() throws Exception {
+        List<NodeValue<Integer, String, Integer>> nodeValues = Lists.newArrayList();
+        nodeValues.add(toValue(1, 1, getClock(1, 1)));
+        nodeValues.add(toValue(2, 1, getClock(1)));
+        List<NodeValue<Integer, String, Integer>> repairs = repairer.getRepairs(nodeValues);
+        this.assertVariationsEqual("One node obsolete", toValue(2, 1, getClock(1, 1)), repairs);
+    }
+
+    @Test
+    public void testThreeNodesOneKeyObsolete() throws Exception {
+        List<NodeValue<Integer, String, Integer>> nodeValues = Lists.newArrayList();
+        nodeValues.add(toValue(1, 1, getClock(1, 1)));
+        nodeValues.add(toValue(2, 1, getClock(1)));
+        nodeValues.add(toValue(3, 1, getClock(1)));
+        List<NodeValue<Integer, String, Integer>> repairs = repairer.getRepairs(nodeValues);
+        this.assertVariationsEqual("One key obsolete",
+                                   toList(toValue(2, 1, getClock(1, 1)), toValue(3, 1, getClock(1,
+                                                                                                1))),
+                                   repairs);
+    }
+
+    @Test
+    public void testThreeNodesOneNodeOneKeyObsolete() throws Exception {
+        List<NodeValue<Integer, String, Integer>> nodeValues = Lists.newArrayList();
+        nodeValues.add(toValue(1, 1, getClock(1, 1)));
+        nodeValues.add(toValue(3, 1, getClock(1, 1)));
+        nodeValues.add(toValue(2, 1, getClock(1)));
+        List<NodeValue<Integer, String, Integer>> repairs = repairer.getRepairs(nodeValues);
+        this.assertVariationsEqual("One key obsolete", toValue(2, 1, getClock(1, 1)), repairs);
+    }
+
+    @Test
+    public void testTwoNodesBothObsolete() throws Exception {
+        List<NodeValue<Integer, String, Integer>> nodeValues = Lists.newArrayList();
+        nodeValues.add(toValue(1, 1, getClock(1)));
+        nodeValues.add(toValue(2, 1, getClock(2)));
+        List<NodeValue<Integer, String, Integer>> repairs = repairer.getRepairs(nodeValues);
+        this.assertVariationsEqual("One key obsolete", toList(toValue(2, 1, getClock(1)),
+                                                              toValue(1, 1, getClock(2))), repairs);
+    }
+
+    @Test
+    public void testNodeMissingVersion() throws Exception {
+        List<NodeValue<Integer, String, Integer>> nodeValues = Lists.newArrayList();
+        nodeValues.add(toValue(1, 1, getClock(1)));
+        nodeValues.add(toValue(2, 1, new VectorClock()));
+        List<NodeValue<Integer, String, Integer>> repairs = repairer.getRepairs(nodeValues);
+        assertVariationsEqual("One key obsolete", toValue(2, 1, getClock(1)), repairs);
+    }
+
+    @Test
+    public void testCurrentNodesContainObsoleteVersions() throws Exception {
+        List<NodeValue<Integer, String, Integer>> nodeValues = Lists.newArrayList();
+        nodeValues.add(toValue(1, 1, getClock(1)));
+        nodeValues.add(toValue(1, 1, getClock(1, 1)));
+        nodeValues.add(toValue(1, 1, getClock(2, 2)));
+
+        nodeValues.add(toValue(1, 2, getClock(1)));
+        nodeValues.add(toValue(1, 2, getClock(1, 1)));
+        nodeValues.add(toValue(1, 2, getClock(2, 2)));
+
+        nodeValues.add(toValue(2, 1, getClock(1, 1)));
+        nodeValues.add(toValue(2, 1, getClock(2)));
+        nodeValues.add(toValue(2, 1, getClock(2, 2)));
+
+        nodeValues.add(toValue(2, 2, getClock(1, 1)));
+        nodeValues.add(toValue(2, 2, getClock(2)));
+        nodeValues.add(toValue(2, 2, getClock(2, 2)));
+
+        List<NodeValue<Integer, String, Integer>> repairs = repairer.getRepairs(nodeValues);
+        assertEquals("testCurrentNodesContainObsoleteVersions", 0, repairs.size());
+    }
+
+    @Test
+    public void testNodeMissingOneKey() throws Exception {
+        List<NodeValue<Integer, String, Integer>> nodeValues = Lists.newArrayList();
+        nodeValues.add(toValue(1, 1, getClock(1)));
+        nodeValues.add(toValue(1, 2, getClock(1))); // This key will not get
+        // repaired
+        nodeValues.add(toValue(2, 1, new VectorClock()));
+        List<NodeValue<Integer, String, Integer>> repairs = repairer.getRepairs(nodeValues);
+        assertVariationsEqual("One repair", toValue(2, 1, getClock(1)), repairs);
+    }
+
+    @Test
+    public void testThreeNodesOneKeyThreeVersions() throws Exception {
+        List<NodeValue<Integer, String, Integer>> nodeValues = Lists.newArrayList();
+        nodeValues.add(toValue(1, 1, getClock(1)));
+        nodeValues.add(toValue(2, 1, getClock(2)));
+        nodeValues.add(toValue(3, 1, getClock(3)));
+        List<NodeValue<Integer, String, Integer>> expected = Lists.newArrayList();
+        expected.add(toValue(1, 1, getClock(2)));
+        expected.add(toValue(1, 1, getClock(3)));
+        expected.add(toValue(2, 1, getClock(1)));
+        expected.add(toValue(2, 1, getClock(3)));
+        expected.add(toValue(3, 1, getClock(2)));
+        expected.add(toValue(3, 1, getClock(1)));
+        List<NodeValue<Integer, String, Integer>> repairs = repairer.getRepairs(nodeValues);
+        assertVariationsEqual("One repair", expected, repairs);
+    }
+
+    @Test
+    public void testThreeNodesThreeKeyThreeVersions() throws Exception {
+        List<NodeValue<Integer, String, Integer>> nodeValues = Lists.newArrayList();
+        nodeValues.add(toValue(1, 1, getClock(1)));
+        nodeValues.add(toValue(1, 2, new VectorClock()));
+        nodeValues.add(toValue(2, 2, getClock(2)));
+        nodeValues.add(toValue(2, 3, new VectorClock()));
+        nodeValues.add(toValue(3, 3, getClock(3)));
+        nodeValues.add(toValue(3, 1, new VectorClock()));
+
+        List<NodeValue<Integer, String, Integer>> expected = Lists.newArrayList();
+        expected.add(toValue(1, 2, getClock(2)));
+        expected.add(toValue(2, 3, getClock(3)));
+        expected.add(toValue(3, 1, getClock(1)));
+
+        List<NodeValue<Integer, String, Integer>> repairs = repairer.getRepairs(nodeValues);
+        assertVariationsEqual("One repair", expected, repairs);
+    }
+
+    @Test
+    public void testAllConcurrent() throws Exception {
+        List<NodeValue<Integer, String, Integer>> nodeValues = Lists.newArrayList();
+        nodeValues.add(toValue(1, 1, getClock(2)));
+        nodeValues.add(toValue(1, 1, getClock(3)));
+        nodeValues.add(toValue(2, 1, getClock(1)));
+        nodeValues.add(toValue(2, 1, getClock(3)));
+        nodeValues.add(toValue(3, 1, getClock(2)));
+        nodeValues.add(toValue(3, 1, getClock(1)));
+
+        List<NodeValue<Integer, String, Integer>> expected = Lists.newArrayList();
+        expected.add(toValue(1, 1, getClock(1)));
+        expected.add(toValue(2, 1, getClock(2)));
+        expected.add(toValue(3, 1, getClock(3)));
+
+        List<NodeValue<Integer, String, Integer>> repairs = repairer.getRepairs(nodeValues);
+
+        assertVariationsEqual("Three repairs", expected, repairs);
+    }
+
+    @Test
+    public void testTwoAncestorsToOneSuccessor() throws Exception {
+        Version clock = getClock(1, 1, 2, 2);
+        List<NodeValue<Integer, String, Integer>> nodeValues = Lists.newArrayList();
+        nodeValues.add(toValue(2, 1, getClock(1)));
+        nodeValues.add(toValue(3, 1, getClock(2)));
+        nodeValues.add(toValue(1, 1, clock));
+        List<NodeValue<Integer, String, Integer>> expected = Lists.newArrayList();
+        expected.add(toValue(3, 1, clock));
+        expected.add(toValue(2, 1, clock));
+
+        List<NodeValue<Integer, String, Integer>> repairs = repairer.getRepairs(nodeValues);
+        assertVariationsEqual("testTwoAncestorsToOneSuccessor", expected, repairs);
+    }
+
+    public void testOneAncestorToTwoSuccessors() throws Exception {
+        Version clock = getClock(1, 1, 2, 2);
+        List<NodeValue<Integer, String, Integer>> nodeValues = Lists.newArrayList();
+        nodeValues.add(toValue(2, 1, clock));
+        nodeValues.add(toValue(3, 1, getClock(2)));
+        nodeValues.add(toValue(1, 1, clock));
+        List<NodeValue<Integer, String, Integer>> repairs = repairer.getRepairs(nodeValues);
+        assertVariationsEqual("testOneAcestorToTwoSuccessors", toValue(3, 1, clock), repairs);
+    }
+
+    public void testEqualObsoleteVersions() throws Exception {
+        Version clock = getClock(1, 1);
+        List<NodeValue<Integer, String, Integer>> nodeValues = Lists.newArrayList();
+        nodeValues.add(toValue(2, 1, getClock(1)));
+        nodeValues.add(toValue(3, 1, getClock(1)));
+        nodeValues.add(toValue(1, 1, new VectorClock()));
+        nodeValues.add(toValue(4, 1, clock));
+
+        List<NodeValue<Integer, String, Integer>> expected = Lists.newArrayList();
+        expected.add(toValue(1, 1, clock));
+        expected.add(toValue(2, 1, clock));
+        expected.add(toValue(3, 1, clock));
+
+        List<NodeValue<Integer, String, Integer>> repairs = repairer.getRepairs(nodeValues);
+        assertVariationsEqual("Obsolete versions", expected, repairs);
+    }
+
+    public void testDiamondPattern() throws Exception {
+        Version clock = getClock(1, 1, 2, 2);
+        List<NodeValue<Integer, String, Integer>> nodeValues = Lists.newArrayList();
+        nodeValues.add(toValue(1, 1, new VectorClock()));
+        nodeValues.add(toValue(2, 1, getClock(1)));
+        nodeValues.add(toValue(3, 1, getClock(2)));
+        nodeValues.add(toValue(4, 1, clock));
+
+        List<NodeValue<Integer, String, Integer>> expected = Lists.newArrayList();
+        expected.add(toValue(1, 1, clock));
+        expected.add(toValue(2, 1, clock));
+        expected.add(toValue(3, 1, clock));
+
+        List<NodeValue<Integer, String, Integer>> repairs = repairer.getRepairs(nodeValues);
+
+        assertVariationsEqual("Diamond pattern", expected, repairs);
+    }
+
+    public void testConcurrentToOneDoesNotImplyConcurrentToAll() throws Exception {
+        List<NodeValue<Integer, String, Integer>> nodeValues = Lists.newArrayList();
+        nodeValues.add(toValue(1, 1, getClock(3, 3)));
+        nodeValues.add(toValue(2, 1, getClock(1, 2)));
+        nodeValues.add(toValue(3, 1, getClock(1, 3, 3)));
+
+        List<NodeValue<Integer, String, Integer>> expected = Lists.newArrayList();
+        expected.add(toValue(1, 1, getClock(1, 3, 3)));
+        expected.add(toValue(1, 1, getClock(1, 2)));
+        expected.add(toValue(2, 1, getClock(1, 3, 3)));
+        expected.add(toValue(3, 1, getClock(1, 2)));
+        List<NodeValue<Integer, String, Integer>> repairs = repairer.getRepairs(nodeValues);
+
+        assertVariationsEqual("Concurrent To One Does Not Imply Concurrent To All",
+                              expected,
+                              repairs);
+    }
+
+    public void testLotsOfVersions() throws Exception {
+        List<NodeValue<Integer, String, Integer>> nodeValues = Lists.newArrayList();
+        nodeValues.add(toValue(1, 1, getClock(1, 3)));
+        nodeValues.add(toValue(2, 1, getClock(1, 2)));
+        nodeValues.add(toValue(3, 1, getClock(2, 2)));
+        nodeValues.add(toValue(4, 1, getClock(1, 2, 2, 3)));
+        nodeValues.add(toValue(5, 1, getClock(1, 2, 3, 3)));
+        nodeValues.add(toValue(6, 1, getClock(3, 3)));
+
+        List<NodeValue<Integer, String, Integer>> expected = Lists.newArrayList();
+        expected.add(toValue(1, 1, getClock(1, 2, 3, 3)));
+        expected.add(toValue(1, 1, getClock(1, 2, 2, 3)));
+        expected.add(toValue(2, 1, getClock(1, 2, 2, 3)));
+        expected.add(toValue(2, 1, getClock(1, 2, 3, 3)));
+        expected.add(toValue(3, 1, getClock(1, 2, 3, 3)));
+        expected.add(toValue(3, 1, getClock(1, 2, 2, 3)));
+        expected.add(toValue(4, 1, getClock(1, 2, 3, 3)));
+        expected.add(toValue(5, 1, getClock(1, 2, 2, 3)));
+        expected.add(toValue(6, 1, getClock(1, 2, 2, 3)));
+        expected.add(toValue(6, 1, getClock(1, 2, 3, 3)));
+
+        List<NodeValue<Integer, String, Integer>> repairs = repairer.getRepairs(nodeValues);
+
+        assertVariationsEqual("Lots of versions", expected, repairs);
+    }
+
+    @Test
+    public void testMultipleVersionsOnSingleNode() throws Exception {
+        List<NodeValue<Integer, String, Integer>> values = toList(toValue(1, 1, getClock(1)),
+                                                                  toValue(1, 1, getClock(2)),
+                                                                  toValue(1, 1, getClock(3)));
+        List<NodeValue<Integer, String, Integer>> repairs = repairer.getRepairs(values);
+        assertEquals("Empty list", 0, repairs.size());
+    }
+
+    @Test
+    public void testMultipleKeysOnSingleNode() throws Exception {
+        List<NodeValue<Integer, String, Integer>> values = toList(toValue(1, 1, getClock(1)),
+                                                                  toValue(1, 2, getClock(1)),
+                                                                  toValue(1, 3, getClock(1)));
+        assertEquals("Empty list", 0, repairer.getRepairs(values).size());
+    }
+
+    @Test
+    public void testAllEqualWithMultipleVersions() throws Exception {
+        List<NodeValue<Integer, String, Integer>> values = toList(toValue(1, 1, getClock(1)),
+                                                                  toValue(1, 1, getClock(2)),
+                                                                  toValue(1, 1, getClock(3)),
+                                                                  toValue(2, 1, getClock(1)),
+                                                                  toValue(2, 1, getClock(2)),
+                                                                  toValue(2, 1, getClock(3)),
+                                                                  toValue(3, 1, getClock(1)),
+                                                                  toValue(3, 1, getClock(2)),
+                                                                  toValue(3, 1, getClock(3)));
+        assertEquals("Empty list", 0, repairer.getRepairs(values).size());
+    }
+
+    @Test
+    public void testSingleSuccessor() throws Exception {
+        List<NodeValue<Integer, String, Integer>> values = toList(toValue(2, 1, getClock(1, 1)),
+                                                                  toValue(1, 1, getClock(1)));
+        List<NodeValue<Integer, String, Integer>> repairs = repairer.getRepairs(values);
+
+        assertVariationsEqual("Single successor", toValue(1, 1, getClock(1, 1)), repairs);
+
+        values = toList(toValue(1, 1, getClock(1)), toValue(2, 1, getClock(1, 1)));
+        repairs = repairer.getRepairs(values);
+        assertVariationsEqual("Single successor", toValue(1, 1, getClock(1, 1)), repairs);
+    }
+
+    public List<NodeValue<Integer, String, Integer>> toList(NodeValue<Integer, String, Integer>... values) {
+        List<NodeValue<Integer, String, Integer>> list = new ArrayList<NodeValue<Integer, String, Integer>>(values.length);
+        for(int i = 0; i < values.length; i++) {
+            list.add(values[i]);
+        }
+        return list;
     }
 }
