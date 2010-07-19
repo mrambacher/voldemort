@@ -51,12 +51,12 @@ import voldemort.store.stats.StatTrackingStore;
 import voldemort.store.stats.StoreStats;
 import voldemort.store.stats.StoreStatsJmx;
 import voldemort.store.versioned.InconsistencyResolvingStore;
+import voldemort.store.versioned.VectorClockResolvingStore;
 import voldemort.utils.ByteArray;
 import voldemort.utils.JmxUtils;
 import voldemort.utils.SystemTime;
 import voldemort.versioning.InconsistencyResolver;
 import voldemort.versioning.TimeBasedInconsistencyResolver;
-import voldemort.versioning.VectorClockInconsistencyResolver;
 import voldemort.versioning.Versioned;
 import voldemort.xml.ClusterMapper;
 import voldemort.xml.StoreDefinitionsMapper;
@@ -165,8 +165,7 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
                                                          SystemTime.INSTANCE);
 
         // Do Vector-Clock Inconsistency resolution at a higher-level
-        store = new InconsistencyResolvingStore<ByteArray, byte[]>(store,
-                                                                   new VectorClockInconsistencyResolver<byte[]>());
+        store = new VectorClockResolvingStore<ByteArray, byte[]>(store);
         if(isJmxEnabled) {
             StatTrackingStore statStore = new StatTrackingStore(store, this.stats);
             store = statStore;

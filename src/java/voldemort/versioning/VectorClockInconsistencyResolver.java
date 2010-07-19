@@ -54,4 +54,30 @@ public class VectorClockInconsistencyResolver<T> implements InconsistencyResolve
         }
         return newItems;
     }
+
+    public static List<Version> getVersions(List<Version> items) {
+        int size = items.size();
+        if(size <= 1)
+            return items;
+
+        List<Version> newItems = Lists.newArrayList();
+        for(Version v1: items) {
+            boolean found = false;
+            for(ListIterator<Version> it2 = newItems.listIterator(); it2.hasNext();) {
+                Version v2 = it2.next();
+                Occured compare = v1.compare(v2);
+                if(compare == Occured.AFTER) {
+                    if(found)
+                        it2.remove();
+                    else
+                        it2.set(v1);
+                }
+                if(compare != Occured.CONCURRENTLY)
+                    found = true;
+            }
+            if(!found)
+                newItems.add(v1);
+        }
+        return newItems;
+    }
 }
