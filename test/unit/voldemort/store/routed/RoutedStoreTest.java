@@ -116,11 +116,29 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
 
     @Override
     public Store<ByteArray, byte[]> createStore(String name) {
+        return createStore(cluster.getNumberOfNodes(), cluster.getNumberOfNodes(), 4, 0, 0);
+    }
+
+    public Store<ByteArray, byte[]> createStore(int reads,
+                                                int writes,
+                                                int threads,
+                                                int failing,
+                                                int sleepy) {
         return new InconsistencyResolvingStore<ByteArray, byte[]>(getStore(cluster,
-                                                                           cluster.getNumberOfNodes(),
-                                                                           cluster.getNumberOfNodes(),
-                                                                           4,
-                                                                           0),
+                                                                           reads,
+                                                                           writes,
+                                                                           threads,
+                                                                           failing,
+                                                                           sleepy),
+                                                                  new VectorClockInconsistencyResolver<byte[]>());
+    }
+
+    public Store<ByteArray, byte[]> createStore(Cluster cluster,
+                                                Map<Integer, Store<ByteArray, byte[]>> subStores,
+                                                StoreDefinition storeDef,
+                                                int threads) {
+        RoutedStore routedStore = createRoutedStore(cluster, subStores, storeDef, threads);
+        return new InconsistencyResolvingStore<ByteArray, byte[]>(routedStore,
                                                                   new VectorClockInconsistencyResolver<byte[]>());
     }
 
@@ -247,6 +265,19 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
         testBasicOperations(cluster.getNumberOfNodes() - 2, cluster.getNumberOfNodes() - 2, 2, 4);
     }
 
+    private void checkException(int required,
+                                int total,
+                                int failures,
+                                InsufficientOperationalNodesException ione) {
+        System.out.println("Caught " + ione.getClass() + ": " + ione.getMessage());
+        assertEquals("Required Count", required, ione.getRequired());
+        assertEquals("Available Count", total, ione.getAvailable());
+        if(ione instanceof InsufficientSuccessfulNodesException) {
+            InsufficientSuccessfulNodesException isne = (InsufficientSuccessfulNodesException) ione;
+            assertEquals("Successful Count", total - failures, isne.getSuccessful());
+        }
+    }
+
     private void testBasicOperationFailure(int reads, int writes, int failures, int threads)
             throws Exception {
         VectorClock clock = getClock(1);
@@ -263,19 +294,19 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
             routedStore.put(aKey, versioned);
             fail("Put succeeded with too few operational nodes.");
         } catch(InsufficientOperationalNodesException e) {
-            // expected
+            checkException(writes, availableForWrite, failures, e);
         }
         try {
             routedStore.get(aKey);
             fail("Get succeeded with too few operational nodes.");
         } catch(InsufficientOperationalNodesException e) {
-            // expected
+            checkException(writes, availableForWrite, failures, e);
         }
         try {
             routedStore.delete(aKey, versioned.getVersion());
-            fail("Get succeeded with too few operational nodes.");
+            fail("Delete succeeded with too few operational nodes.");
         } catch(InsufficientOperationalNodesException e) {
-            // expected
+            checkException(writes, availableForWrite, failures, e);
         }
     }
 
@@ -322,6 +353,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
             s1.put(aKey, new Versioned<byte[]>(aValue));
             fail("Failure is expected");
         } catch(InsufficientOperationalNodesException e) { /* expected */
+            this.checkException(9, 8, 9, e);
         }
         assertOperationalNodes(9);
 
@@ -339,6 +371,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
             s2.put(aKey, new Versioned<byte[]>(aValue));
             fail("Failure is expected");
         } catch(InsufficientOperationalNodesException e) { /* expected */
+            this.checkException(1, 0, 9, e);
         }
         assertOperationalNodes(0);
 
@@ -357,6 +390,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
             s1.get(aKey);
             fail("Failure is expected");
         } catch(InsufficientOperationalNodesException e) { /* expected */
+            this.checkException(1, 9, 9, e);
         }
         assertOperationalNodes(9);
 
@@ -374,6 +408,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
             s2.get(aKey);
             fail("Failure is expected");
         } catch(InsufficientOperationalNodesException e) { /* expected */
+            this.checkException(1, 9, 9, e);
         }
         assertOperationalNodes(0);
 
@@ -392,6 +427,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
             s1.delete(aKey, new VectorClock());
             fail("Failure is expected");
         } catch(InsufficientOperationalNodesException e) { /* expected */
+            this.checkException(9, 9, 9, e);
         }
         assertOperationalNodes(9);
 
@@ -409,6 +445,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
             s2.delete(aKey, new VectorClock());
             fail("Failure is expected");
         } catch(InsufficientOperationalNodesException e) { /* expected */
+            this.checkException(1, 9, 9, e);
         }
         assertOperationalNodes(0);
     }
@@ -438,7 +475,8 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
 
         RoutedStore routedStore = getStore(cluster, 1, 2, 1, 0);
         Store<ByteArray, byte[]> store = new InconsistencyResolvingStore<ByteArray, byte[]>(routedStore,
-                                                                                            new VectorClockInconsistencyResolver<byte[]>());
+                                                                                            new VectorClockIncons
+istencyResolver<byte[]>());
 
         Map<ByteArray, byte[]> expectedValues = Maps.newHashMap();
         for(byte i = 1; i < 11; ++i) {
@@ -718,6 +756,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
         } catch(InsufficientOperationalNodesException e) {
             long elapsed = System.currentTimeMillis() - start;
             assertTrue(elapsed + " < " + totalDelay, elapsed < totalDelay);
+            this.checkException(3, 3, 2, e);
         }
     }
 
