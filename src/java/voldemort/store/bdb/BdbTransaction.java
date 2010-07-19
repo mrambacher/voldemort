@@ -61,16 +61,17 @@ public class BdbTransaction implements StoreTransaction<Version> {
 
     public static void commitOrAbort(Transaction transaction, boolean commitIt)
             throws PersistenceFailureException {
-        try {
-            if(commitIt) {
-                transaction.commit();
-            } else {
-                transaction.abort();
+        if(transaction != null) {
+            try {
+                if(commitIt) {
+                    transaction.commit();
+                } else {
+                    transaction.abort();
+                }
+            } catch(DatabaseException e) {
+                throw new PersistenceFailureException(e);
             }
-        } catch(DatabaseException e) {
-            throw new PersistenceFailureException(e);
         }
-
     }
 
     public void commitOrAbort(boolean commitIt) throws PersistenceFailureException {
