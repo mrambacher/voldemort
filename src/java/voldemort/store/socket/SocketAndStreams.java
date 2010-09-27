@@ -97,21 +97,31 @@ public class SocketAndStreams {
 
     public void negotiateProtocol() throws IOException {
         if(!initialized) {
-            OutputStream outputStream = socket.getOutputStream();
-            byte[] proposal = ByteUtils.getBytes(requestFormatType.getCode(), "UTF-8");
-            outputStream.write(proposal);
-            outputStream.flush();
-            DataInputStream inputStream = getInputStream();
-            byte[] responseBytes = new byte[2];
-            inputStream.readFully(responseBytes);
-            String response = ByteUtils.getString(responseBytes, "UTF-8");
-            if(response.equals("ok")) {
+            int version = negotiateProtocol(requestFormatType.getCode());
+            if(version == requestFormatType.getVersion()) {
                 initialized = true;
-                return;
-            } else if(response.equals("no")) {
-                throw new VoldemortException(requestFormatType.getDisplayName()
-                                             + " is not an acceptable protcol for the server.");
-            } else {
+            }
+        }
+    }
+
+    public int negotiateProtocol(String protocol) throws IOException {
+        OutputStream outputStream = socket.getOutputStream();
+        byte[] proposal = ByteUtils.getBytes(protocol, "UTF-8");
+        outputStream.write(proposal);
+        outputStream.flush();
+        DataInputStream inputStream = getInputStream();
+        byte[] responseBytes = new byte[2];
+        inputStream.readFully(responseBytes);
+        String response = ByteUtils.getString(responseBytes, "UTF-8");
+        if(response.equals("ok")) {
+            return requestFormatType.getVersion();
+        } else if(response.equals("no")) {
+            throw new VoldemortException(requestFormatType.getDisplayName()
+                                         + " is not an acceptable protocol for the server.");
+        } else {
+            try {
+                return Integer.parseInt(response);
+            } catch(Exception e) {
                 throw new VoldemortException("Unknown server response: " + response);
             }
         }

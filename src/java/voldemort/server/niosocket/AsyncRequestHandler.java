@@ -501,11 +501,13 @@ public class AsyncRequestHandler {
         if(remaining < 3)
             return StreamRequestHandlerState.INCOMPLETE_READ;
 
-        byte[] protoBytes = { inputBuffer.get(0), inputBuffer.get(1), inputBuffer.get(2) };
+        byte[] protoBytes = { inputBuffer.get(0), inputBuffer.get(1) };
+        byte[] versionBytes = { inputBuffer.get(2) };
 
         try {
             String proto = ByteUtils.getString(protoBytes, "UTF-8");
-            RequestFormatType requestFormatType = RequestFormatType.fromCode(proto);
+            int version = Integer.parseInt(ByteUtils.getString(versionBytes, "UTF-8"));
+            RequestFormatType requestFormatType = RequestFormatType.fromCode(proto, version);
             requestHandler = requestHandlerFactory.getRequestHandler(requestFormatType);
 
             if(logger.isInfoEnabled())
@@ -515,19 +517,18 @@ public class AsyncRequestHandler {
             // The protocol negotiation is the first request, so respond by
             // sticking the bytes in the output buffer, signaling the Selector,
             // and returning false to denote no further processing is needed.
-            outputStream.getBuffer().put(ByteUtils.getBytes("ok", "UTF-8"));
+            if(requestFormatType.getVersion() == version) {
+                outputStream.getBuffer().put(ByteUtils.getBytes("ok", "UTF-8"));
+            } else {
+                outputStream.getBuffer()
+                            .put(ByteUtils.getBytes(requestFormatType.getVersionAsString(), "UTF-8"));
+            }
             prepareOutputBuffer();
 
             return StreamRequestHandlerState.COMPLETE;
         } catch(IllegalArgumentException e) {
-            // okay we got some nonsense. For backwards compatibility,
-            // assume this is an old client who does not know how to negotiate
-            RequestFormatType requestFormatType = RequestFormatType.VOLDEMORT_V0;
-            requestHandler = requestHandlerFactory.getRequestHandler(requestFormatType);
-
-            if(logger.isInfoEnabled())
-                logger.info("No protocol proposal given for " + getRemoteSocketAddress()
-                            + ", assuming " + requestFormatType.getDisplayName());
+            outputStream.getBuffer().put(ByteUtils.getBytes("no", "UTF-8"));
+            prepareOutputBuffer();
             return StreamRequestHandlerState.COMPLETE;
         }
     }
