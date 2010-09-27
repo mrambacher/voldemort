@@ -16,7 +16,9 @@
 
 package voldemort.store.socket;
 
+import java.io.InterruptedIOException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -26,6 +28,8 @@ import voldemort.VoldemortException;
 import voldemort.annotations.jmx.JmxGetter;
 import voldemort.annotations.jmx.JmxManaged;
 import voldemort.annotations.jmx.JmxSetter;
+import voldemort.client.VoldemortClientException;
+import voldemort.client.VoldemortInterruptedException;
 import voldemort.store.UnreachableStoreException;
 import voldemort.utils.Time;
 import voldemort.utils.pool.KeyedResourcePool;
@@ -93,16 +97,29 @@ public class SocketPool {
      * @return The socket
      */
     public SocketAndStreams checkout(SocketDestination destination) {
+        SocketAndStreams sas = null;
         try {
-            // time checkout
-            long start = System.nanoTime();
-            SocketAndStreams sas = pool.checkout(destination);
-            updateStats(System.nanoTime() - start);
-
-            return sas;
-        } catch(Exception e) {
-            throw new UnreachableStoreException("Failure while checking out socket for "
-                                                + destination + " - " + e.getMessage(), e);
+            try {
+                // time checkout
+                long start = System.nanoTime();
+                sas = pool.checkout(destination);
+                updateStats(System.nanoTime() - start);
+                return sas;
+            } catch(TimeoutException e) {
+                throw new VoldemortClientException(e);
+            } catch(InterruptedException e) {
+                throw new VoldemortInterruptedException(e);
+            } catch(InterruptedIOException e) {
+                throw new VoldemortInterruptedException(e);
+            } catch(Exception e) {
+                throw new UnreachableStoreException("Failure while checking out socket for "
+                                                    + destination + " - " + e.getMessage(), e);
+            }
+        } catch(VoldemortException e) {
+            if(sas != null) {
+                checkin(destination, sas);
+            }
+            throw e;
         }
     }
 

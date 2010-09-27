@@ -1,7 +1,7 @@
 /*
  * Copyright 2008-2009 LinkedIn, Inc
  * 
- * Portion Copyright � 2010 Nokia Corporation. All rights reserved.
+ * Portion Copyright 2010 Nokia Corporation. All rights reserved.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
@@ -192,7 +192,9 @@ public class DistributingStore<N> implements Store<ByteArray, byte[]> {
                                        long timeout,
                                        TimeUnit units) throws VoldemortException {
         if(nodes.size() < required) {
-            throw new InsufficientOperationalNodesException("Not enough nodes available", nodes.size(), required);
+            throw new InsufficientOperationalNodesException("Not enough nodes available",
+                                                            nodes.size(),
+                                                            required);
         }
         ParallelTask<N, List<Versioned<byte[]>>> job = getJob(key, nodes);
         Map<N, List<Versioned<byte[]>>> results = job.get(preferred, required, timeout, units);
@@ -230,7 +232,7 @@ public class DistributingStore<N> implements Store<ByteArray, byte[]> {
                 tasks.put(node, task);
             }
         }
-        return new ParallelTask<N, List<Versioned<byte[]>>>("GET", this.executor, tasks);
+        return ParallelTask.newInstance("GET", this.executor, tasks);
     }
 
     /**
@@ -462,7 +464,9 @@ public class DistributingStore<N> implements Store<ByteArray, byte[]> {
                        long timeout,
                        TimeUnit units) throws VoldemortException {
         if(nodes.size() < required) {
-            throw new InsufficientOperationalNodesException("Not enough nodes available", nodes.size(), required);
+            throw new InsufficientOperationalNodesException("Not enough nodes available",
+                                                            nodes.size(),
+                                                            required);
         }
         Version result = null;
         ParallelTask<N, Version> job = putJob(key, value, nodes);
@@ -503,8 +507,8 @@ public class DistributingStore<N> implements Store<ByteArray, byte[]> {
                 tasks.put(node, task);
             }
         }
-        if (tasks.size() > 0) {
-            return ParallelTask.newInstance("PUT", executor, tasks);
+        if(tasks.size() > 0) {
+            return ParallelTask.newInstance("PUT", executor, tasks, false);
         } else {
             logger.error("Nothing for distributed store to do!");
             return null;
@@ -567,7 +571,9 @@ public class DistributingStore<N> implements Store<ByteArray, byte[]> {
                           long timeout,
                           TimeUnit units) throws VoldemortException {
         if(nodes.size() < required) {
-            throw new InsufficientOperationalNodesException("Not enough nodes available", nodes.size(), required);
+            throw new InsufficientOperationalNodesException("Not enough nodes available",
+                                                            nodes.size(),
+                                                            required);
         }
         ParallelTask<N, Boolean> job = deleteJob(key, version, nodes);
         Map<N, Boolean> results = job.get(preferred, required, timeout, units);

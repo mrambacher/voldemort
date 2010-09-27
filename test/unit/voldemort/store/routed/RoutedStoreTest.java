@@ -29,6 +29,11 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.After;
@@ -52,7 +57,6 @@ import voldemort.cluster.failuredetector.FailureDetectorConfig;
 import voldemort.routing.RoutingStrategyType;
 import voldemort.serialization.SerializerDefinition;
 import voldemort.store.AbstractByteArrayStoreTest;
-import voldemort.store.FailingDeleteStore;
 import voldemort.store.FailingReadsStore;
 import voldemort.store.FailingStore;
 import voldemort.store.InsufficientOperationalNodesException;
@@ -353,7 +357,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
         }
         try {
             routedStore.delete(aKey, versioned.getVersion());
-            fail("Get succeeded with too few operational nodes.");
+            fail("Delete succeeded with too few operational nodes.");
         } catch(InsufficientOperationalNodesException e) {
             checkException(writes, availableForWrite, failures, e);
         }
@@ -561,7 +565,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
         subStores.put(Iterables.get(cluster.getNodes(), 0).getId(),
                       new NodeStore<ByteArray, byte[]>(Iterables.get(cluster.getNodes(), 0),
                                                        failureDetector,
-                                                       new InMemoryStorageEngine<ByteArray, byte[]>("good")));
+                                                       new InMemoryStorageEngine<ByteArray, byte[]>("test")));
         subStores.put(Iterables.get(cluster.getNodes(), 1).getId(),
                       new NodeStore<ByteArray, byte[]>(Iterables.get(cluster.getNodes(), 1),
                                                        failureDetector,
@@ -804,7 +808,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
         } catch(InsufficientOperationalNodesException e) {
             long elapsed = System.currentTimeMillis() - start;
             assertTrue(elapsed + " < " + totalDelay, elapsed < totalDelay);
-            this.checkException(3, 3, 2, e);
+            this.checkException(3, 3, 1, e);
         }
     }
 
@@ -933,6 +937,134 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
             }
         } catch(Exception e) {
             fail("Unexpected exception " + e.getMessage());
+        }
+    }
+
+    @Test
+    public void testInterruptedMasterPut() {
+        final ByteArray key = TestUtils.toByteArray("key"); // Node 1 is master
+
+        Cluster cluster = VoldemortTestConstants.getThreeNodeCluster();
+        StoreDefinition storeDef = ServerTestUtils.getStoreDef("test",
+                                                               3,
+                                                               3,
+                                                               3,
+                                                               2,
+                                                               2,
+                                                               RoutingStrategyType.CONSISTENT_STRATEGY);
+        Map<Integer, Store<ByteArray, byte[]>> memStores = Maps.newHashMap();
+        Map<Integer, Store<ByteArray, byte[]>> subStores = Maps.newHashMap();
+
+        memStores.put(0, new InMemoryStorageEngine<ByteArray, byte[]>("test-0"));
+        memStores.put(1, new InMemoryStorageEngine<ByteArray, byte[]>("test-1"));
+        memStores.put(2, new InMemoryStorageEngine<ByteArray, byte[]>("test-2"));
+        subStores.put(0, new SleepyStore<ByteArray, byte[]>(2000, memStores.get(0)));
+        subStores.put(1, new SleepyStore<ByteArray, byte[]>(2000, memStores.get(1)));
+        subStores.put(2, new SleepyStore<ByteArray, byte[]>(2000, memStores.get(2)));
+
+        this.createFailureDetector();
+        final Store<ByteArray, byte[]> store = new RoutedStore("test",
+                                                               subStores,
+                                                               cluster,
+                                                               storeDef,
+                                                               2,
+                                                               true,
+                                                               2500L,
+                                                               TimeUnit.MILLISECONDS,
+                                                               failureDetector);
+
+        ExecutorService threadPool = Executors.newSingleThreadExecutor();
+        final Version master = TestUtils.getClock(1, 1);
+        Future<Version> child = threadPool.submit(new Callable<Version>() {
+
+            public Version call() {
+                Versioned<byte[]> value = new Versioned<byte[]>(key.get(), master);
+                Version version = store.put(key, value);
+                fail("Expected failure, not " + version);
+                return version;
+            }
+        });
+
+        try {
+            Thread.sleep(100);
+            threadPool.shutdownNow();
+            Version version = child.get();
+            for(Store<ByteArray, byte[]> mem: memStores.values()) {
+                List<Versioned<byte[]>> results = mem.get(key);
+                assertEquals("Only one version", 1, results.size());
+                assertEquals("Matching version", version, results.get(0).getVersion());
+            }
+        } catch(ExecutionException e) {
+            if(e.getCause() != null) {
+                assertEquals("Unexpected exception",
+                             InsufficientOperationalNodesException.class,
+                             e.getCause().getClass());
+            }
+        } catch(Exception e) {
+            fail("Unexpected exception [" + e.getClass() + "]: " + e.getMessage());
+        }
+    }
+
+    @Test
+    public void testInterruptedReplicaPut() {
+        final ByteArray key = TestUtils.toByteArray("key"); // Node 1 is master
+
+        Cluster cluster = VoldemortTestConstants.getThreeNodeCluster();
+        StoreDefinition storeDef = ServerTestUtils.getStoreDef("test",
+                                                               3,
+                                                               3,
+                                                               3,
+                                                               3,
+                                                               3,
+                                                               RoutingStrategyType.CONSISTENT_STRATEGY);
+        Map<Integer, Store<ByteArray, byte[]>> memStores = Maps.newHashMap();
+        Map<Integer, Store<ByteArray, byte[]>> subStores = Maps.newHashMap();
+
+        memStores.put(0, new InMemoryStorageEngine<ByteArray, byte[]>("test-0"));
+        memStores.put(1, new InMemoryStorageEngine<ByteArray, byte[]>("test-1"));
+        memStores.put(2, new InMemoryStorageEngine<ByteArray, byte[]>("test-2"));
+        subStores.put(1, memStores.get(1));
+        subStores.put(0, new SleepyStore<ByteArray, byte[]>(2000, memStores.get(0)));
+        subStores.put(2, new SleepyStore<ByteArray, byte[]>(2000, memStores.get(2)));
+
+        this.createFailureDetector();
+        final Store<ByteArray, byte[]> store = new RoutedStore("test",
+                                                               subStores,
+                                                               cluster,
+                                                               storeDef,
+                                                               2,
+                                                               true,
+                                                               2500L,
+                                                               TimeUnit.MILLISECONDS,
+                                                               failureDetector);
+
+        ExecutorService threadPool = Executors.newSingleThreadExecutor();
+        final Version master = TestUtils.getClock(1, 1);
+        Future<Version> child = threadPool.submit(new Callable<Version>() {
+
+            public Version call() {
+                try {
+                    Versioned<byte[]> value = new Versioned<byte[]>(key.get(), master);
+                    Version version = store.put(key, value);
+                    return version;
+                } catch(Exception e) {
+                    fail("Unexpected exception [" + e.getClass() + "]: " + e.getMessage());
+                    return null;
+                }
+            }
+        });
+
+        try {
+            Thread.sleep(100);
+            threadPool.shutdownNow();
+            Version version = child.get();
+            for(Store<ByteArray, byte[]> mem: memStores.values()) {
+                List<Versioned<byte[]>> results = mem.get(key);
+                assertEquals("Only one version", 1, results.size());
+                assertEquals("Matching version", version, results.get(0).getVersion());
+            }
+        } catch(Exception e) {
+            fail("Unexpected exception [" + e.getClass() + "]: " + e.getMessage());
         }
     }
 }

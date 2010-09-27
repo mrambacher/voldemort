@@ -20,8 +20,8 @@ import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 import junit.framework.TestCase;
@@ -36,7 +36,7 @@ import voldemort.utils.SystemTime;
 
 public class ParallelTaskTest extends TestCase {
 
-    ExecutorService pool;
+    ThreadPoolExecutor pool;
     ParallelTask<Integer, Integer> tasks;
 
     @Override
@@ -95,13 +95,19 @@ public class ParallelTaskTest extends TestCase {
     }
 
     void createThreadPool(int size) {
-        pool = Executors.newFixedThreadPool(size);
+        pool = (ThreadPoolExecutor) Executors.newFixedThreadPool(size);
     }
 
     ParallelTask<Integer, Integer> createTasks(String what,
                                                Map<Integer, Callable<Integer>> callables) {
+        return createTasks(what, callables, true);
+    }
+
+    ParallelTask<Integer, Integer> createTasks(String what,
+                                               Map<Integer, Callable<Integer>> callables,
+                                               boolean stopOnInterrupt) {
         createThreadPool(callables.size());
-        tasks = ParallelTask.newInstance(what, pool, callables);
+        tasks = ParallelTask.newInstance(what, pool, callables, stopOnInterrupt);
         return tasks;
     }
 
@@ -318,6 +324,65 @@ public class ParallelTaskTest extends TestCase {
             assertEquals("Returned single result [" + i + "]", 1, results);
             assertEquals("Tasks retrieved [" + i + "]", i + 1, tasks.retrieved);
             assertEquals("Tasks still remaining [" + i + "]", 2 - i, tasks.getRemaining());
+        }
+    }
+
+    @Test
+    public void testContinueOnInterrupt() {
+        final Map<Integer, Callable<Integer>> callables = new HashMap<Integer, Callable<Integer>>(3);
+        callables.put(0, getCallable(0, 2000L, null)); // Three tasks that delay
+        // for one second
+        callables.put(1, getCallable(1, 2000L, null)); // 
+        callables.put(2, getCallable(2, 2000L, null)); // One
+        createThreadPool(callables.size());
+        tasks = ParallelTask.newInstance("interrupts", pool, callables, false);
+        Thread child = new Thread(new Runnable() {
+
+            public void run() {
+                int results = waitForResults(2500L);
+                System.out.println("Got " + results + " results");
+                assertEquals("Got all results", callables.size(), results);
+            }
+        });
+        child.start();
+        try {
+            Thread.sleep(100);
+            child.interrupt();
+            Thread.sleep(300);
+            assertEquals("All tasks still running", callables.size(), pool.getActiveCount());
+            child.join();
+            assertEquals("All tasks completed", 0, pool.getActiveCount());
+        } catch(Exception e) {
+            fail("Unexpected exception [" + e.getClass() + "]: " + e.getMessage());
+        }
+    }
+
+    @Test
+    public void testStopOnInterrupt() {
+        final Map<Integer, Callable<Integer>> callables = new HashMap<Integer, Callable<Integer>>(3);
+        callables.put(0, getCallable(0, 2000L, null)); // Three tasks that delay
+        // for one second
+        callables.put(1, getCallable(1, 2000L, null)); // 
+        callables.put(2, getCallable(2, 2000L, null)); // One
+        createThreadPool(callables.size() + 1);
+        tasks = ParallelTask.newInstance("interrupts", pool, callables, true);
+        Thread child = new Thread(new Runnable() {
+
+            public void run() {
+                int results = waitForResults(2500L);
+                System.out.println("Got " + results + " results");
+                assertEquals("Got no results", 0, results);
+            }
+        });
+        child.start();
+        try {
+            Thread.sleep(100);
+            child.interrupt();
+            Thread.sleep(300);
+            child.join();
+            assertEquals("All tasks completed", 0, pool.getActiveCount());
+        } catch(Exception e) {
+            fail("Unexpected exception [" + e.getClass() + "]: " + e.getMessage());
         }
     }
 }

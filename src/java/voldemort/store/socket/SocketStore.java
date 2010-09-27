@@ -17,13 +17,16 @@
 package voldemort.store.socket;
 
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.util.List;
 import java.util.Map;
 
 import org.apache.log4j.Logger;
 
 import voldemort.VoldemortException;
+import voldemort.client.VoldemortInterruptedException;
 import voldemort.client.protocol.RequestFormat;
 import voldemort.client.protocol.RequestFormatFactory;
 import voldemort.server.RequestRoutingType;
@@ -34,7 +37,6 @@ import voldemort.store.StoreUtils;
 import voldemort.store.UnreachableStoreException;
 import voldemort.utils.ByteArray;
 import voldemort.utils.Utils;
-import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
@@ -79,6 +81,23 @@ public class SocketStore implements Store<ByteArray, byte[]> {
     // don't close the socket pool, it is shared
     }
 
+    private VoldemortException translateException(SocketAndStreams sands,
+                                                  IOException e,
+                                                  String operation) {
+        close(sands.getSocket());
+        if(e instanceof SocketTimeoutException) {
+            return new UnreachableStoreException("Timeout in " + operation + " on " + destination
+                                                 + ": " + e.getMessage(), e);
+
+        } else if(e instanceof InterruptedIOException) {
+            return new VoldemortInterruptedException("Interrupt during " + operation + " on "
+                                                     + destination + ": " + e.getMessage(), e);
+        } else {
+            return new UnreachableStoreException("Failure in " + operation + " on " + destination
+                                                 + ": " + e.getMessage(), e);
+        }
+    }
+
     public boolean delete(ByteArray key, Version version) throws VoldemortException {
         StoreUtils.assertValidKey(key);
         SocketAndStreams sands = pool.checkout(destination);
@@ -86,14 +105,12 @@ public class SocketStore implements Store<ByteArray, byte[]> {
             requestFormat.writeDeleteRequest(sands.getOutputStream(),
                                              name,
                                              key,
-                                             (VectorClock) version,
+                                             version,
                                              requestType);
             sands.getOutputStream().flush();
             return requestFormat.readDeleteResponse(sands.getInputStream());
         } catch(IOException e) {
-            close(sands.getSocket());
-            throw new UnreachableStoreException("Failure in delete on " + destination + ": "
-                                                + e.getMessage(), e);
+            throw translateException(sands, e, "delete");
         } finally {
             pool.checkin(destination, sands);
         }
@@ -108,9 +125,7 @@ public class SocketStore implements Store<ByteArray, byte[]> {
             sands.getOutputStream().flush();
             return requestFormat.readGetAllResponse(sands.getInputStream());
         } catch(IOException e) {
-            close(sands.getSocket());
-            throw new UnreachableStoreException("Failure in getAll() on " + destination + ": "
-                                                + e.getMessage(), e);
+            throw translateException(sands, e, "getAll");
         } finally {
             pool.checkin(destination, sands);
         }
@@ -125,9 +140,7 @@ public class SocketStore implements Store<ByteArray, byte[]> {
             sands.getOutputStream().flush();
             return requestFormat.readGetResponse(sands.getInputStream());
         } catch(IOException e) {
-            close(sands.getSocket());
-            throw new UnreachableStoreException("Failure in get on " + destination + ": "
-                                                + e.getMessage(), e);
+            throw translateException(sands, e, "get");
         } finally {
             pool.checkin(destination, sands);
         }
@@ -152,9 +165,7 @@ public class SocketStore implements Store<ByteArray, byte[]> {
                 return version; // New protocol, return the protocol version
             }
         } catch(IOException e) {
-            close(sands.getSocket());
-            throw new UnreachableStoreException("Failure in put on " + destination + ": "
-                                                + e.getMessage(), e);
+            throw translateException(sands, e, "put");
         } finally {
             pool.checkin(destination, sands);
         }
@@ -187,9 +198,7 @@ public class SocketStore implements Store<ByteArray, byte[]> {
             sands.getOutputStream().flush();
             return requestFormat.readGetVersionResponse(sands.getInputStream());
         } catch(IOException e) {
-            close(sands.getSocket());
-            throw new UnreachableStoreException("Failure in getVersion on " + destination + ": "
-                                                + e.getMessage(), e);
+            throw translateException(sands, e, "getVersions");
         } finally {
             pool.checkin(destination, sands);
         }
