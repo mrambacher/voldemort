@@ -61,6 +61,7 @@ public class SocketServerSession implements Runnable {
     public void run() {
         DataInputStream inputStream = null;
         DataOutputStream outputStream = null;
+        RequestHandler handler = null;
         try {
             activeSessions.put(sessionId, this);
             inputStream = new DataInputStream(new BufferedInputStream(socket.getInputStream(),
@@ -69,10 +70,16 @@ public class SocketServerSession implements Runnable {
                                                                          64000));
 
             RequestFormatType protocol = negotiateProtocol(inputStream, outputStream);
-            RequestHandler handler = handlerFactory.getRequestHandler(protocol);
-            logger.info("Client " + socket.getRemoteSocketAddress()
-                        + " connected successfully with protocol " + protocol.getCode());
+            if(protocol != null) {
+                handler = handlerFactory.getRequestHandler(protocol);
+                logger.info("Client " + socket.getRemoteSocketAddress()
+                            + " connected successfully with protocol " + protocol.getCode());
+            } else {
+                logger.info("Client " + socket.getRemoteSocketAddress()
+                            + " failed to negotiate protocol ");
+                this.close();
 
+            }
             while(!isInterrupted() && !socket.isClosed() && !isClosed) {
                 StreamRequestHandler srh = handler.handleRequest(inputStream, outputStream);
 
@@ -146,23 +153,26 @@ public class SocketServerSession implements Runnable {
 
     private RequestFormatType negotiateProtocol(InputStream input, OutputStream output)
             throws IOException {
+        RequestFormatType requestFormat = null;
         input.mark(3);
-        byte[] protoBytes = new byte[3];
-        ByteUtils.read(input, protoBytes);
-        RequestFormatType requestFormat;
+        byte[] bytes = new byte[3];
+        ByteUtils.read(input, bytes);
         try {
+            byte[] protoBytes = new byte[] { bytes[0], bytes[1] };
+            byte[] versionBytes = { bytes[2] };
+
             String proto = ByteUtils.getString(protoBytes, "UTF-8");
-            requestFormat = RequestFormatType.fromCode(proto);
-            output.write(ByteUtils.getBytes("ok", "UTF-8"));
+            int version = Integer.parseInt(ByteUtils.getString(versionBytes, "UTF-8"));
+            requestFormat = RequestFormatType.fromCode(proto, version);
+            if(version == requestFormat.getVersion()) {
+                output.write(ByteUtils.getBytes("ok", "UTF-8"));
+            } else {
+                output.write(ByteUtils.getBytes(requestFormat.getVersionAsString(), "UTF-8"));
+            }
             output.flush();
         } catch(IllegalArgumentException e) {
-            // okay we got some nonsense. For backwards compatibility,
-            // assume this is an old client who does not know how to negotiate
-            requestFormat = RequestFormatType.VOLDEMORT_V0;
-            // reset input stream so we don't interfere with request format
-            input.reset();
-            logger.info("No protocol proposal given, assuming "
-                        + RequestFormatType.VOLDEMORT_V0.getDisplayName());
+            output.write(ByteUtils.getBytes("no", "UTF-8"));
+            output.flush();
         }
         return requestFormat;
     }

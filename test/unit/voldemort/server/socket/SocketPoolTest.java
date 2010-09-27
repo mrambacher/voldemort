@@ -31,6 +31,7 @@ import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 
 import voldemort.ServerTestUtils;
+import voldemort.VoldemortException;
 import voldemort.client.protocol.RequestFormatType;
 import voldemort.server.AbstractSocketService;
 import voldemort.server.StoreRepository;
@@ -38,6 +39,7 @@ import voldemort.server.protocol.RequestHandlerFactory;
 import voldemort.store.socket.SocketAndStreams;
 import voldemort.store.socket.SocketDestination;
 import voldemort.store.socket.SocketPool;
+import voldemort.store.socket.SocketResourceFactory;
 
 /**
  * Tests for the socket pooling
@@ -120,6 +122,64 @@ public class SocketPoolTest extends TestCase {
             SocketDestination dest = new SocketDestination("localhost", port, type);
             SocketAndStreams sas = pool.checkout(dest);
             assertEquals(type, sas.getRequestFormatType());
+        }
+    }
+
+    @Test
+    public void testProtocolMismatch() throws Exception {
+        SocketResourceFactory factory = new SocketResourceFactory(1000, 32 * 1024);
+        SocketDestination dest = null;
+        SocketAndStreams sas = null;
+        for(int i = 0; i <= 1; i++) {
+            String[] protocols = { "vp", "pb", "ad" };
+            for(String protocol: protocols) {
+                int version = i * 9;
+                RequestFormatType type = RequestFormatType.fromCode(protocol, version);
+                dest = new SocketDestination("localhost", port, type);
+                sas = null;
+                try {
+                    sas = factory.create(dest);
+                    int negotiated = sas.negotiateProtocol(protocol + version);
+                    assertEquals("Negotiated proper version for " + protocol + "/" + version,
+                                 type.getVersion(),
+                                 negotiated);
+                } finally {
+                    if(sas != null) {
+                        factory.destroy(dest, sas);
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    public void testIllegalProtocol() throws Exception {
+        SocketResourceFactory factory = new SocketResourceFactory(1000, 32 * 1024);
+        SocketDestination dest = new SocketDestination("localhost",
+                                                       port,
+                                                       RequestFormatType.PROTOCOL_BUFFERS);
+        SocketAndStreams sas = null;
+        try {
+            sas = factory.create(dest);
+            int version = sas.negotiateProtocol("ab0");
+            fail("Expected exception but returned " + version);
+        } catch(Exception e) {
+            assertEquals("Unexpected exception", VoldemortException.class, e.getClass());
+        } finally {
+            if(sas != null) {
+                factory.destroy(dest, sas);
+            }
+        }
+        try {
+            sas = factory.create(dest);
+            int version = sas.negotiateProtocol("abc");
+            fail("Expected exception but returned " + version);
+        } catch(Exception e) {
+            assertEquals("Unexpected exception", VoldemortException.class, e.getClass());
+        } finally {
+            if(sas != null) {
+                factory.destroy(dest, sas);
+            }
         }
     }
 
