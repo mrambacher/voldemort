@@ -151,7 +151,6 @@ public class NioSocketService extends AbstractSocketService {
             InetSocketAddress endpoint = new InetSocketAddress(port);
             for(int i = 0; i < selectorManagers.length; i++) {
                 selectorManagers[i] = new SelectorManager(requestHandlerFactory,
-                                                          endpoint,
                                                           socketBufferSize,
                                                           pendingRequests);
                 selectorManagerThreadPool.execute(selectorManagers[i]);
@@ -166,7 +165,7 @@ public class NioSocketService extends AbstractSocketService {
             serverSocketChannel.socket().setReceiveBufferSize(socketBufferSize);
             serverSocketChannel.socket().setReuseAddress(true);
 
-            acceptorThread = new Thread(new Acceptor(endpoint));
+            acceptorThread = new Thread(new Acceptor());
             acceptorThread.start();
         } catch(Exception e) {
             if(logger.isEnabledFor(Level.ERROR))
@@ -262,15 +261,11 @@ public class NioSocketService extends AbstractSocketService {
 
     private class Acceptor implements Runnable {
 
-        private InetSocketAddress endpoint;
-
-        private Acceptor(InetSocketAddress endpoint) {
-            this.endpoint = endpoint;
-        }
+        private Acceptor() {}
 
         public void run() {
             if(logger.isInfoEnabled())
-                logger.info("Server now listening for connections on " + endpoint);
+                logger.info("Server now listening for connections on " + port);
 
             AtomicInteger counter = new AtomicInteger();
 
@@ -308,7 +303,7 @@ public class NioSocketService extends AbstractSocketService {
             }
 
             if(logger.isInfoEnabled())
-                logger.info("Server has stopped listening for connections on " + endpoint);
+                logger.info("Server has stopped listening for connections on " + port);
         }
 
     }

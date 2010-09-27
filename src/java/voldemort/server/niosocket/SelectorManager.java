@@ -18,7 +18,6 @@ package voldemort.server.niosocket;
 
 import java.io.EOFException;
 import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.nio.channels.AsynchronousCloseException;
 import java.nio.channels.CancelledKeyException;
 import java.nio.channels.ClosedSelectorException;
@@ -100,8 +99,6 @@ import voldemort.server.protocol.StreamRequestHandler.StreamRequestHandlerState;
 
 public class SelectorManager implements Runnable {
 
-    private final InetSocketAddress endpoint;
-
     private final Selector selector;
 
     private final BlockingQueue<AsyncRequestHandler> pendingRequests;
@@ -121,11 +118,9 @@ public class SelectorManager implements Runnable {
     private final Logger logger = Logger.getLogger(getClass());
 
     public SelectorManager(RequestHandlerFactory requestHandlerFactory,
-                           InetSocketAddress endpoint,
                            int socketBufferSize,
                            BlockingQueue<AsyncRequestHandler> requests) throws IOException {
         this.selector = Selector.open();
-        this.endpoint = endpoint;
         this.pendingRequests = requests;
         this.socketChannelQueue = new ConcurrentLinkedQueue<SocketChannel>();
         this.socketReadQueue = new ConcurrentLinkedQueue<SocketChannel>();
@@ -149,7 +144,7 @@ public class SelectorManager implements Runnable {
             for(SelectionKey sk: selector.keys()) {
                 try {
                     if(logger.isTraceEnabled())
-                        logger.trace("Closing SelectionKey's channel " + sk + " for " + endpoint);
+                        logger.trace("Closing SelectionKey's channel " + sk);
 
                     sk.channel().close();
                 } catch(Exception e) {
@@ -159,7 +154,7 @@ public class SelectorManager implements Runnable {
 
                 try {
                     if(logger.isTraceEnabled())
-                        logger.trace("Cancelling SelectionKey " + sk + " for " + endpoint);
+                        logger.trace("Cancelling SelectionKey " + sk);
 
                     sk.cancel();
                 } catch(Exception e) {
@@ -197,7 +192,7 @@ public class SelectorManager implements Runnable {
                 if(isClosed.get()) {
                     processClose();
                     if(logger.isInfoEnabled())
-                        logger.info("Closed, exiting" + " for " + endpoint);
+                        logger.info("Closed, exiting");
 
                     break;
                 }
@@ -206,10 +201,10 @@ public class SelectorManager implements Runnable {
 
                 try {
                     int selected = selector.select();
-
+                    long selectTime = System.currentTimeMillis();
                     if(isClosed.get()) {
                         if(logger.isInfoEnabled())
-                            logger.info("Closed, exiting for " + endpoint);
+                            logger.info("Closed, exiting");
 
                         break;
                     }
@@ -223,6 +218,7 @@ public class SelectorManager implements Runnable {
                             i.remove();
                             try {
                                 if(selectionKey.isReadable()) {
+                                    handler.reset(selectTime);
                                     StreamRequestHandlerState state = handler.read();
                                     if(state != StreamRequestHandlerState.INCOMPLETE_READ) {
                                         if(pendingRequests != null) {
@@ -289,7 +285,7 @@ public class SelectorManager implements Runnable {
             while((socketChannel = socketChannelQueue.poll()) != null) {
                 if(isClosed.get()) {
                     if(logger.isInfoEnabled())
-                        logger.debug("Closed, exiting for " + endpoint);
+                        logger.debug("Closed, exiting");
 
                     break;
                 }
