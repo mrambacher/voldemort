@@ -39,6 +39,7 @@ import voldemort.server.protocol.StreamRequestHandler.StreamRequestHandlerState;
 import voldemort.utils.ByteBufferBackedInputStream;
 import voldemort.utils.ByteBufferBackedOutputStream;
 import voldemort.utils.ByteUtils;
+import voldemort.utils.Timer;
 
 /**
  * AsyncRequestHandler manages a Selector, SocketChannel, and RequestHandler
@@ -55,6 +56,8 @@ import voldemort.utils.ByteUtils;
  */
 
 public class AsyncRequestHandler {
+
+    private Timer timer;
 
     private final SelectorManager manager;
 
@@ -93,6 +96,7 @@ public class AsyncRequestHandler {
         if(logger.isInfoEnabled())
             logger.info("Accepting remote connection from "
                         + socketChannel.socket().getRemoteSocketAddress());
+        timer = new Timer(socketChannel.socket().getRemoteSocketAddress().toString(), 1000);
     }
 
     @Override
@@ -100,6 +104,10 @@ public class AsyncRequestHandler {
         outputStream.close();
         inputStream.close();
         super.finalize();
+    }
+
+    public void reset(long time) {
+        timer.reset(time);
     }
 
     public SocketAddress getRemoteSocketAddress() {
@@ -149,6 +157,7 @@ public class AsyncRequestHandler {
     public StreamRequestHandlerState read() throws IOException {
         int count = 0;
 
+        timer.checkpoint("Reading");
         readCompletedTime = 0;
         ByteBuffer inputBuffer = inputStream.getBuffer();
         if((count = socketChannel.read(inputBuffer)) == -1)
@@ -203,6 +212,7 @@ public class AsyncRequestHandler {
 
     public StreamRequestHandlerState handleRequest() {
         try {
+            timer.checkpoint("Handling Request");
             if(this.requestHandler == null) {
                 return initRequestHandler();
             } else if(this.streamRequestHandler != null) {
@@ -224,6 +234,7 @@ public class AsyncRequestHandler {
 
                 streamRequestHandler = requestHandler.handleRequest(new DataInputStream(inputStream),
                                                                     new DataOutputStream(outputStream));
+                timer.checkpoint("Handled Request");
                 if(streamRequestHandler != null) {
                     // In the case of a StreamRequestHandler, we handle that
                     // separately (attempting to process multiple "segments").
@@ -251,6 +262,7 @@ public class AsyncRequestHandler {
     public StreamRequestHandlerState write() throws IOException {
         StreamRequestHandlerState state = writeBuffer();
         if(state == StreamRequestHandlerState.COMPLETE) {
+            timer.completed(logger);
             if(streamRequestHandler != null
                && streamRequestHandler.getDirection() == StreamRequestDirection.WRITING) {
                 // In the case of streaming writes, it's possible we can process
@@ -280,7 +292,7 @@ public class AsyncRequestHandler {
         if(outputBuffer.hasRemaining()) {
             // If we have data, write what we can now...
             int count = socketChannel.write(outputBuffer);
-
+            timer.checkpoint("Wrote " + count + " bytes");
             if(logger.isTraceEnabled()) {
                 logger.trace("Wrote " + count + " bytes, remaining: " + outputBuffer.remaining()
                              + " for " + getRemoteSocketAddress());
