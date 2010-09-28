@@ -566,7 +566,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
         subStores.put(Iterables.get(cluster.getNodes(), 0).getId(),
                       new NodeStore<ByteArray, byte[]>(Iterables.get(cluster.getNodes(), 0),
                                                        failureDetector,
-                                                       new InMemoryStorageEngine<ByteArray, byte[]>("test")));
+                                                       new InMemoryStorageEngine<ByteArray, byte[]>("good")));
         subStores.put(Iterables.get(cluster.getNodes(), 1).getId(),
                       new NodeStore<ByteArray, byte[]>(Iterables.get(cluster.getNodes(), 1),
                                                        failureDetector,
@@ -943,52 +943,6 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
         }
     }
 
-    @Test
-    public void testSlowStoreDuringReadRepair() {
-        ByteArray key = TestUtils.toByteArray("key");
-        byte[] value = "foo".getBytes();
-
-        this.createFailureDetector();
-        Cluster cluster = VoldemortTestConstants.getThreeNodeCluster();
-        StoreDefinition storeDef = ServerTestUtils.getStoreDef("test",
-                                                               3,
-                                                               3,
-                                                               3,
-                                                               2,
-                                                               2,
-                                                               RoutingStrategyType.CONSISTENT_STRATEGY);
-        Map<Integer, Store<ByteArray, byte[]>> subStores = Maps.newHashMap();
-        Store<ByteArray, byte[]> sleepy = new InMemoryStorageEngine<ByteArray, byte[]>("sleepy");
-        subStores.put(0, new InMemoryStorageEngine<ByteArray, byte[]>("test-0"));
-        subStores.put(1,
-                      new SleepyStore<ByteArray, byte[]>(900L,
-                                                         new InMemoryStorageEngine<ByteArray, byte[]>("test-1")));
-        subStores.put(2, new SleepyStore<ByteArray, byte[]>(1000L, sleepy));
-        this.setFailureDetectorVerifier(subStores);
-
-        subStores.get(0).put(key, new Versioned<byte[]>(value, TestUtils.getClock(3, 3)));
-
-        Store<ByteArray, byte[]> store = new RoutedStore("test",
-                                                         subStores,
-                                                         cluster,
-                                                         storeDef,
-                                                         2,
-                                                         true,
-                                                         1200L,
-                                                         TimeUnit.MILLISECONDS,
-                                                         failureDetector);
-        List<Versioned<byte[]>> results = store.get(key);
-        results.get(0).setObject("bar".getBytes());
-        results.get(0).getValue()[0] = 'b';
-        try {
-            Thread.sleep(2000);
-        } catch(Exception e) {}
-        List<Versioned<byte[]>> sleepyResults = sleepy.get(key);
-        assertEquals("Sleepy store has all results", results.size(), sleepyResults.size());
-        assertEquals("Sleepy results unchanged",
-                     new String(value),
-                     new String(sleepyResults.get(0).getValue()));
-    }
     @Test
     public void testInterruptedMasterPut() {
         final ByteArray key = TestUtils.toByteArray("key"); // Node 1 is master
