@@ -99,22 +99,27 @@ public class SocketPool {
     public SocketAndStreams checkout(SocketDestination destination) {
         SocketAndStreams sas = null;
         try {
-            // time checkout
-            long start = System.nanoTime();
-            sas = pool.checkout(destination);
-            sas.negotiateProtocol();
-            updateStats(System.nanoTime() - start);
-
-            return sas;
-        } catch(TimeoutException e) {
-            throw new VoldemortClientException(e);
-        } catch(InterruptedException e) {
-            throw new VoldemortInterruptedException(e);
-        } catch(InterruptedIOException e) {
-            throw new VoldemortInterruptedException(e);
-        } catch(Exception e) {
-            throw new UnreachableStoreException("Failure while checking out socket for "
-                                                + destination + " - " + e.getMessage(), e);
+            try {
+                // time checkout
+                long start = System.nanoTime();
+                sas = pool.checkout(destination);
+                updateStats(System.nanoTime() - start);
+                return sas;
+            } catch(TimeoutException e) {
+                throw new VoldemortClientException(e);
+            } catch(InterruptedException e) {
+                throw new VoldemortInterruptedException(e);
+            } catch(InterruptedIOException e) {
+                throw new VoldemortInterruptedException(e);
+            } catch(Exception e) {
+                throw new UnreachableStoreException("Failure while checking out socket for "
+                                                    + destination + " - " + e.getMessage(), e);
+            }
+        } catch(VoldemortException e) {
+            if(sas != null) {
+                checkin(destination, sas);
+            }
+            throw e;
         }
     }
 
