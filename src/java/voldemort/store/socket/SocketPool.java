@@ -164,6 +164,10 @@ public class SocketPool {
         pool.close();
     }
 
+    public int getSocketTimeout() {
+        return this.socketFactory.getTimeout();
+    }
+
     @JmxGetter(name = "socketsCreated", description = "The total number of sockets created by this pool.")
     public int getNumberSocketsCreated() {
         return this.socketFactory.getNumberCreated();

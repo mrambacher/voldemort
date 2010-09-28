@@ -36,6 +36,7 @@ import voldemort.store.StoreCapabilityType;
 import voldemort.store.StoreUtils;
 import voldemort.store.UnreachableStoreException;
 import voldemort.utils.ByteArray;
+import voldemort.utils.Timer;
 import voldemort.utils.Utils;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
@@ -81,6 +82,11 @@ public class SocketStore implements Store<ByteArray, byte[]> {
     // don't close the socket pool, it is shared
     }
 
+    private Timer createTimer(String operation, ByteArray key) {
+        return new Timer(this.name + "::" + operation + new String(key.get() + ")"),
+                         this.pool.getSocketTimeout());
+    }
+
     private VoldemortException translateException(SocketAndStreams sands,
                                                   IOException e,
                                                   String operation) {
@@ -100,7 +106,9 @@ public class SocketStore implements Store<ByteArray, byte[]> {
 
     public boolean delete(ByteArray key, Version version) throws VoldemortException {
         StoreUtils.assertValidKey(key);
+        Timer timer = createTimer("delete", key);
         SocketAndStreams sands = pool.checkout(destination);
+        timer.checkpoint("Checkout");
         try {
             requestFormat.writeDeleteRequest(sands.getOutputStream(),
                                              name,
@@ -108,10 +116,12 @@ public class SocketStore implements Store<ByteArray, byte[]> {
                                              version,
                                              requestType);
             sands.getOutputStream().flush();
+            timer.checkpoint("Wrote request");
             return requestFormat.readDeleteResponse(sands.getInputStream());
         } catch(IOException e) {
             throw translateException(sands, e, "delete");
         } finally {
+            timer.completed(logger);
             pool.checkin(destination, sands);
         }
     }
@@ -119,36 +129,46 @@ public class SocketStore implements Store<ByteArray, byte[]> {
     public Map<ByteArray, List<Versioned<byte[]>>> getAll(Iterable<ByteArray> keys)
             throws VoldemortException {
         StoreUtils.assertValidKeys(keys);
+        Timer timer = createTimer("getAll", null);
         SocketAndStreams sands = pool.checkout(destination);
+        timer.checkpoint("Checkout");
         try {
             requestFormat.writeGetAllRequest(sands.getOutputStream(), name, keys, requestType);
             sands.getOutputStream().flush();
+            timer.checkpoint("Wrote request");
             return requestFormat.readGetAllResponse(sands.getInputStream());
         } catch(IOException e) {
             throw translateException(sands, e, "getAll");
         } finally {
+            timer.completed(logger);
             pool.checkin(destination, sands);
         }
     }
 
     public List<Versioned<byte[]>> get(ByteArray key) throws VoldemortException {
         StoreUtils.assertValidKey(key);
+        Timer timer = createTimer("get", key);
         SocketAndStreams sands = pool.checkout(destination);
+        timer.checkpoint("Checkout");
         try {
             requestFormat.writeGetRequest(sands.getOutputStream(), name, key, requestType);
 
             sands.getOutputStream().flush();
+            timer.checkpoint("Wrote request");
             return requestFormat.readGetResponse(sands.getInputStream());
         } catch(IOException e) {
             throw translateException(sands, e, "get");
         } finally {
+            timer.completed(logger);
             pool.checkin(destination, sands);
         }
     }
 
     public Version put(ByteArray key, Versioned<byte[]> versioned) throws VoldemortException {
         StoreUtils.assertValidKey(key);
+        Timer timer = createTimer("put", key);
         SocketAndStreams sands = pool.checkout(destination);
+        timer.checkpoint("Checkout");
         try {
             requestFormat.writePutRequest(sands.getOutputStream(),
                                           name,
@@ -156,6 +176,7 @@ public class SocketStore implements Store<ByteArray, byte[]> {
                                           versioned,
                                           requestType);
             sands.getOutputStream().flush();
+            timer.checkpoint("Wrote request");
             Version version = requestFormat.readPutResponse(sands.getInputStream());
             if(version == null) { // If the protocol is old, it might not return
                 // a version
@@ -167,6 +188,7 @@ public class SocketStore implements Store<ByteArray, byte[]> {
         } catch(IOException e) {
             throw translateException(sands, e, "put");
         } finally {
+            timer.completed(logger);
             pool.checkin(destination, sands);
         }
     }
@@ -192,14 +214,18 @@ public class SocketStore implements Store<ByteArray, byte[]> {
 
     public List<Version> getVersions(ByteArray key) {
         StoreUtils.assertValidKey(key);
+        Timer timer = createTimer("put", key);
         SocketAndStreams sands = pool.checkout(destination);
+        timer.checkpoint("Checkout");
         try {
             requestFormat.writeGetVersionRequest(sands.getOutputStream(), name, key, requestType);
             sands.getOutputStream().flush();
+            timer.checkpoint("Wrote request");
             return requestFormat.readGetVersionResponse(sands.getInputStream());
         } catch(IOException e) {
             throw translateException(sands, e, "getVersions");
         } finally {
+            timer.completed(logger);
             pool.checkin(destination, sands);
         }
     }
