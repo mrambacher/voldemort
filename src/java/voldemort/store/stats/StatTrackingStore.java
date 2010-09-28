@@ -138,6 +138,10 @@ public class StatTrackingStore<K, V> extends DelegatingStore<K, V> {
         return stats;
     }
 
+    public Map<Tracked, RequestCounter> getCounters() {
+        return stats.getCounters();
+    }
+
     @JmxOperation(description = "Reset statistics.", impact = MBeanOperationInfo.ACTION)
     public void resetStatistics() {
         this.stats = new StoreStats();

@@ -296,7 +296,7 @@ public class RequestCounter extends NotificationBroadcasterSupport implements Re
 
     public String getLatency(final float percentile) {
         final Accumulator accum = getValidAccumulator();
-        final int index = findIndexByPercentage(percentile, accum.total, accum.latencies);
+        final int index = findIndexByPercentage(percentile, accum.count, accum.latencies);
         final float p = index * NORMILIZE_TO_MILLIS;
         return String.format("%.2f", p);
     }
