@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -79,9 +80,12 @@ public class ParallelTask<N, V> implements Future<Map<N, V>> {
     /** True if the set of jobs has been canceled, false otherwise */
     private boolean cancelled = false;
 
-    /** The number of tasks which are still running */
+    /** True if the job should stop if interrupted and false otherwise */
+    private final boolean stopOnInterrupt;
 
+    /** The number of tasks which are still running */
     AtomicInteger running;
+
     /** The time at which all of the tasks completed */
     long taskCompletedTime;
     /** The time (in nanoseconds at which the tasks were started */
@@ -94,7 +98,11 @@ public class ParallelTask<N, V> implements Future<Map<N, V>> {
      * @param pool The executor for this request
      * @param callable The set of requests to run.
      */
-    public ParallelTask(String taskName, ExecutorService pool, Map<N, Callable<V>> callable) {
+    public ParallelTask(String taskName,
+                        ExecutorService pool,
+                        Map<N, Callable<V>> callable,
+                        boolean stopOnInterrupt) {
+        this.stopOnInterrupt = stopOnInterrupt;
         this.taskName = taskName;
         this.retrieved = 0;
         this.size = callable.size();
@@ -121,7 +129,14 @@ public class ParallelTask<N, V> implements Future<Map<N, V>> {
     public static <S, T> ParallelTask<S, T> newInstance(String taskName,
                                                         ExecutorService pool,
                                                         Map<S, Callable<T>> tasks) {
-        return new ParallelTask<S, T>(taskName, pool, tasks);
+        return newInstance(taskName, pool, tasks, true);
+    }
+
+    public static <S, T> ParallelTask<S, T> newInstance(String taskName,
+                                                        ExecutorService pool,
+                                                        Map<S, Callable<T>> tasks,
+                                                        boolean stopOnInterrupt) {
+        return new ParallelTask<S, T>(taskName, pool, tasks, stopOnInterrupt);
     }
 
     /**
@@ -189,17 +204,25 @@ public class ParallelTask<N, V> implements Future<Map<N, V>> {
     NodeFuture getNextResult() {
         NodeFuture future = null;
         if(this.retrieved < this.size) {
-            try {
-                future = completed.take();
-            } catch(InterruptedException e) {
-                return null;
-            }
-            if(future != null) {
-                this.retrieved++;
-            }
+            do {
+                try {
+                    future = completed.take();
+                } catch(InterruptedException e) {
+                    if(stopOnInterrupt) {
+                        logger.info("Cancelling jobs on interrupt");
+                        this.cancel(true);
+                    } else {
+                        while(Thread.interrupted()) {
+                            logger.info("Ignoring job interrupt");
+                        }
+                    }
+                }
+            } while(future == null && !stopOnInterrupt);
+        }
+        if(future != null) {
+            retrieved++;
         }
         return future;
-
     }
 
     /**
@@ -211,11 +234,25 @@ public class ParallelTask<N, V> implements Future<Map<N, V>> {
     NodeFuture getNextResult(long waitTime, TimeUnit units) {
         NodeFuture future = null;
         if(this.retrieved < this.size) {
-            try {
-                future = completed.poll(waitTime, units);
-            } catch(InterruptedException e) {
-                return null;
-            }
+            long startTime = System.nanoTime();
+            boolean doAgain = false;
+            do {
+                try {
+                    future = completed.poll(waitTime, units);
+                } catch(InterruptedException e) {
+                    if(stopOnInterrupt) {
+                        logger.info("Cancelling jobs on interrupt");
+                        this.cancel(true);
+                    } else {
+                        doAgain = true;
+                        while(Thread.interrupted()) {
+                            logger.info("Ignoring job interrupt");
+                        }
+                        waitTime -= units.convert(System.nanoTime() - startTime,
+                                                  TimeUnit.NANOSECONDS);
+                    }
+                }
+            } while(future == null && doAgain);
             if(future != null) {
                 retrieved++;
             }
@@ -234,6 +271,8 @@ public class ParallelTask<N, V> implements Future<Map<N, V>> {
         try {
             return future.get();
         } catch(InterruptedException e) {
+            throw new VoldemortException(e);
+        } catch(CancellationException e) {
             throw new VoldemortException(e);
         } catch(ExecutionException e) {
             Throwable cause = e.getCause();
@@ -264,9 +303,9 @@ public class ParallelTask<N, V> implements Future<Map<N, V>> {
     }
 
     public void checkQuorum(int required,
-                               int attempted,
-                               int succeeded,
-                               Collection<VoldemortException> exceptions) {
+                            int attempted,
+                            int succeeded,
+                            Collection<VoldemortException> exceptions) {
         if(succeeded < required) {
             throw new InsufficientSuccessfulNodesException(taskName + ": Required " + required
                                                                    + " but only " + succeeded

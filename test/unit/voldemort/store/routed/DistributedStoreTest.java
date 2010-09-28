@@ -21,7 +21,11 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import junit.framework.TestCase;
@@ -31,6 +35,7 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 
+import voldemort.TestUtils;
 import voldemort.VoldemortException;
 import voldemort.cluster.Node;
 import voldemort.store.FailingStore;
@@ -218,6 +223,118 @@ public class DistributedStoreTest extends TestCase {
             }
         } catch(Exception e) {
             assertEquals("Unexpected Exception",
+                         InsufficientSuccessfulNodesException.class,
+                         e.getClass());
+        }
+    }
+
+    @Test
+    public void testInterruptedPut() {
+        inner = new HashMap<Node, Store<ByteArray, byte[]>>(3);
+        for(int nodeId = 0; nodeId < 3; nodeId++) {
+            inner.put(new Node(nodeId,
+                               "sleepy_" + nodeId,
+                               6666,
+                               6666,
+                               6667,
+                               Lists.newArrayList(nodeId)),
+                      new SleepyStore<ByteArray, byte[]>(2000,
+                                                         new InMemoryStorageEngine<ByteArray, byte[]>("test")));
+        }
+        store = new DistributingStore<Node>("test",
+                                            inner,
+                                            Executors.newFixedThreadPool(inner.size()),
+                                            3,
+                                            3,
+                                            3,
+                                            3,
+                                            2500,
+                                            TimeUnit.MILLISECONDS,
+                                            SystemTime.INSTANCE);
+
+        ExecutorService threadPool = Executors.newSingleThreadExecutor();
+        final Version master = TestUtils.getClock(1, 1);
+        Future<Version> child = threadPool.submit(new Callable<Version>() {
+
+            public Version call() {
+                try {
+                    ByteArray key = new ByteArray("key".getBytes());
+                    Versioned<byte[]> value = new Versioned<byte[]>(key.get(), master);
+                    Version version = store.put(key, value);
+                    return version;
+                } catch(Exception e) {
+                    fail("Unexpected exception [" + e.getClass() + "]: " + e.getMessage());
+                    return null;
+                }
+            }
+        });
+
+        try {
+            Thread.sleep(100);
+            threadPool.shutdownNow();
+            Version version = child.get();
+            assertEquals("Put equals master", master, version);
+        } catch(Exception e) {
+            fail("Unexpected exception [" + e.getClass() + "]: " + e.getMessage());
+        }
+    }
+
+    @Test
+    public void testInterruptedGet() {
+        inner = new HashMap<Node, Store<ByteArray, byte[]>>(3);
+        Version master = TestUtils.getClock(1, 1);
+        final ByteArray key = new ByteArray("key".getBytes());
+        Versioned<byte[]> value = new Versioned<byte[]>(key.get(), master);
+        for(int nodeId = 0; nodeId < 3; nodeId++) {
+            Store<ByteArray, byte[]> memory = new InMemoryStorageEngine<ByteArray, byte[]>("test");
+            memory.put(key, value);
+            inner.put(new Node(nodeId,
+                               "sleepy_" + nodeId,
+                               6666,
+                               6666,
+                               6667,
+                               Lists.newArrayList(nodeId)),
+                      new SleepyStore<ByteArray, byte[]>(2000, memory));
+        }
+        store = new DistributingStore<Node>("test",
+                                            inner,
+                                            Executors.newFixedThreadPool(inner.size()),
+                                            3,
+                                            3,
+                                            3,
+                                            3,
+                                            2500,
+                                            TimeUnit.MILLISECONDS,
+                                            SystemTime.INSTANCE);
+
+        ExecutorService threadPool = Executors.newSingleThreadExecutor();
+        Future<List<Versioned<byte[]>>> child = threadPool.submit(new Callable<List<Versioned<byte[]>>>() {
+
+            public List<Versioned<byte[]>> call() throws Exception {
+                try {
+                    List<Versioned<byte[]>> results = store.get(key);
+                    fail("Unexpected results " + results);
+                    return results;
+                } catch(Exception e) {
+                    assertEquals("Unexpected exception",
+                                 InsufficientSuccessfulNodesException.class,
+                                 e.getClass());
+                    throw e;
+                }
+            }
+        });
+
+        try {
+            Thread.sleep(100);
+            threadPool.shutdownNow();
+            List<Versioned<byte[]>> results = child.get();
+            fail("Unexpected results " + results);
+        } catch(ExecutionException e) {
+            assertEquals("Unexpected exception",
+                         InsufficientSuccessfulNodesException.class,
+                         e.getCause().getClass());
+        } catch(Exception e) {
+            assertEquals("Unexpected exception",
                          InsufficientSuccessfulNodesException.class,
                          e.getClass());
         }

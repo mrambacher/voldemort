@@ -28,6 +28,7 @@ import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 
 import voldemort.VoldemortException;
+import voldemort.client.VoldemortInterruptedException;
 import voldemort.cluster.Cluster;
 import voldemort.cluster.Node;
 import voldemort.cluster.failuredetector.FailureDetector;
@@ -201,8 +202,14 @@ public class RoutedStore extends ReadRepairStore<Integer> {
                 master = currentNode;
                 break;
             } catch(UnreachableStoreException e) {
-                logger.warn("impossible to reach the node - It's marked unavailable - " + e.getMessage(), e);
+                logger.warn("impossible to reach the node - It's marked unavailable - "
+                            + e.getMessage(), e);
                 failures.add(e);
+            } catch(VoldemortInterruptedException e) {
+                if(logger.isDebugEnabled()) {
+                    logger.debug("Put operation interrupted for key: " + key);
+                }
+                break;
             } catch(ObsoleteVersionException e) {
                 if(logger.isDebugEnabled()) {
                     logger.debug("Obsolete version for key: " + key);
@@ -211,8 +218,8 @@ public class RoutedStore extends ReadRepairStore<Integer> {
                 // of this operation
                 throw e;
             } catch(Exception e) {
-                logger.warn("Exception found during PUT in master node Id: " + nodes.get(currentNode)
-                             + " - " + e.getMessage(), e);
+                logger.warn("Exception found during PUT in master node Id: "
+                            + nodes.get(currentNode) + " - " + e.getMessage(), e);
                 failures.add(e);
             }
         }
@@ -222,7 +229,9 @@ public class RoutedStore extends ReadRepairStore<Integer> {
                 logger.debug("Impossible to complete PUT from master node");
             }
             throw new InsufficientOperationalNodesException("No master node succeeded!",
-                                                            failures, 0, requiredWrites);
+                                                            failures,
+                                                            0,
+                                                            requiredWrites);
         }
 
         final List<Integer> replicas = new ArrayList<Integer>(numNodes);
@@ -240,10 +249,7 @@ public class RoutedStore extends ReadRepairStore<Integer> {
                                                     remaining,
                                                     timeUnit,
                                                     exceptions);
-            job.checkQuorum(requiredWrites,
-                               nodes.size(),
-                               results.size() + 1,
-                               exceptions.values());
+            job.checkQuorum(requiredWrites, nodes.size(), results.size() + 1, exceptions.values());
         }
 
         if(logger.isDebugEnabled()) {

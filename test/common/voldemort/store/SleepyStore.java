@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 
 import voldemort.VoldemortException;
+import voldemort.client.VoldemortInterruptedException;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
@@ -38,7 +39,7 @@ public class SleepyStore<K, V> extends DelegatingStore<K, V> {
             Thread.sleep(sleepTimeMs);
             return getInnerStore().delete(key, version);
         } catch(InterruptedException e) {
-            throw new VoldemortException(e);
+            throw new VoldemortInterruptedException(e);
         }
     }
 
@@ -48,7 +49,7 @@ public class SleepyStore<K, V> extends DelegatingStore<K, V> {
             Thread.sleep(sleepTimeMs);
             return getInnerStore().get(key);
         } catch(InterruptedException e) {
-            throw new VoldemortException(e);
+            throw new VoldemortInterruptedException(e);
         }
     }
 
@@ -58,7 +59,7 @@ public class SleepyStore<K, V> extends DelegatingStore<K, V> {
             Thread.sleep(sleepTimeMs);
             return getInnerStore().getAll(keys);
         } catch(InterruptedException e) {
-            throw new VoldemortException(e);
+            throw new VoldemortInterruptedException(e);
         }
     }
 
@@ -68,7 +69,7 @@ public class SleepyStore<K, V> extends DelegatingStore<K, V> {
             Thread.sleep(sleepTimeMs);
             return getInnerStore().put(key, value);
         } catch(InterruptedException e) {
-            throw new VoldemortException(e);
+            throw new VoldemortInterruptedException(e);
         }
     }
 

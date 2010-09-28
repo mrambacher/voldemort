@@ -16,6 +16,7 @@
 
 package voldemort.store.socket;
 
+import java.io.InterruptedIOException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -28,6 +29,7 @@ import voldemort.annotations.jmx.JmxGetter;
 import voldemort.annotations.jmx.JmxManaged;
 import voldemort.annotations.jmx.JmxSetter;
 import voldemort.client.VoldemortClientException;
+import voldemort.client.VoldemortInterruptedException;
 import voldemort.store.UnreachableStoreException;
 import voldemort.utils.Time;
 import voldemort.utils.pool.KeyedResourcePool;
@@ -104,16 +106,15 @@ public class SocketPool {
             updateStats(System.nanoTime() - start);
 
             return sas;
+        } catch(TimeoutException e) {
+            throw new VoldemortClientException(e);
+        } catch(InterruptedException e) {
+            throw new VoldemortInterruptedException(e);
+        } catch(InterruptedIOException e) {
+            throw new VoldemortInterruptedException(e);
         } catch(Exception e) {
-            if(sas != null) {
-                checkin(destination, sas);
-            }
-            if(e instanceof TimeoutException) {
-                throw new VoldemortClientException(e);
-            } else {
-                throw new UnreachableStoreException("Failure while checking out socket for "
-                                                    + destination + " - " + e.getMessage(), e);
-            }
+            throw new UnreachableStoreException("Failure while checking out socket for "
+                                                + destination + " - " + e.getMessage(), e);
         }
     }
 
