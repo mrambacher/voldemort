@@ -43,6 +43,7 @@ import voldemort.store.UnreachableStoreException;
 import voldemort.utils.ByteArray;
 import voldemort.utils.SystemTime;
 import voldemort.utils.Time;
+import voldemort.utils.Timer;
 import voldemort.versioning.ObsoleteVersionException;
 import voldemort.versioning.Version;
 import voldemort.versioning.VersionFactory;
@@ -177,6 +178,8 @@ public class RoutedStore extends ReadRepairStore<Integer> {
             throws VoldemortException {
 
         StoreUtils.assertValidKey(key);
+        Timer timer = new Timer(this.getName() + "::put(" + new String(key.get()) + ")",
+                                this.timeout);
         final List<Integer> nodes = availableNodes(routingStrategy.routeRequest(key.get()));
         // quickly fail if there aren't enough nodes to meet the requirement
         checkRequiredWrites(nodes);
@@ -198,7 +201,9 @@ public class RoutedStore extends ReadRepairStore<Integer> {
                 int current = nodes.get(currentNode);
                 versionedCopy = incremented(versioned, current);
                 Store<ByteArray, byte[]> store = this.getNodeStore(current);
+                timer.checkpoint("Master put attempt " + current);
                 retVersion = store.put(key, versionedCopy);
+                timer.checkpoint("Master put complete " + current);
                 master = currentNode;
                 break;
             } catch(UnreachableStoreException e) {
@@ -224,37 +229,44 @@ public class RoutedStore extends ReadRepairStore<Integer> {
             }
         }
 
-        if(master < 0) {
-            if(logger.isDebugEnabled()) {
-                logger.debug("Impossible to complete PUT from master node");
+        try {
+            if(master < 0) {
+                if(logger.isDebugEnabled()) {
+                    logger.debug("Impossible to complete PUT from master node");
+                }
+                throw new InsufficientOperationalNodesException("No master node succeeded!",
+                                                                failures,
+                                                                0,
+                                                                requiredWrites);
             }
-            throw new InsufficientOperationalNodesException("No master node succeeded!",
-                                                            failures,
-                                                            0,
-                                                            requiredWrites);
+
+            final List<Integer> replicas = new ArrayList<Integer>(numNodes);
+            for(currentNode = master + 1; currentNode < numNodes; currentNode++) {
+                replicas.add(nodes.get(currentNode));
+            }
+
+            long elapsed = System.nanoTime() - startNs;
+            long remaining = timeout - timeUnit.convert(elapsed, TimeUnit.NANOSECONDS);
+            if(replicas.size() > 0) {
+                Map<Integer, VoldemortException> exceptions = new HashMap<Integer, VoldemortException>();
+                ParallelTask<Integer, Version> job = putJob(key, versionedCopy, replicas);
+                Map<Integer, Version> results = job.get(preferredWrites - 1,
+                                                        requiredWrites - 1,
+                                                        remaining,
+                                                        timeUnit,
+                                                        exceptions);
+                job.checkQuorum(requiredWrites,
+                                nodes.size(),
+                                results.size() + 1,
+                                exceptions.values());
+            }
+            if(logger.isDebugEnabled()) {
+                logger.debug("successfully terminated PUT based on quorum requirements.");
+            }
+        } finally {
+            timer.completed(logger);
         }
 
-        final List<Integer> replicas = new ArrayList<Integer>(numNodes);
-        for(currentNode = master + 1; currentNode < numNodes; currentNode++) {
-            replicas.add(nodes.get(currentNode));
-        }
-
-        long elapsed = System.nanoTime() - startNs;
-        long remaining = timeout - timeUnit.convert(elapsed, TimeUnit.NANOSECONDS);
-        if(replicas.size() > 0) {
-            Map<Integer, VoldemortException> exceptions = new HashMap<Integer, VoldemortException>();
-            ParallelTask<Integer, Version> job = putJob(key, versionedCopy, replicas);
-            Map<Integer, Version> results = job.get(preferredWrites - 1,
-                                                    requiredWrites - 1,
-                                                    remaining,
-                                                    timeUnit,
-                                                    exceptions);
-            job.checkQuorum(requiredWrites, nodes.size(), results.size() + 1, exceptions.values());
-        }
-
-        if(logger.isDebugEnabled()) {
-            logger.debug("successfully terminated PUT based on quorum requirements.");
-        }
         return retVersion;
     }
 

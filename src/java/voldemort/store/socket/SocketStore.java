@@ -83,8 +83,13 @@ public class SocketStore implements Store<ByteArray, byte[]> {
     }
 
     private Timer createTimer(String operation, ByteArray key) {
-        return new Timer(this.name + "::" + operation + new String(key.get() + ")"),
-                         this.pool.getSocketTimeout());
+        if(key != null) {
+            return new Timer(this.name + "::" + operation + "(" + new String(key.get() + ")"),
+                             this.pool.getSocketTimeout());
+        } else {
+            return new Timer(this.name + "::" + operation, this.pool.getSocketTimeout());
+
+        }
     }
 
     private VoldemortException translateException(SocketAndStreams sands,
