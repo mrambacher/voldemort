@@ -71,11 +71,15 @@ public abstract class AbstractStorageEngine implements StorageEngine<ByteArray, 
     public List<Version> getVersions(ByteArray key) {
         StoreUtils.assertValidKey(key);
         List<Version> results = Lists.newArrayList();
-        ClosableIterator<Version> iter = getVersionIterator(key);
-        while(iter.hasNext()) {
-            results.add(iter.next());
+        ClosableIterator<Version> iter = null;
+        try {
+            iter = getVersionIterator(key);
+            while(iter.hasNext()) {
+                results.add(iter.next());
+            }
+        } finally {
+            attemptClose(iter);
         }
-        attemptClose(iter);
         return results;
     }
 
@@ -112,9 +116,10 @@ public abstract class AbstractStorageEngine implements StorageEngine<ByteArray, 
         StoreUtils.assertValidKey(key);
 
         boolean succeeded = false;
-        StoreTransaction<Version> transaction = startTransaction(key);
-        StoreIterator<Version> iter = transaction.getIterator();
+        StoreTransaction<Version> transaction = null;
         try {
+            transaction = startTransaction(key);
+            StoreIterator<Version> iter = transaction.getIterator();
             boolean updated = false;
             // Check existing values
             // if there is a version obsoleted by this value delete it
