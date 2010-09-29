@@ -115,7 +115,7 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
         return getItemOrThrow(key, defaultValue, items);
     }
 
-    private List<Version> getVersions(K key) {
+    public List<Version> getVersions(K key) {
         return store.getVersions(key);
     }
 

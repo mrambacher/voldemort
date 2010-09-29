@@ -125,6 +125,10 @@ public class VoldemortClientShell {
                 } else if(line.toLowerCase().startsWith("get")) {
                     JsonReader jsonReader = new JsonReader(new StringReader(line.substring("get".length())));
                     printVersioned(client.get(tightenNumericTypes(jsonReader.read())));
+                } else if(line.toLowerCase().startsWith("version")) {
+                    JsonReader jsonReader = new JsonReader(new StringReader(line.substring("version".length())));
+                    System.out.println("Versions: "
+                                       + client.getVersions(tightenNumericTypes(jsonReader.read())));
                 } else if(line.toLowerCase().startsWith("delete")) {
                     JsonReader jsonReader = new JsonReader(new StringReader(line.substring("delete".length())));
                     client.delete(tightenNumericTypes(jsonReader.read()));
@@ -138,6 +142,7 @@ public class VoldemortClientShell {
                     System.out.println("get key -- Retrieve the value associated with the key.");
                     System.out.println("getall key -- Retrieve the value(s) associated with the key.");
                     System.out.println("delete key -- Remove all values associated with the key.");
+                    System.out.println("version key -- Retrieve the versions associated with the key.");
                     System.out.println("preflist key -- Get node preference list for given key.");
                     System.out.println("help -- Print this message.");
                     System.out.println("exit -- Exit from this shell.");

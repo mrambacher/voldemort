@@ -60,6 +60,14 @@ public interface StoreClient<K, V> {
     public V getValue(K key, V defaultValue);
 
     /**
+     * Gets the versions of the value associated with the given key.
+     * 
+     * @param key The key for which to fetch the versions.
+     * @return The list of versions for this key.
+     */
+    public List<Version> getVersions(K key);
+
+    /**
      * Get the versioned value associated with the given key or null if no value
      * is associated with the key.
      * 
