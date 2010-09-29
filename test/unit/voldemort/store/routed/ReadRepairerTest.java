@@ -124,8 +124,8 @@ public class ReadRepairerTest extends TestCase {
         nodeValues.add(toValue(3, 1, getClock(1)));
 
         List<NodeValue<Integer, String, Integer>> expected = Lists.newArrayList();
-        expected.add(toValue(2, 1, getClock(1)));
-        expected.add(toValue(3, 1, getClock(1)));
+        expected.add(toValue(2, 1, getClock(1, 1)));
+        expected.add(toValue(3, 1, getClock(1, 1)));
 
         List<NodeValue<Integer, String, Integer>> repairs = repairer.getRepairs(nodeValues);
         this.assertVariationsEqual("One key obsolete", expected, repairs);
@@ -404,7 +404,7 @@ public class ReadRepairerTest extends TestCase {
     public void testSingleSuccessor() throws Exception {
         List<NodeValue<Integer, String, Integer>> values = Lists.newArrayList();
         values.add(toValue(2, 1, getClock(1, 1)));
-        values.add(toValue(1, 1, getClock(2)));
+        values.add(toValue(1, 1, getClock(1)));
 
         List<NodeValue<Integer, String, Integer>> repairs = repairer.getRepairs(values);
 

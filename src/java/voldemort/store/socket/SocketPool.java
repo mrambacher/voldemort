@@ -103,6 +103,7 @@ public class SocketPool {
                 // time checkout
                 long start = System.nanoTime();
                 sas = pool.checkout(destination);
+                sas.negotiateProtocol();
                 updateStats(System.nanoTime() - start);
                 return sas;
             } catch(TimeoutException e) {
