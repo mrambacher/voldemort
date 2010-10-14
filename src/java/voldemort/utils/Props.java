@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import voldemort.annotations.concurrency.NotThreadsafe;
 
@@ -273,6 +274,37 @@ public class Props implements Map<String, String> {
             return Long.parseLong(bytes.substring(0, bytes.length() - 1)) * 1024 * 1024 * 1024;
         else
             return Long.parseLong(bytes);
+    }
+
+    public long getTime(String name, long defaultValue, TimeUnit unit) {
+        if(containsKey(name))
+            return getTime(name, unit);
+        else
+            return defaultValue;
+    }
+
+    public long getTime(String name, TimeUnit unit) {
+        if(!containsKey(name))
+            throw new UndefinedPropertyException(name);
+        String value = get(name);
+        long time = Long.parseLong(value);
+        String units = value.toLowerCase().trim();
+        if(units.endsWith("d")) {
+            time = unit.convert(time, TimeUnit.DAYS);
+        } else if(units.endsWith("h")) {
+            time = unit.convert(time, TimeUnit.HOURS);
+        } else if(units.endsWith("m")) {
+            time = unit.convert(time, TimeUnit.MINUTES);
+        } else if(units.endsWith("ms")) {
+            time = unit.convert(time, TimeUnit.MILLISECONDS);
+        } else if(units.endsWith("us")) {
+            time = unit.convert(time, TimeUnit.MICROSECONDS);
+        } else if(units.endsWith("ns")) {
+            time = unit.convert(time, TimeUnit.NANOSECONDS);
+        } else if(units.endsWith("s")) {
+            time = unit.convert(time, TimeUnit.SECONDS);
+        }
+        return time;
     }
 
     public List<String> getList(String key, List<String> defaultValue) {

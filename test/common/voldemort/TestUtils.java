@@ -22,6 +22,7 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.UnsupportedEncodingException;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -48,8 +49,8 @@ import voldemort.store.readonly.ReadOnlyStorageConfiguration;
 import voldemort.utils.ByteArray;
 import voldemort.utils.Utils;
 import voldemort.versioning.Metadata;
-import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
+import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
 
 /**
@@ -73,8 +74,8 @@ public class TestUtils {
      * @param nodes The sequence of nodes
      * @return A VectorClock initialized with the given sequence of events
      */
-    public static VectorClock getClock(int... nodes) {
-        VectorClock clock = new VectorClock();
+    public static Version getClock(int... nodes) {
+        Version clock = VersionFactory.newVersion();
         increment(clock, nodes);
         return clock;
     }
@@ -85,7 +86,7 @@ public class TestUtils {
      * @param clock The VectorClock to record the events on
      * @param nodes The sequences of node events
      */
-    public static void increment(VectorClock clock, int... nodes) {
+    public static void increment(Version clock, int... nodes) {
         for(int n: nodes)
             clock.incrementClock((short) n, System.currentTimeMillis());
     }
@@ -342,7 +343,8 @@ public class TestUtils {
                                                              100,
                                                              1,
                                                              2,
-                                                             10000);
+                                                             10000,
+                                                             false);
         storeBuilder.build();
 
         return dataDir.getAbsolutePath();
@@ -427,6 +429,17 @@ public class TestUtils {
                 }
             }
         }
+    }
+
+    /**
+     * Because java.beans.ReflectionUtils isn't public...
+     */
+
+    @SuppressWarnings("unchecked")
+    public static <T> T getPrivateValue(Object instance, String fieldName) throws Exception {
+        Field eventDataQueueField = instance.getClass().getDeclaredField(fieldName);
+        eventDataQueueField.setAccessible(true);
+        return (T) eventDataQueueField.get(instance);
     }
 
 }

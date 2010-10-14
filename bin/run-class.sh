@@ -28,6 +28,11 @@ do
 	CLASSPATH=$CLASSPATH:$file
 done
 
+for file in $base_dir/contrib/*/lib/*.jar;
+do
+  CLASSPATH=$CLASSPATH:$file
+done
+
 for file in $base_dir/dist/*.jar;
 do
   CLASSPATH=$CLASSPATH:$file
@@ -35,8 +40,12 @@ done
 CLASSPATH=$CLASSPATH:$base_dir/dist/resources
 
 if [ -z "$VOLD_OPTS" ]; then
+<<<<<<< HEAD
   VOLD_OPTS="-Xmx2G -server -Dcom.sun.management.jmxremote"
+=======
+  VOLD_OPTS="-Xmx2G -server -Dcom.sun.management.jmxremote "
+>>>>>>> upstream/master
 fi
 
 export CLASSPATH
-java -Dlog4j.configuration=src/java/log4j.properties $VOLD_OPTS -cp $CLASSPATH $@
+java -Dlog4j.configuration=$base_dir/src/java/log4j.properties $VOLD_OPTS -cp $CLASSPATH $@

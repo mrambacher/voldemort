@@ -17,6 +17,7 @@
 package voldemort.utils;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -26,6 +27,9 @@ import java.util.Comparator;
 import java.util.List;
 
 import voldemort.VoldemortException;
+
+import com.sun.jna.Library;
+import com.sun.jna.Native;
 
 /**
  * Helper functions FTW!
@@ -107,6 +111,32 @@ public class Utils {
     }
 
     /**
+     * Create a symbolic link to an existing file. Also deletes the existing
+     * symbolic link if it exists
+     * 
+     * @param filePath Path of the file for whom to create the symbolic link
+     * @param symLinkPath Path of the symbolic link
+     */
+    public static void symlink(String filePath, String symLinkPath) {
+        File file = new File(filePath);
+        File symLink = new File(symLinkPath);
+        symLink.delete();
+
+        if(!file.exists())
+            throw new VoldemortException("File " + filePath + " does not exist");
+
+        Posix posix = (Posix) Native.loadLibrary("c", Posix.class);
+        int returnCode = posix.symlink(filePath, symLinkPath);
+        if(returnCode < 0)
+            throw new VoldemortException("Unable to create symbolic link for " + filePath);
+    }
+
+    public interface Posix extends Library {
+
+        public int symlink(String oldName, String newName);
+    }
+
+    /**
      * Move the source file to the dest file name. If there is a file or
      * directory at dest it will be overwritten. If the source file does not
      * exist or cannot be copied and exception will be thrown exist
@@ -121,6 +151,24 @@ public class Utils {
         boolean succeeded = source.renameTo(dest);
         if(!succeeded)
             throw new VoldemortException("Rename of " + source + " to " + dest + " failed.");
+    }
+
+    /**
+     * Make the directory specified in the parameters. If it exists, see if we
+     * can write to it
+     * 
+     * @param newDir The directory we want to make
+     */
+    public static void mkdirs(File newDir) {
+        if(newDir.exists()) {
+            if(!newDir.canWrite() || !newDir.canRead())
+                throw new VoldemortException("Unable to access directory "
+                                             + newDir.getAbsolutePath());
+        } else {
+            if(!newDir.mkdirs())
+                throw new VoldemortException("Unable to create directory "
+                                             + newDir.getAbsolutePath());
+        }
     }
 
     /**
@@ -378,6 +426,32 @@ public class Utils {
             return new URI(uri);
         } catch(URISyntaxException e) {
             throw new VoldemortException(e);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <T1, T2> T1 uncheckedCast(T2 t2) {
+        return (T1) t2;
+    }
+
+    /**
+     * Check if a file is a symbolic link or not
+     * 
+     * @param symlinkFile
+     * @return true if File is symlink else false
+     */
+    public static boolean isSymLink(File symlinkFile) {
+        try {
+            File canonicalFile = null;
+            if(symlinkFile.getParent() != null) {
+                File canonicalDir = symlinkFile.getParentFile().getCanonicalFile();
+                canonicalFile = new File(canonicalDir, symlinkFile.getName());
+            } else {
+                canonicalFile = symlinkFile;
+            }
+            return !canonicalFile.getCanonicalFile().equals(canonicalFile.getAbsoluteFile());
+        } catch(IOException e) {
+            return false;
         }
     }
 

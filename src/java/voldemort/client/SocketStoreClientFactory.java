@@ -28,14 +28,14 @@ import voldemort.cluster.failuredetector.ClientStoreVerifier;
 import voldemort.cluster.failuredetector.FailureDetector;
 import voldemort.cluster.failuredetector.FailureDetectorConfig;
 import voldemort.cluster.failuredetector.FailureDetectorListener;
+import voldemort.server.RequestRoutingType;
 import voldemort.store.Store;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.store.socket.SocketDestination;
-import voldemort.store.socket.SocketPool;
-import voldemort.store.socket.SocketStore;
+import voldemort.store.socket.SocketStoreFactory;
+import voldemort.store.socket.clientrequest.ClientRequestExecutorPool;
 import voldemort.utils.ByteArray;
 import voldemort.utils.JmxUtils;
-import voldemort.utils.Utils;
 
 /**
  * A StoreClientFactory abstracts away the connection pooling, threading, and
@@ -49,29 +49,23 @@ public class SocketStoreClientFactory extends AbstractStoreClientFactory {
 
     public static final String URL_SCHEME = "tcp";
 
-    private final SocketPool socketPool;
-    private final RoutingTier routingTier;
+    private final SocketStoreFactory storeFactory;
     private FailureDetectorListener failureDetectorListener;
+    private final RequestRoutingType requestRoutingType;
 
     public SocketStoreClientFactory(ClientConfig config) {
         super(config);
+        this.requestRoutingType = RequestRoutingType.getRequestRoutingType(RoutingTier.SERVER.equals(config.getRoutingTier()),
+                                                                           false);
 
-        if(logger.isDebugEnabled()) {
-            logger.debug("creating socket store factory - " + "maxConnectionsPerNode: "
-                         + config.getMaxConnectionsPerNode() + "connectionTimeoutMillis: "
-                         + config.getConnectionTimeout(TimeUnit.MILLISECONDS)
-                         + "socketTimeoutMillis: " + config.getSocketTimeout(TimeUnit.MILLISECONDS)
-                         + "socketBufferSize: " + config.getSocketBufferSize());
-        }
-
-        this.routingTier = config.getRoutingTier();
-        this.socketPool = new SocketPool(config.getMaxConnectionsPerNode(),
-                                         config.getConnectionTimeout(TimeUnit.MILLISECONDS),
-                                         config.getSocketTimeout(TimeUnit.MILLISECONDS),
-                                         config.getSocketBufferSize(),
-                                         config.getSocketKeepAlive());
+        this.storeFactory = new ClientRequestExecutorPool(config.getSelectors(),
+                                                          config.getMaxConnectionsPerNode(),
+                                                          config.getConnectionTimeout(TimeUnit.MILLISECONDS),
+                                                          config.getSocketTimeout(TimeUnit.MILLISECONDS),
+                                                          config.getSocketBufferSize(),
+                                                          config.getSocketKeepAlive());
         if(config.isJmxEnabled())
-            JmxUtils.registerMbean(socketPool, JmxUtils.createObjectName(SocketPool.class));
+            JmxUtils.registerMbean(storeFactory, JmxUtils.createObjectName(storeFactory.getClass()));
     }
 
     @Override
@@ -79,10 +73,7 @@ public class SocketStoreClientFactory extends AbstractStoreClientFactory {
                                                 String host,
                                                 int port,
                                                 RequestFormatType type) {
-        return new SocketStore(Utils.notNull(storeName),
-                               new SocketDestination(Utils.notNull(host), port, type),
-                               socketPool,
-                               RoutingTier.SERVER.equals(routingTier));
+        return storeFactory.create(storeName, host, port, type, requestRoutingType);
     }
 
     @Override
@@ -102,7 +93,7 @@ public class SocketStoreClientFactory extends AbstractStoreClientFactory {
                 SocketDestination destination = new SocketDestination(node.getHost(),
                                                                       node.getSocketPort(),
                                                                       config.getRequestFormatType());
-                socketPool.close(destination);
+                storeFactory.close(destination);
             }
 
         };
@@ -142,12 +133,10 @@ public class SocketStoreClientFactory extends AbstractStoreClientFactory {
 
     @Override
     public void close() {
-        this.socketPool.close();
+        this.storeFactory.close();
         if(failureDetector != null)
             this.failureDetector.removeFailureDetectorListener(failureDetectorListener);
-        this.getThreadPool().shutdown();
 
         super.close();
     }
-
 }

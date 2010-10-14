@@ -38,7 +38,7 @@ public class RebalanceTest extends AbstractRebalanceTest {
 
     @Parameters
     public static Collection<Object[]> configs() {
-        return Arrays.asList(new Object[][] { { true }, { false } });
+        return Arrays.asList(new Object[][] { { false } });
     }
 
     @Override
@@ -62,7 +62,9 @@ public class RebalanceTest extends AbstractRebalanceTest {
                                                                         storeXmlFile,
                                                                         properties);
 
-            VoldemortServer server = ServerTestUtils.startVoldemortServer(config, cluster);
+            VoldemortServer server = ServerTestUtils.startVoldemortServer(socketStoreFactory,
+                                                                          config,
+                                                                          cluster);
             serverMap.put(node, server);
         }
 

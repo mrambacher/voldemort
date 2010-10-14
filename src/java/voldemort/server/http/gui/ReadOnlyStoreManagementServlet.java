@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
+import javax.servlet.ServletConfig;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
@@ -49,9 +50,13 @@ import com.google.common.collect.Maps;
  * stores. The operations are
  * <ol>
  * <li>FETCH. Fetch the given files to the local node. Parameters:
- * operation=fetch, index=index-file-url, data=data-file-url</li>
- * <li>SWAP. operation=swap, store=store-name, index=index-file-url,
- * data=data-file-url</li>
+ * operation="fetch", dir=[data-directory], store=[name-of-store],
+ * pushVersion=[version-of-push]</li>
+ * <li>SWAP. Swap the data directory atomically. Parameters: operation="swap",
+ * store=[name-of-store]</li>
+ * <li>ROLLBACK. Rollback the store to previous push version. Parameters:
+ * operation="rollback", store=[name-of-store],
+ * pushVersion=[version-of-push-to-rollback-to]</li>
  * </ol>
  * 
  * 
@@ -61,7 +66,7 @@ public class ReadOnlyStoreManagementServlet extends HttpServlet {
     private static final long serialVersionUID = 1;
     private static final Logger logger = Logger.getLogger(ReadOnlyStoreManagementServlet.class);
 
-    private List<ReadOnlyStorageEngine> stores;
+    private volatile List<ReadOnlyStorageEngine> stores;
     private VelocityEngine velocityEngine;
     private FileFetcher fileFetcher;
 
@@ -74,13 +79,23 @@ public class ReadOnlyStoreManagementServlet extends HttpServlet {
     }
 
     @Override
-    public void init() throws ServletException {
-        super.init();
-        VoldemortServer server = (VoldemortServer) getServletContext().getAttribute(VoldemortServletContextListener.SERVER_KEY);
+    public void init(ServletConfig config) throws ServletException {
+        super.init(config);
+        VoldemortServer server = (VoldemortServer) config.getServletContext()
+                                                         .getAttribute(VoldemortServletContextListener.SERVER_KEY);
 
-        this.stores = getReadOnlyStores(server);
-        this.velocityEngine = (VelocityEngine) Utils.notNull(getServletContext().getAttribute(VoldemortServletContextListener.VELOCITY_ENGINE_KEY));
+        initStores(server);
+        initVelocity(config);
         setFetcherClass(server);
+    }
+
+    public void initStores(VoldemortServer server) {
+        this.stores = getReadOnlyStores(server);
+    }
+
+    public void initVelocity(ServletConfig config) {
+        this.velocityEngine = (VelocityEngine) Utils.notNull(config.getServletContext()
+                                                                   .getAttribute(VoldemortServletContextListener.VELOCITY_ENGINE_KEY));
     }
 
     private void setFetcherClass(VoldemortServer server) {
@@ -147,9 +162,11 @@ public class ReadOnlyStoreManagementServlet extends HttpServlet {
             ServletException {
         String dir = getRequired(req, "dir");
         String storeName = getRequired(req, "store");
+
         ReadOnlyStorageEngine store = this.getStore(storeName);
         if(store == null)
             throw new ServletException("'" + storeName + "' is not a registered read-only store.");
+
         if(!Utils.isReadableDir(dir))
             throw new ServletException("Store directory '" + dir + "' is not a readable directory.");
 
@@ -161,28 +178,72 @@ public class ReadOnlyStoreManagementServlet extends HttpServlet {
             ServletException {
         String fetchUrl = getRequired(req, "dir");
         String storeName = getRequired(req, "store");
+        String pushVersionString = getOptional(req, "pushVersion");
+
+        ReadOnlyStorageEngine store = this.getStore(storeName);
+        if(store == null)
+            throw new ServletException("'" + storeName + "' is not a registered read-only store.");
+
+        long pushVersion;
+        if(pushVersionString == null) {
+            pushVersion = store.getCurrentVersionId() + 1;
+        } else {
+            pushVersion = Long.parseLong(pushVersionString);
+            if(pushVersion <= store.getCurrentVersionId())
+                throw new ServletException("Version of push specified (" + pushVersion
+                                           + ") should be greater than current version "
+                                           + store.getCurrentVersionId());
+        }
 
         // fetch the files if necessary
-        File fetchDir;
+        File fetchDir = null;
         if(fileFetcher == null) {
+
+            logger.warn("File fetcher class has not instantiated correctly");
             fetchDir = new File(fetchUrl);
+
         } else {
             logger.info("Executing fetch of " + fetchUrl);
-            fetchDir = fileFetcher.fetch(fetchUrl, storeName);
-            if(fetchDir == null) {
-                throw new ServletException("Checksum failed for " + fetchUrl + " and store name = "
-                                           + storeName);
-            } else {
-                logger.info("Fetch complete.");
+
+            try {
+                fetchDir = fileFetcher.fetch(fetchUrl, store.getStoreDirPath() + File.separator
+                                                       + "version-" + pushVersion);
+
+                if(fetchDir == null) {
+                    throw new ServletException("File fetcher failed for " + fetchUrl
+                                               + " and store name = " + storeName
+                                               + " due to incorrect input path/checksum error");
+                } else {
+                    logger.info("Fetch complete.");
+                }
+
+            } catch(Exception e) {
+                throw new ServletException("Exception in Fetcher = " + e.getMessage());
             }
+
         }
         resp.getWriter().write(fetchDir.getAbsolutePath());
     }
 
     private void doRollback(HttpServletRequest req) throws ServletException {
         String storeName = getRequired(req, "store");
+        long pushVersion = Long.parseLong(getRequired(req, "pushVersion"));
+
         ReadOnlyStorageEngine store = getStore(storeName);
-        store.rollback();
+        if(store == null)
+            throw new ServletException("'" + storeName + "' is not a registered read-only store.");
+
+        try {
+            File rollbackVersionDir = new File(store.getStoreDirPath(), "version-" + pushVersion);
+
+            store.rollback(rollbackVersionDir);
+        } catch(Exception e) {
+            throw new ServletException("Exception in Fetcher = " + e.getMessage());
+        }
+    }
+
+    private String getOptional(HttpServletRequest req, String name) {
+        return req.getParameter(name);
     }
 
     private String getRequired(HttpServletRequest req, String name) throws ServletException {

@@ -50,12 +50,18 @@ public class TypicaEc2Connection implements Ec2Connection {
     private final Log logger = LogFactory.getLog(getClass());
 
     public TypicaEc2Connection(String accessId, String secretKey) {
-        this(accessId, secretKey, null);
+        this(accessId, secretKey, null, null);
     }
 
-    public TypicaEc2Connection(String accessId, String secretKey, Ec2ConnectionListener listener) {
+    public TypicaEc2Connection(String accessId,
+                               String secretKey,
+                               Ec2ConnectionListener listener,
+                               String regionUrl) {
         ec2 = new Jec2(accessId, secretKey);
         this.listener = listener;
+
+        if(regionUrl != null && ec2 != null)
+            ec2.setRegionUrl(regionUrl);
     }
 
     public List<HostNamePair> list() throws Exception {
@@ -86,12 +92,16 @@ public class TypicaEc2Connection implements Ec2Connection {
     public List<HostNamePair> createInstances(String ami,
                                               String keypairId,
                                               Ec2Connection.Ec2InstanceType instanceType,
-                                              int instanceCount) throws Exception {
+                                              int instanceCount,
+                                              List<String> securityGroups) throws Exception {
         LaunchConfiguration launchConfiguration = new LaunchConfiguration(ami);
         launchConfiguration.setInstanceType(InstanceType.valueOf(instanceType.name()));
         launchConfiguration.setKeyName(keypairId);
         launchConfiguration.setMinCount(instanceCount);
         launchConfiguration.setMaxCount(instanceCount);
+        if (securityGroups != null && securityGroups.size() > 0) {
+            launchConfiguration.setSecurityGroup(securityGroups);
+        }
 
         ReservationDescription reservationDescription = ec2.runInstances(launchConfiguration);
 

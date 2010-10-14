@@ -41,6 +41,7 @@ import voldemort.xml.StoreDefinitionsMapper;
  * 
  * 
  */
+@SuppressWarnings("deprecation")
 public class BuildTestStore extends Configured implements Tool {
 
     public static void main(String[] args) throws Exception {
@@ -72,7 +73,6 @@ public class BuildTestStore extends Configured implements Tool {
                                                             SequenceFileInputFormat.class,
                                                             cluster,
                                                             def,
-                                                            2,
                                                             (long) (1.5 * 1024 * 1024 * 1024),
                                                             new Path(tempDir),
                                                             new Path(outputDir),

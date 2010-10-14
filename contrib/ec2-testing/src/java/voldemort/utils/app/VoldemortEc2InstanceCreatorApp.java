@@ -16,6 +16,7 @@
 
 package voldemort.utils.app;
 
+import java.util.Arrays;
 import java.util.List;
 
 import joptsimple.OptionSet;
@@ -23,6 +24,8 @@ import voldemort.utils.CmdUtils;
 import voldemort.utils.Ec2Connection;
 import voldemort.utils.HostNamePair;
 import voldemort.utils.impl.TypicaEc2Connection;
+
+import com.xerox.amazonws.ec2.RegionInfo;
 
 public class VoldemortEc2InstanceCreatorApp extends VoldemortApp {
 
@@ -47,6 +50,8 @@ public class VoldemortEc2InstanceCreatorApp extends VoldemortApp {
         parser.accepts("secretkey", "Secret key (used instead of secretkeyfile)").withRequiredArg();
         parser.accepts("secretkeyfile", "Secret key file (used instead of secretkey)")
               .withRequiredArg();
+        parser.accepts("securitygroups", "Security groups to allow on instances (optional)")
+              .withRequiredArg();
         parser.accepts("ami", "AMI").withRequiredArg();
         parser.accepts("keypairid", "KeyPairID").withRequiredArg();
         parser.accepts("instances", "Number of instances (default 1)")
@@ -58,13 +63,23 @@ public class VoldemortEc2InstanceCreatorApp extends VoldemortApp {
                                + Ec2Connection.Ec2InstanceType.XLARGE + ", "
                                + Ec2Connection.Ec2InstanceType.MEDIUM_HCPU + ", and "
                                + Ec2Connection.Ec2InstanceType.XLARGE_HCPU).withRequiredArg();
+        parser.accepts("region",
+                       "Region type; options are " + RegionInfo.REGIONURL_AP_SOUTHEAST + ", "
+                               + RegionInfo.REGIONURL_EU_WEST + ", " + RegionInfo.REGIONURL_US_WEST
+                               + ", " + RegionInfo.REGIONURL_US_EAST + " (default) ")
+              .withRequiredArg();
 
         OptionSet options = parse(args);
         String accessId = getAccessId(options);
         String secretKey = getSecretKey(options);
         String ami = getRequiredString(options, "ami");
         String keypairId = getRequiredString(options, "keypairid");
+        String regionUrl = getRegionUrl(options);
         int instanceCount = CmdUtils.valueOf(options, "instances", 1);
+        String securityGroups = CmdUtils.valueOf(options, "securitygroups", null);
+        List<String> securityGroupsList = (securityGroups != null) 
+                ? Arrays.asList(securityGroups.split(","))
+                : null;
         Ec2Connection.Ec2InstanceType instanceType = null;
 
         try {
@@ -75,11 +90,12 @@ public class VoldemortEc2InstanceCreatorApp extends VoldemortApp {
             printUsage();
         }
 
-        Ec2Connection ec2Connection = new TypicaEc2Connection(accessId, secretKey);
+        Ec2Connection ec2Connection = new TypicaEc2Connection(accessId, secretKey, null, regionUrl);
         List<HostNamePair> hostNamePairs = ec2Connection.createInstances(ami,
                                                                          keypairId,
                                                                          instanceType,
-                                                                         instanceCount);
+                                                                         instanceCount,
+                                                                         securityGroupsList);
 
         StringBuilder s = new StringBuilder();
 

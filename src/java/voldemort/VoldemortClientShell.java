@@ -28,9 +28,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import joptsimple.OptionParser;
+import joptsimple.OptionSet;
 import voldemort.client.ClientConfig;
+import voldemort.client.DefaultStoreClient;
 import voldemort.client.SocketStoreClientFactory;
-import voldemort.client.StoreClient;
 import voldemort.client.StoreClientFactory;
 import voldemort.cluster.Node;
 import voldemort.cluster.failuredetector.FailureDetector;
@@ -38,6 +40,7 @@ import voldemort.serialization.SerializationException;
 import voldemort.serialization.json.EndOfFileException;
 import voldemort.serialization.json.JsonReader;
 import voldemort.utils.Utils;
+import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
 /**
@@ -49,20 +52,33 @@ public class VoldemortClientShell {
 
     private static final String PROMPT = "> ";
 
-    private static StoreClient<Object, Object> client;
+    private static DefaultStoreClient<Object, Object> client;
 
     public static void main(String[] args) throws Exception {
-        if(args.length < 2 || args.length > 3)
-            Utils.croak("USAGE: java VoldemortClientShell store_name bootstrap_url [command_file]");
 
-        String storeName = args[0];
-        String bootstrapUrl = args[1];
+        OptionParser parser = new OptionParser();
+        parser.accepts("client-zone-id", "client zone id for zone routing")
+              .withRequiredArg()
+              .describedAs("zone-id")
+              .ofType(Integer.class);
+        OptionSet options = parser.parse(args);
+
+        List<String> nonOptions = options.nonOptionArguments();
+        if(nonOptions.size() < 2 || nonOptions.size() > 3) {
+            System.err.println("Usage: java VoldemortClientShell store_name bootstrap_url [command_file] [options]");
+            parser.printHelpOn(System.err);
+            System.exit(-1);
+        }
+
+        String storeName = nonOptions.get(0);
+        String bootstrapUrl = nonOptions.get(1);
+
         String commandsFileName = "";
         BufferedReader fileReader = null;
         BufferedReader inputReader = null;
         try {
-            if(args.length == 3) {
-                commandsFileName = args[2];
+            if(nonOptions.size() == 3) {
+                commandsFileName = nonOptions.get(2);
                 fileReader = new BufferedReader(new FileReader(commandsFileName));
             }
 
@@ -72,10 +88,16 @@ public class VoldemortClientShell {
         }
 
         ClientConfig clientConfig = new ClientConfig().setBootstrapUrls(bootstrapUrl);
+
+        if(options.has("client-zone-id")) {
+            clientConfig.setEnablePipelineRoutedStore(true);
+            clientConfig.setClientZoneId((Integer) options.valueOf("client-zone-id"));
+        }
+
         StoreClientFactory factory = new SocketStoreClientFactory(clientConfig);
 
         try {
-            client = factory.getStoreClient(storeName);
+            client = (DefaultStoreClient<Object, Object>) factory.getStoreClient(storeName);
         } catch(Exception e) {
             Utils.croak("Could not connect to server: " + e.getMessage());
         }
@@ -100,9 +122,9 @@ public class VoldemortClientShell {
             try {
                 if(line.toLowerCase().startsWith("put")) {
                     JsonReader jsonReader = new JsonReader(new StringReader(line.substring("put".length())));
-                    Versioned<Object> value = client.put(tightenNumericTypes(jsonReader.read()),
-                                                         tightenNumericTypes(jsonReader.read()));
-                    System.out.println("Version is now: " + value.getVersion());
+                    Versioned<Object> result = client.put(tightenNumericTypes(jsonReader.read()),
+                                                          tightenNumericTypes(jsonReader.read()));
+                    System.out.print("Version is now " + result.getVersion());
                 } else if(line.toLowerCase().startsWith("getall")) {
                     JsonReader jsonReader = new JsonReader(new StringReader(line.substring("getall".length())));
                     List<Object> keys = new ArrayList<Object>();
@@ -127,8 +149,8 @@ public class VoldemortClientShell {
                     printVersioned(client.get(tightenNumericTypes(jsonReader.read())));
                 } else if(line.toLowerCase().startsWith("version")) {
                     JsonReader jsonReader = new JsonReader(new StringReader(line.substring("version".length())));
-                    System.out.println("Versions: "
-                                       + client.getVersions(tightenNumericTypes(jsonReader.read())));
+                    List<Version> results = client.getVersions(tightenNumericTypes(jsonReader.read()));
+                    System.out.println("Versions: " + results);
                 } else if(line.toLowerCase().startsWith("delete")) {
                     JsonReader jsonReader = new JsonReader(new StringReader(line.substring("delete".length())));
                     client.delete(tightenNumericTypes(jsonReader.read()));
@@ -142,7 +164,6 @@ public class VoldemortClientShell {
                     System.out.println("get key -- Retrieve the value associated with the key.");
                     System.out.println("getall key -- Retrieve the value(s) associated with the key.");
                     System.out.println("delete key -- Remove all values associated with the key.");
-                    System.out.println("version key -- Retrieve the versions associated with the key.");
                     System.out.println("preflist key -- Get node preference list for given key.");
                     System.out.println("help -- Print this message.");
                     System.out.println("exit -- Exit from this shell.");

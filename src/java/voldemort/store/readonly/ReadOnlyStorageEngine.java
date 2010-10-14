@@ -65,6 +65,7 @@ public class ReadOnlyStorageEngine implements StorageEngine<ByteArray, byte[]> {
 
     private final String name;
     private final int numBackups;
+    private long currentVersionId;
     private final File storeDir;
     private final ReadWriteLock fileModificationLock;
     private final SearchStrategy searchStrategy;
@@ -75,16 +76,9 @@ public class ReadOnlyStorageEngine implements StorageEngine<ByteArray, byte[]> {
      * Create an instance of the store
      * 
      * @param name The name of the store
-     * @param storageDir The directory in which the .data and .index files
-     *        reside
+     * @param searchStrategy The algorithm to use for searching for keys
+     * @param storeDir The directory in which the .data and .index files reside
      * @param numBackups The number of backups of these files to retain
-     * @param numFileHandles The number of file descriptors to keep pooled for
-     *        each file
-     * @param bufferWaitTimeoutMs The maximum time to wait to acquire a file
-     *        handle
-     * @param maxCacheSizeBytes The maximum size of the cache, in bytes. The
-     *        actual size of the cache will be the largest power of two lower
-     *        than this number
      */
     public ReadOnlyStorageEngine(String name,
                                  SearchStrategy searchStrategy,
@@ -95,19 +89,24 @@ public class ReadOnlyStorageEngine implements StorageEngine<ByteArray, byte[]> {
         this.name = Utils.notNull(name);
         this.searchStrategy = searchStrategy;
         this.fileSet = null;
+        this.currentVersionId = 0L;
         /*
          * A lock that blocks reads during swap(), open(), and close()
          * operations
          */
         this.fileModificationLock = new ReentrantReadWriteLock();
         this.isOpen = false;
-        open();
+        open(null);
     }
 
     /**
-     * Open the store
+     * Open the store with the version directory specified. If null is specified
+     * we open the directory with the maximum version
+     * 
+     * @param versionDir Version Directory to open. If null, we open the max
+     *        versioned / latest directory
      */
-    public void open() {
+    public void open(File versionDir) {
         /* acquire modification lock */
         fileModificationLock.writeLock().lock();
         try {
@@ -115,13 +114,70 @@ public class ReadOnlyStorageEngine implements StorageEngine<ByteArray, byte[]> {
             if(isOpen)
                 throw new IllegalStateException("Attempt to open already open store.");
 
-            File version0 = new File(storeDir, "version-0");
-            version0.mkdirs();
-            this.fileSet = new ChunkedFileSet(version0);
+            // Find version directory from symbolic link or max version id
+            if(versionDir == null) {
+                versionDir = getCurrentVersion();
+
+                if(versionDir == null)
+                    versionDir = new File(storeDir, "version-0");
+            }
+
+            // Set the max version id
+            long versionId = ReadOnlyUtils.getVersionId(versionDir);
+            if(versionId == -1) {
+                throw new VoldemortException("Unable to parse id from version directory "
+                                             + versionDir.getAbsolutePath());
+            }
+            currentVersionId = versionId;
+            Utils.mkdirs(versionDir);
+
+            // Create symbolic link
+            logger.info("Creating symbolic link for '" + getName() + "' using directory "
+                        + versionDir.getAbsolutePath());
+            Utils.symlink(versionDir.getAbsolutePath(), storeDir.getAbsolutePath() + File.separator
+                                                        + "latest");
+            this.fileSet = new ChunkedFileSet(versionDir);
             isOpen = true;
         } finally {
             fileModificationLock.writeLock().unlock();
         }
+    }
+
+    /**
+     * Retrieve the dir pointed to by 'latest' symbolic-link or the max version
+     * dir
+     * 
+     * @return Max version directory
+     */
+    private File getCurrentVersion() {
+        File latestSymLink = new File(storeDir, "latest");
+        if(latestSymLink.exists() && Utils.isSymLink(latestSymLink)) {
+            File canonicalLatestVersion = null;
+            try {
+                canonicalLatestVersion = latestSymLink.getCanonicalFile();
+            } catch(IOException e) {}
+
+            if(canonicalLatestVersion != null
+               && ReadOnlyUtils.checkVersionDirName(canonicalLatestVersion))
+                return canonicalLatestVersion;
+        }
+        File[] versionDirs = ReadOnlyUtils.getVersionDirs(storeDir);
+
+        if(versionDirs == null || versionDirs.length == 0) {
+            return null;
+        } else {
+            return ReadOnlyUtils.findKthVersionedDir(versionDirs,
+                                                     versionDirs.length - 1,
+                                                     versionDirs.length - 1)[0];
+        }
+    }
+
+    public long getCurrentVersionId() {
+        return currentVersionId;
+    }
+
+    public String getStoreDirPath() {
+        return storeDir.getAbsolutePath();
     }
 
     /**
@@ -144,43 +200,64 @@ public class ReadOnlyStorageEngine implements StorageEngine<ByteArray, byte[]> {
     }
 
     /**
-     * Swap the current index and data files for a new pair
+     * Swap the current version folder for a new one
      * 
-     * @param newIndexFile The path to the new index file
-     * @param newDataFile The path to the new data file
+     * @param newStoreDirectory The path to the new version directory
      */
-    @JmxOperation(description = "swapFiles(newIndexFile, newDataFile) changes this store "
-                                + " to use the given index and data file.")
+    @JmxOperation(description = "swapFiles(newStoreDirectory) changes this store "
+                                + " to use the new data directory.")
     public void swapFiles(String newStoreDirectory) {
-        logger.info("Swapping files for store '" + getName() + "' from " + newStoreDirectory);
-        File newDataDir = new File(newStoreDirectory);
-        if(!newDataDir.exists())
-            throw new VoldemortException("File " + newDataDir.getAbsolutePath()
+        logger.info("Swapping files for store '" + getName() + "' to " + newStoreDirectory);
+        File newVersionDir = new File(newStoreDirectory);
+
+        if(!newVersionDir.exists())
+            throw new VoldemortException("File " + newVersionDir.getAbsolutePath()
                                          + " does not exist.");
+
+        if(!(newVersionDir.getParentFile().compareTo(storeDir.getAbsoluteFile()) == 0 && ReadOnlyUtils.checkVersionDirName(newVersionDir)))
+            throw new VoldemortException("Invalid version folder name '"
+                                         + newVersionDir
+                                         + "'. Either parent directory is incorrect or format(version-n) is incorrect");
+
+        // retrieve previous version for (a) check if last write is winning
+        // (b) if failure, rollback use
+        File previousVersionDir = getCurrentVersion();
+        if(previousVersionDir == null)
+            throw new VoldemortException("Could not find any latest directory to swap with in store '"
+                                         + getName() + "'");
+
+        long newVersionId = ReadOnlyUtils.getVersionId(newVersionDir);
+        long previousVersionId = ReadOnlyUtils.getVersionId(previousVersionDir);
+        if(newVersionId == -1 || previousVersionId == -1)
+            throw new VoldemortException("Unable to parse folder names (" + newVersionDir.getName()
+                                         + "," + previousVersionDir.getName()
+                                         + ") since format(version-n) is incorrect");
+
+        // check if we're greater than latest since we want last write to win
+        if(previousVersionId > newVersionId) {
+            logger.info("No swap required since current latest version " + previousVersionId
+                        + " is greater than swap version " + newVersionId);
+            deleteBackups();
+            return;
+        }
 
         logger.info("Acquiring write lock on '" + getName() + "':");
         fileModificationLock.writeLock().lock();
         boolean success = false;
         try {
             close();
-            logger.info("Renaming data and index files for '" + getName() + "':");
-            shiftBackupsRight();
-            // copy in new files
-            logger.info("Setting primary files for store '" + getName() + "' to "
+            logger.info("Opening primary files for store '" + getName() + "' at "
                         + newStoreDirectory);
-            File destDir = new File(storeDir, "version-0");
-            if(!newDataDir.renameTo(destDir))
-                throw new VoldemortException("Renaming " + newDataDir.getAbsolutePath() + " to "
-                                             + destDir.getAbsolutePath() + " failed!");
 
-            // open the new store
-            open();
+            // open the latest store
+            open(newVersionDir);
             success = true;
         } finally {
             try {
-                // we failed to do the swap, attempt a rollback
+                // we failed to do the swap, attempt a rollback to last version
                 if(!success)
-                    rollback();
+                    rollback(previousVersionDir);
+
             } finally {
                 fileModificationLock.writeLock().unlock();
                 if(success)
@@ -190,19 +267,37 @@ public class ReadOnlyStorageEngine implements StorageEngine<ByteArray, byte[]> {
                     logger.error("Swap operation failed.");
             }
         }
+
         // okay we have released the lock and the store is now open again, it is
         // safe to do a potentially slow delete if we have one too many backups
-        File extraBackup = new File(storeDir, "version-" + (numBackups + 1));
-        if(extraBackup.exists())
-            deleteAsync(extraBackup);
+        deleteBackups();
     }
 
     /**
-     * Delete the given file in a seperate thread
+     * Delete all backups asynchronously
+     */
+    private void deleteBackups() {
+        File[] storeDirList = ReadOnlyUtils.getVersionDirs(storeDir, 0L, currentVersionId);
+        if(storeDirList.length > (numBackups + 1)) {
+            // delete ALL old directories asynchronously
+            File[] extraBackups = ReadOnlyUtils.findKthVersionedDir(storeDirList,
+                                                                    0,
+                                                                    storeDirList.length
+                                                                            - (numBackups + 1) - 1);
+            if(extraBackups != null) {
+                for(File backUpFile: extraBackups) {
+                    deleteAsync(backUpFile);
+                }
+            }
+        }
+    }
+
+    /**
+     * Delete the given file in a separate thread
      * 
      * @param file The file to delete
      */
-    public void deleteAsync(final File file) {
+    private void deleteAsync(final File file) {
         new Thread(new Runnable() {
 
             public void run() {
@@ -217,82 +312,47 @@ public class ReadOnlyStorageEngine implements StorageEngine<ByteArray, byte[]> {
         }, "background-file-delete").start();
     }
 
-    @JmxOperation(description = "Rollback to the most recent backup of the current store.")
-    public void rollback() {
-        logger.info("Rolling back store '" + getName() + "' to version 1.");
+    /**
+     * Rollback to the specified push version
+     * 
+     * @param rollbackToDir The version directory to rollback to
+     */
+    @JmxOperation(description = "Rollback to a previous version")
+    public void rollback(File rollbackToDir) {
+        logger.info("Rolling back store '" + getName() + "'");
         fileModificationLock.writeLock().lock();
         try {
+            if(rollbackToDir == null || !rollbackToDir.exists())
+                throw new VoldemortException("Version directory specified to rollback to does not exist or is null");
+
+            long versionId = ReadOnlyUtils.getVersionId(rollbackToDir);
+            if(versionId == -1)
+                throw new VoldemortException("Cannot parse version id");
+
+            File[] backUpDirs = ReadOnlyUtils.getVersionDirs(storeDir, versionId, Long.MAX_VALUE);
+            if(backUpDirs.length <= 1) {
+                logger.warn("No rollback performed since there are no back-up directories");
+                return;
+            }
+            backUpDirs = ReadOnlyUtils.findKthVersionedDir(backUpDirs, 0, backUpDirs.length - 1);
+
             if(isOpen)
                 close();
-            File backup = new File(storeDir, "version-1");
-            if(!backup.exists())
-                throw new VoldemortException("Version 1 does not exists, nothing to roll back to.");
-            shiftBackupsLeft();
-            open();
+
+            // open the rollback directory
+            open(rollbackToDir);
+
+            // back-up all other directories
+            DateFormat df = new SimpleDateFormat("MM-dd-yyyy");
+            for(int index = 1; index < backUpDirs.length; index++) {
+                Utils.move(backUpDirs[index], new File(storeDir, backUpDirs[index].getName() + "."
+                                                                 + df.format(new Date()) + ".bak"));
+            }
+
         } finally {
             fileModificationLock.writeLock().unlock();
             logger.info("Rollback operation completed on '" + getName() + "', releasing lock.");
         }
-    }
-
-    /**
-     * Shift all store versions so that 1 becomes 0, 2 becomes 1, etc.
-     */
-    private void shiftBackupsLeft() {
-        if(isOpen)
-            throw new VoldemortException("Can't move backup files while store is open.");
-
-        // Turn the current data into a .bak so we can take a look at it
-        // manually if we want
-        File primary = new File(storeDir, "version-0");
-        DateFormat df = new SimpleDateFormat("MM-dd-yyyy");
-        if(primary.exists())
-            Utils.move(primary, new File(storeDir, "version-0." + df.format(new Date()) + ".bak"));
-
-        shiftBackupsLeft(0);
-    }
-
-    private void shiftBackupsLeft(int beginShift) {
-        File source = new File(storeDir, "version-" + Integer.toString(beginShift + 1));
-        File dest = new File(storeDir, "version-" + Integer.toString(beginShift));
-
-        // if the source file doesn't exist there is nothing to shift
-        if(!source.exists())
-            return;
-
-        // rename the file
-        source.renameTo(dest);
-
-        // now rename any remaining files
-        shiftBackupsLeft(beginShift + 1);
-    }
-
-    /**
-     * Shift all store versions so that 0 becomes 1, 1 becomes 2, etc.
-     */
-    private void shiftBackupsRight() {
-        if(isOpen)
-            throw new VoldemortException("Can't move backup files while store is open.");
-        shiftBackupsRight(0);
-    }
-
-    private void shiftBackupsRight(int beginShift) {
-        if(isOpen)
-            throw new VoldemortException("Can't move backup files while store is open.");
-
-        File source = new File(storeDir, "version-" + Integer.toString(beginShift));
-
-        // if the source file doesn't exist there is nothing to shift
-        if(!source.exists())
-            return;
-
-        // if the dest file exists, it will need to be shifted too
-        File dest = new File(storeDir, "version-" + Integer.toString(beginShift + 1));
-        if(dest.exists())
-            shiftBackupsRight(beginShift + 1);
-
-        // okay finally do the rename
-        source.renameTo(dest);
     }
 
     public ClosableIterator<ByteArray> keys() {
@@ -306,22 +366,29 @@ public class ReadOnlyStorageEngine implements StorageEngine<ByteArray, byte[]> {
     }
 
     public void truncate() {
-        throw new UnsupportedOperationException("Truncation is not supported for "
-                                                + getClass().getName());
+        if(isOpen)
+            close();
+        Utils.rm(storeDir);
+        logger.debug("Truncate successful for read-only store ");
     }
 
     public List<Versioned<byte[]>> get(ByteArray key) throws VoldemortException {
         StoreUtils.assertValidKey(key);
         byte[] keyMd5 = ByteUtils.md5(key.get());
-        int chunk = fileSet.getChunkForKey(keyMd5);
-        int location = searchStrategy.indexOf(fileSet.indexFileFor(chunk),
-                                              keyMd5,
-                                              fileSet.getIndexFileSize(chunk));
-        if(location >= 0) {
-            byte[] value = readValue(chunk, location);
-            return Collections.singletonList(Versioned.value(value));
-        } else {
-            return Collections.emptyList();
+        try {
+            fileModificationLock.readLock().lock();
+            int chunk = fileSet.getChunkForKey(keyMd5);
+            int location = searchStrategy.indexOf(fileSet.indexFileFor(chunk),
+                                                  keyMd5,
+                                                  fileSet.getIndexFileSize(chunk));
+            if(location >= 0) {
+                byte[] value = readValue(chunk, location);
+                return Collections.singletonList(Versioned.value(value));
+            } else {
+                return Collections.emptyList();
+            }
+        } finally {
+            fileModificationLock.readLock().unlock();
         }
     }
 

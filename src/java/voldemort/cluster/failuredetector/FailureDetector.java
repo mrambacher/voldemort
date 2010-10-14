@@ -18,7 +18,6 @@ package voldemort.cluster.failuredetector;
 
 import voldemort.cluster.Node;
 import voldemort.store.UnreachableStoreException;
-import voldemort.store.routed.RoutedStore;
 
 /**
  * The FailureDetector API is used to determine a cluster's node availability.
@@ -63,7 +62,6 @@ import voldemort.store.routed.RoutedStore;
  * Naturally there is a spectrum of implementations and external calls to
  * recordException and recordSuccess should (not must) provide some input to the
  * internal algorithm.
- * 
  * 
  * @see RoutedStore
  */

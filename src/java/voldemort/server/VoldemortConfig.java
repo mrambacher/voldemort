@@ -123,6 +123,8 @@ public class VoldemortConfig implements Serializable {
     private boolean enableNetworkClassLoader;
     private boolean enableGossip;
     private boolean enableRebalanceService;
+    private int clientSelectors;
+    private boolean enablePipelineRoutedStore;
 
     private List<String> storageConfigurations;
 
@@ -219,7 +221,8 @@ public class VoldemortConfig implements Serializable {
         // Admin client should have less threads but very high buffer size.
         this.adminMaxThreads = props.getInt("admin.max.threads", 20);
         this.adminCoreThreads = props.getInt("admin.core.threads", Math.max(1, adminMaxThreads / 2));
-        this.adminStreamBufferSize = (int) props.getBytes("admin.streams.buffer.size", 32 * 1024);
+        this.adminStreamBufferSize = (int) props.getBytes("admin.streams.buffer.size",
+                                                          10 * 1000 * 1000);
         this.adminConnectionTimeout = props.getInt("admin.client.connection.timeout.sec", 60);
         this.adminSocketTimeout = props.getInt("admin.client.socket.timeout.sec", 24 * 60 * 60);
 
@@ -243,6 +246,7 @@ public class VoldemortConfig implements Serializable {
         this.nioAdminWorkerThreads = props.getInt("nio.admin.worker.threads",
                                                   nioAdminConnectorSelectors * 2);
 
+        this.clientSelectors = props.getInt("client.selectors", 4);
         this.clientMaxConnectionsPerNode = props.getInt("client.max.connections.per.node", 5);
         this.clientConnectionTimeoutMs = props.getInt("client.connection.timeout.ms", 400);
         this.clientRoutingTimeoutMs = props.getInt("client.routing.timeout.ms", 5000);
@@ -254,6 +258,7 @@ public class VoldemortConfig implements Serializable {
         this.enableSocketServer = props.getBoolean("socket.enable", true);
         this.enableAdminServer = props.getBoolean("admin.enable", true);
         this.enableJmx = props.getBoolean("jmx.enable", true);
+        this.enablePipelineRoutedStore = props.getBoolean("enable.pipeline.routed.store", false);
         this.enableSlop = props.getBoolean("slop.enable", true);
         this.enableVerboseLogging = props.getBoolean("enable.verbose.logging", true);
         this.enableStatTracking = props.getBoolean("enable.stat.tracking", true);
@@ -266,7 +271,7 @@ public class VoldemortConfig implements Serializable {
         this.gossipInterval = props.getInt("gossip.interval.ms", 30 * 1000);
         this.pusherPollMs = props.getInt("pusher.poll.ms", 2 * 60 * 1000);
 
-        this.schedulerThreads = props.getInt("scheduler.threads", 3);
+        this.schedulerThreads = props.getInt("scheduler.threads", 6);
 
         this.numCleanupPermits = props.getInt("num.cleanup.permits", 1);
 
@@ -342,6 +347,8 @@ public class VoldemortConfig implements Serializable {
             throw new ConfigurationException("socket.timeout.ms must be 0 or more ms.");
         if(clientRoutingTimeoutMs < 0)
             throw new ConfigurationException("routing.timeout.ms must be 0 or more ms.");
+        if(clientSelectors < 1)
+            throw new ConfigurationException("client.selectors must be 1 or more.");
         if(schedulerThreads < 1)
             throw new ConfigurationException("Must have at least 1 scheduler thread, "
                                              + this.schedulerThreads + " set.");
@@ -648,6 +655,14 @@ public class VoldemortConfig implements Serializable {
         this.enableJmx = enableJmx;
     }
 
+    public boolean isPipelineRoutedStoreEnabled() {
+        return enablePipelineRoutedStore;
+    }
+
+    public void setEnablePipelineRoutedStore(boolean enablePipelineRoutedStore) {
+        this.enablePipelineRoutedStore = enablePipelineRoutedStore;
+    }
+
     public long getPusherPollMs() {
         return pusherPollMs;
     }
@@ -716,7 +731,15 @@ public class VoldemortConfig implements Serializable {
         this.socketTimeoutMs = socketTimeoutMs;
     }
 
-    public int getRoutingTimeoutMs() {
+    public int getClientSelectors() {
+        return clientSelectors;
+    }
+
+    public void setClientSelectors(int clientSelectors) {
+        this.clientSelectors = clientSelectors;
+    }
+
+    public int getClientRoutingTimeoutMs() {
         return this.clientRoutingTimeoutMs;
     }
 

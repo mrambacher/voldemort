@@ -52,16 +52,14 @@ import voldemort.store.ErrorCodeMapper;
 import voldemort.store.StoreDefinition;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.store.metadata.MetadataStore.VoldemortState;
-import voldemort.store.socket.SocketAndStreams;
 import voldemort.store.socket.SocketDestination;
-import voldemort.store.socket.SocketPool;
 import voldemort.utils.ByteArray;
 import voldemort.utils.ByteUtils;
 import voldemort.utils.NetworkClassLoader;
 import voldemort.utils.Pair;
 import voldemort.utils.RebalanceUtils;
+import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
-import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
 import voldemort.xml.ClusterMapper;
 import voldemort.xml.StoreDefinitionsMapper;
@@ -98,7 +96,6 @@ public class AdminClient {
 
     // Parameters for exponential back off
     private static final long INITIAL_DELAY = 250; // Initial delay
-    private static final long MAX_DELAY = 1000 * 60;
     private final AdminClientConfig adminClientConfig;
 
     private Cluster currentCluster;
@@ -160,7 +157,7 @@ public class AdminClient {
         // release all threads/sockets hold by the factory.
         factory.close();
 
-        return clusterMapper.readCluster(new StringReader(clusterXml));
+        return clusterMapper.readCluster(new StringReader(clusterXml), false);
     }
 
     private SocketPool createSocketPool(AdminClientConfig config) {
@@ -277,10 +274,12 @@ public class AdminClient {
                                       String storeName,
                                       List<Integer> partitionList,
                                       VoldemortFilter filter,
-                                      boolean fetchValues) throws IOException {
+                                      boolean fetchValues,
+                                      boolean fetchMasterEntries) throws IOException {
         VAdminProto.FetchPartitionEntriesRequest.Builder fetchRequest = VAdminProto.FetchPartitionEntriesRequest.newBuilder()
                                                                                                                 .addAllPartitions(partitionList)
                                                                                                                 .setFetchValues(fetchValues)
+                                                                                                                .setFetchMasterEntries(fetchMasterEntries)
                                                                                                                 .setStore(storeName);
 
         if(filter != null) {
@@ -325,6 +324,7 @@ public class AdminClient {
      * @param partitionList List of the partitions
      * @param filter Custom filter implementation to filter out entries which
      *        should not be fetched.
+     * @param fetch only entries which belong to Master
      * @return An iterator which allows entries to be streamed as they're being
      *         iterated over.
      * @throws VoldemortException
@@ -332,7 +332,8 @@ public class AdminClient {
     public Iterator<Pair<ByteArray, Versioned<byte[]>>> fetchEntries(int nodeId,
                                                                      String storeName,
                                                                      List<Integer> partitionList,
-                                                                     VoldemortFilter filter) {
+                                                                     VoldemortFilter filter,
+                                                                     boolean fetchMasterEntries) {
         Node node = this.getAdminClientCluster().getNodeById(nodeId);
         final SocketDestination destination = new SocketDestination(node.getHost(),
                                                                     node.getAdminPort(),
@@ -342,7 +343,12 @@ public class AdminClient {
         final DataInputStream inputStream = sands.getInputStream();
 
         try {
-            initiateFetchRequest(outputStream, storeName, partitionList, filter, true);
+            initiateFetchRequest(outputStream,
+                                 storeName,
+                                 partitionList,
+                                 filter,
+                                 true,
+                                 fetchMasterEntries);
         } catch(IOException e) {
             close(sands.getSocket());
             pool.checkin(destination, sands);
@@ -396,7 +402,8 @@ public class AdminClient {
     public Iterator<ByteArray> fetchKeys(int nodeId,
                                          String storeName,
                                          List<Integer> partitionList,
-                                         VoldemortFilter filter) {
+                                         VoldemortFilter filter,
+                                         boolean fetchMasterEntries) {
         Node node = this.getAdminClientCluster().getNodeById(nodeId);
         final SocketDestination destination = new SocketDestination(node.getHost(),
                                                                     node.getAdminPort(),
@@ -406,7 +413,12 @@ public class AdminClient {
         final DataInputStream inputStream = sands.getInputStream();
 
         try {
-            initiateFetchRequest(outputStream, storeName, partitionList, filter, false);
+            initiateFetchRequest(outputStream,
+                                 storeName,
+                                 partitionList,
+                                 filter,
+                                 false,
+                                 fetchMasterEntries);
         } catch(IOException e) {
             close(sands.getSocket());
             pool.checkin(destination, sands);
@@ -669,8 +681,8 @@ public class AdminClient {
      * node.
      * <p>
      * 
-     * @param nodeId
-     * @param storeName
+     * @param nodeId The node id on which the store is present
+     * @param storeName The name of the store
      */
     public void truncate(int nodeId, String storeName) {
         VAdminProto.TruncateEntriesRequest.Builder truncateRequest = VAdminProto.TruncateEntriesRequest.newBuilder()
@@ -722,12 +734,26 @@ public class AdminClient {
         return status;
     }
 
-    // TODO: Javadoc, "integration" test
+    /**
+     * Retrieves a list of asynchronous request ids on the server. Does not
+     * include the completed requests
+     * 
+     * @param nodeId The id of the node whose request ids we want
+     * @return List of async request ids
+     */
     public List<Integer> getAsyncRequestList(int nodeId) {
         return getAsyncRequestList(nodeId, false);
     }
 
-    // TODO: Javadoc, "integration" test
+    /**
+     * Retrieves a list of asynchronous request ids on the server. Depending on
+     * the boolean passed also retrieves the completed requests
+     * 
+     * @param nodeId The id of the node whose request ids we want
+     * @param showComplete Boolean to indicate if we want to include the
+     *        completed requests as well
+     * @return List of async request ids
+     */
     public List<Integer> getAsyncRequestList(int nodeId, boolean showComplete) {
         VAdminProto.AsyncOperationListRequest asyncOperationListRequest = VAdminProto.AsyncOperationListRequest.newBuilder()
                                                                                                                .setShowComplete(showComplete)
@@ -745,7 +771,12 @@ public class AdminClient {
         return response.getRequestIdsList();
     }
 
-    // TODO: Javadoc, "integration" test
+    /**
+     * To stop an asynchronous request on the particular node
+     * 
+     * @param nodeId The id of the node on which the request is running
+     * @param requestId The id of the request to terminate
+     */
     public void stopAsyncRequest(int nodeId, int requestId) {
         VAdminProto.AsyncOperationStopRequest asyncOperationStopRequest = VAdminProto.AsyncOperationStopRequest.newBuilder()
                                                                                                                .setRequestId(requestId)
@@ -843,10 +874,11 @@ public class AdminClient {
      * @param maxWait Maximum time we'll keep checking a request until we give
      *        up
      * @param timeUnit Unit in which maxWait is expressed.
+     * @return description The description attached with the response
      * @throws VoldemortException if task failed to finish in specified maxWait
      *         time.
      */
-    public void waitForCompletion(int nodeId, int requestId, long maxWait, TimeUnit timeUnit) {
+    public String waitForCompletion(int nodeId, int requestId, long maxWait, TimeUnit timeUnit) {
         long delay = INITIAL_DELAY;
         long waitUntil = System.currentTimeMillis() + timeUnit.toMillis(maxWait);
 
@@ -854,16 +886,16 @@ public class AdminClient {
         while(System.currentTimeMillis() < waitUntil) {
             try {
                 AsyncOperationStatus status = getAsyncRequestStatus(nodeId, requestId);
-                logger.debug("Status for async task " + requestId + " at node " + nodeId + " is "
-                             + status);
+                logger.info("Status from node " + nodeId + " (" + status.getDescription() + ") - "
+                            + status.getStatus());
                 description = status.getDescription();
                 if(status.hasException())
                     throw status.getException();
 
                 if(status.isComplete())
-                    return;
+                    return status.getStatus();
 
-                if(delay < MAX_DELAY)
+                if(delay < adminClientConfig.getMaxBackoffDelayMs())
                     delay <<= 1;
 
                 try {
@@ -876,8 +908,8 @@ public class AdminClient {
                                              + " at node " + nodeId + " to finish", e);
             }
         }
-        throw new VoldemortException("Failed to finish task requestId:" + requestId + " in maxWait"
-                                     + maxWait + " " + timeUnit.toString());
+        throw new VoldemortException("Failed to finish task requestId: " + requestId
+                                     + " in maxWait " + maxWait + " " + timeUnit.toString());
     }
 
     /**
@@ -910,7 +942,7 @@ public class AdminClient {
             logger.debug("waiting for value " + value + " for metadata key " + key
                          + " from remote node " + nodeId + " currentValue " + currentValue);
 
-            if(delay < MAX_DELAY)
+            if(delay < adminClientConfig.getMaxBackoffDelayMs())
                 delay <<= 1;
 
             try {
@@ -995,6 +1027,7 @@ public class AdminClient {
     /**
      * Update the cluster information {@link MetadataStore#CLUSTER_KEY} on a
      * remote node.
+     * <p>
      * 
      * @param nodeId Id of the remote node
      * @param cluster The new cluster object
@@ -1009,6 +1042,7 @@ public class AdminClient {
 
     /**
      * Get the cluster information from a remote node.
+     * <p>
      * 
      * @param nodeId Node to retrieve information from
      * @return A cluster object with its {@link voldemort.versioning.Version}
@@ -1016,31 +1050,43 @@ public class AdminClient {
      */
     public Versioned<Cluster> getRemoteCluster(int nodeId) throws VoldemortException {
         Versioned<String> value = getRemoteMetadata(nodeId, MetadataStore.CLUSTER_KEY);
-        Cluster cluster = clusterMapper.readCluster(new StringReader(value.getValue()));
+        Cluster cluster = clusterMapper.readCluster(new StringReader(value.getValue()), false);
         return new Versioned<Cluster>(cluster, value.getVersion());
     }
 
     /**
      * Update the store definitions on a remote node.
+     * <p>
+     * 
+     * @param nodeId The node id of the machine
+     * @param storesList The new store list
+     * @throws VoldemortException
      */
     public void updateRemoteStoreDefList(int nodeId, List<StoreDefinition> storesList)
             throws VoldemortException {
         // get current version.
-        Version oldVersion = getRemoteStoreDefList(nodeId).getVersion();
+        VectorClock oldClock = (VectorClock) getRemoteStoreDefList(nodeId).getVersion();
 
         updateRemoteMetadata(nodeId,
                              MetadataStore.STORES_KEY,
                              new Versioned<String>(storeMapper.writeStoreList(storesList),
-                                                   VersionFactory.incremented(oldVersion, nodeId, 1)));
+                                                   oldClock.incremented(nodeId, 1)));
     }
 
     /**
      * Retrieve the store definitions from a remote node.
+     * <p>
+     * 
+     * @param nodeId The node id from which we can to remote the store
+     *        definition
+     * @return The list of store definitions from the remote machine
+     * @throws VoldemortException
      */
     public Versioned<List<StoreDefinition>> getRemoteStoreDefList(int nodeId)
             throws VoldemortException {
         Versioned<String> value = getRemoteMetadata(nodeId, MetadataStore.STORES_KEY);
-        List<StoreDefinition> storeList = storeMapper.readStoreList(new StringReader(value.getValue()));
+        List<StoreDefinition> storeList = storeMapper.readStoreList(new StringReader(value.getValue()),
+                                                                    false);
         return new Versioned<List<StoreDefinition>>(storeList, value.getVersion());
     }
 
@@ -1083,6 +1129,7 @@ public class AdminClient {
 
     /**
      * Add a new store definition to all active nodes in the cluster.
+     * <p>
      * 
      * @param def the definition of the store to add
      */
@@ -1105,6 +1152,28 @@ public class AdminClient {
     }
 
     /**
+     * Delete a store from all active nodes in the cluster
+     * <p>
+     * 
+     * @param storeName name of the store to delete
+     */
+    public void deleteStore(String storeName) {
+        VAdminProto.DeleteStoreRequest.Builder deleteStoreRequest = VAdminProto.DeleteStoreRequest.newBuilder()
+                                                                                                  .setStoreName(storeName);
+        VAdminProto.VoldemortAdminRequest request = VAdminProto.VoldemortAdminRequest.newBuilder()
+                                                                                     .setType(VAdminProto.AdminRequestType.DELETE_STORE)
+                                                                                     .setDeleteStore(deleteStoreRequest)
+                                                                                     .build();
+        for(Node node: currentCluster.getNodes()) {
+            VAdminProto.DeleteStoreResponse.Builder response = sendAndReceive(node.getId(),
+                                                                              request,
+                                                                              VAdminProto.DeleteStoreResponse.newBuilder());
+            if(response.hasError())
+                throwException(response.getError());
+        }
+    }
+
+    /**
      * Set cluster info for AdminClient to use.
      * 
      * @param cluster
@@ -1120,5 +1189,141 @@ public class AdminClient {
      */
     public Cluster getAdminClientCluster() {
         return currentCluster;
+    }
+
+    /**
+     * Rollback RO store to most recent backup of the current store
+     * <p>
+     * 
+     * @param nodeId The node id on which to rollback
+     * @param storeName The name of the RO Store to rollback
+     * @param pushVersion The version of the push to revert back to
+     */
+    public void rollbackStore(int nodeId, String storeName, long pushVersion) {
+        VAdminProto.RollbackStoreRequest.Builder rollbackStoreRequest = VAdminProto.RollbackStoreRequest.newBuilder()
+                                                                                                        .setStoreName(storeName)
+                                                                                                        .setPushVersion(pushVersion);
+
+        VAdminProto.VoldemortAdminRequest adminRequest = VAdminProto.VoldemortAdminRequest.newBuilder()
+                                                                                          .setRollbackStore(rollbackStoreRequest)
+                                                                                          .setType(VAdminProto.AdminRequestType.ROLLBACK_STORE)
+                                                                                          .build();
+        VAdminProto.RollbackStoreResponse.Builder response = sendAndReceive(nodeId,
+                                                                            adminRequest,
+                                                                            VAdminProto.RollbackStoreResponse.newBuilder());
+        if(response.hasError()) {
+            throwException(response.getError());
+        }
+        return;
+    }
+
+    /**
+     * Fetch data from directory 'storeDir' on node id
+     * <p>
+     * 
+     * @param nodeId The id of the node on which to fetch the data
+     * @param storeName The name of the store
+     * @param storeDir The directory from where to read the data
+     * @param pushVersion The version of the push
+     * @param timeoutMs Time timeout in milliseconds
+     * @return The path of the directory where the data is stored finally
+     */
+    public String fetchStore(int nodeId,
+                             String storeName,
+                             String storeDir,
+                             long pushVersion,
+                             long timeoutMs) {
+        VAdminProto.FetchStoreRequest.Builder fetchStoreRequest = VAdminProto.FetchStoreRequest.newBuilder()
+                                                                                               .setStoreName(storeName)
+                                                                                               .setStoreDir(storeDir);
+        if(pushVersion > 0) {
+            fetchStoreRequest.setPushVersion(pushVersion);
+        }
+
+        VAdminProto.VoldemortAdminRequest adminRequest = VAdminProto.VoldemortAdminRequest.newBuilder()
+                                                                                          .setFetchStore(fetchStoreRequest)
+                                                                                          .setType(VAdminProto.AdminRequestType.FETCH_STORE)
+                                                                                          .build();
+        VAdminProto.AsyncOperationStatusResponse.Builder response = sendAndReceive(nodeId,
+                                                                                   adminRequest,
+                                                                                   VAdminProto.AsyncOperationStatusResponse.newBuilder());
+
+        if(response.hasError()) {
+            throwException(response.getError());
+        }
+
+        int asyncId = response.getRequestId();
+        return waitForCompletion(nodeId, asyncId, timeoutMs, TimeUnit.MILLISECONDS);
+    }
+
+    /**
+     * Swap store data atomically on a single node
+     * <p>
+     * 
+     * @param nodeId The node id where we would want to swap the data
+     * @param storeName Name of the store
+     * @param storeDir The directory where the data is present
+     */
+    public void swapStore(int nodeId, String storeName, String storeDir) {
+        VAdminProto.SwapStoreRequest.Builder swapStoreRequest = VAdminProto.SwapStoreRequest.newBuilder()
+                                                                                            .setStoreDir(storeDir)
+                                                                                            .setStoreName(storeName);
+        VAdminProto.VoldemortAdminRequest adminRequest = VAdminProto.VoldemortAdminRequest.newBuilder()
+                                                                                          .setSwapStore(swapStoreRequest)
+                                                                                          .setType(VAdminProto.AdminRequestType.SWAP_STORE)
+                                                                                          .build();
+        VAdminProto.SwapStoreResponse.Builder response = sendAndReceive(nodeId,
+                                                                        adminRequest,
+                                                                        VAdminProto.SwapStoreResponse.newBuilder());
+        if(response.hasError()) {
+            throwException(response.getError());
+        }
+        return;
+    }
+
+    /**
+     * Returns the max version of push currently being used by read-only store.
+     * Important to remember that this may not be the 'current' version since
+     * multiple pushes (with greater version numbers) may be in progress
+     * currently
+     * 
+     * @param nodeId The id of the node on which the store is present
+     * @param storeName The name of the read-only store
+     * @return The max push version
+     */
+    public long getROMaxVersion(int nodeId, String storeName) {
+        VAdminProto.GetROMaxVersionRequest.Builder getROMaxVersionRequest = VAdminProto.GetROMaxVersionRequest.newBuilder()
+                                                                                                              .setStoreName(storeName);
+        VAdminProto.VoldemortAdminRequest adminRequest = VAdminProto.VoldemortAdminRequest.newBuilder()
+                                                                                          .setGetRoMaxVersion(getROMaxVersionRequest)
+                                                                                          .setType(VAdminProto.AdminRequestType.GET_RO_MAX_VERSION)
+                                                                                          .build();
+        VAdminProto.GetROMaxVersionResponse.Builder response = sendAndReceive(nodeId,
+                                                                              adminRequest,
+                                                                              VAdminProto.GetROMaxVersionResponse.newBuilder());
+        if(response.hasError()) {
+            throwException(response.getError());
+        }
+
+        return response.getPushVersion();
+    }
+
+    /**
+     * This is a wrapper around {@link AdminClient#getMaxVersion(int, String)}
+     * where-in we find the max versions on each machine and then return the max
+     * of all of them
+     * 
+     * @param storeName The name of the read-only store
+     * @return The global max push version
+     */
+    public long getROGlobalMaxVersion(String storeName) {
+        long maxVersionId = 0L;
+        for(Node node: currentCluster.getNodes()) {
+            long currentNodeVersion = getROMaxVersion(node.getId(), storeName);
+            if(currentNodeVersion > maxVersionId) {
+                maxVersionId = currentNodeVersion;
+            }
+        }
+        return maxVersionId;
     }
 }

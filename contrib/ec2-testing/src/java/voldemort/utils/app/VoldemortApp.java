@@ -39,6 +39,9 @@ import org.apache.log4j.Logger;
 import voldemort.utils.CmdUtils;
 import voldemort.utils.HostNamePair;
 
+import com.xerox.amazonws.ec2.RegionInfo;
+
+@SuppressWarnings("unchecked")
 public abstract class VoldemortApp {
 
     protected final OptionParser parser = new OptionParser();
@@ -75,7 +78,6 @@ public abstract class VoldemortApp {
         }
     }
 
-    @SuppressWarnings("unchecked")
     protected void setLogging(OptionSet options) {
         // "Options are \"debug\", \"info\" (default), \"warn\", \"error\", or \"off\"")
         String levelString = CmdUtils.valueOf(options, "logging", "info");
@@ -145,6 +147,19 @@ public abstract class VoldemortApp {
         return file;
     }
 
+    protected List<File> getRequiredInputFiles(OptionSet options, String argumentName) {
+        List<String> fileNames = (List<String>) options.valuesOf(argumentName);
+        List<File> returnFileList = new ArrayList<File>();
+        for(String name: fileNames) {
+            File file = new File(name);
+            if(file.canRead()) {
+                returnFileList.add(file);
+            }
+        }
+
+        return returnFileList;
+    }
+
     protected File getInputFile(OptionSet options, String argumentName) {
         if(!options.has(argumentName))
             return null;
@@ -204,6 +219,14 @@ public abstract class VoldemortApp {
         return map;
     }
 
+    protected String getRegionUrl(OptionSet options) throws Exception {
+        if(options.has("region")) {
+            return CmdUtils.valueOf(options, "region", RegionInfo.REGIONURL_US_EAST);
+        } else {
+            return RegionInfo.REGIONURL_US_EAST;
+        }
+    }
+
     protected String getAccessId(OptionSet options) throws Exception {
         if(!options.has("accessid") && !options.has("accessidfile")) {
             System.err.println("Missing required argument accessid or accessidfile");
@@ -236,6 +259,15 @@ public abstract class VoldemortApp {
         }
 
         return null;
+    }
+
+    protected List<Integer> getRequiredListIntegers(OptionSet options, String argumentName)
+            throws Exception {
+        if(!options.has(argumentName)) {
+            System.err.println("Missing required argument " + argumentName);
+            printUsage();
+        }
+        return (List<Integer>) options.valuesOf(argumentName);
     }
 
 }

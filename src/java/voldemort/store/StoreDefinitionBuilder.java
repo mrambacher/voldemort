@@ -1,5 +1,6 @@
 package voldemort.store;
 
+import java.util.HashMap;
 import java.util.Properties;
 
 import voldemort.client.RoutingTier;
@@ -33,6 +34,9 @@ public class StoreDefinitionBuilder {
     private String viewOf = null;
     private View<?, ?, ?> view = null;
     private Props properties = new Props();
+    private HashMap<Integer, Integer> zoneReplicationFactor = null;
+    private Integer zoneCountReads;
+    private Integer zoneCountWrites;
 
     public String getName() {
         return Utils.notNull(name);
@@ -199,23 +203,53 @@ public class StoreDefinitionBuilder {
         return this;
     }
 
+    public HashMap<Integer, Integer> getZoneReplicationFactor() {
+        return zoneReplicationFactor;
+    }
+
+    public StoreDefinitionBuilder setZoneReplicationFactor(HashMap<Integer, Integer> zoneReplicationFactor) {
+        this.zoneReplicationFactor = zoneReplicationFactor;
+        return this;
+    }
+
+    public Integer getZoneCountReads() {
+        return zoneCountReads;
+    }
+
+    public StoreDefinitionBuilder setZoneCountReads(Integer zoneCountReads) {
+        this.zoneCountReads = zoneCountReads;
+        return this;
+    }
+
+    public Integer getZoneCountWrites() {
+        return zoneCountWrites;
+    }
+
+    public StoreDefinitionBuilder setZoneCountWrites(Integer zoneCountWrites) {
+        this.zoneCountWrites = zoneCountWrites;
+        return this;
+    }
+
     public StoreDefinition build() {
         return new StoreDefinition(this.getName(),
-                this.getType(),
-                this.getKeySerializer(),
-                this.getValueSerializer(),
-                this.getRoutingPolicy(),
-                this.getRoutingStrategyType(),
-                this.getReplicationFactor(),
-                this.getPreferredReads(),
-                this.getRequiredReads(),
-                this.getPreferredWrites(),
-                this.getRequiredWrites(),
-                this.getViewOf(),
-                this.getView(),
-                this.getRetentionPeriodDays(),
-                this.getRetentionScanThrottleRate(),
-                this.getProperties());
+                                   this.getType(),
+                                   this.getKeySerializer(),
+                                   this.getValueSerializer(),
+                                   this.getRoutingPolicy(),
+                                   this.getRoutingStrategyType(),
+                                   this.getReplicationFactor(),
+                                   this.getPreferredReads(),
+                                   this.getRequiredReads(),
+                                   this.getPreferredWrites(),
+                                   this.getRequiredWrites(),
+                                   this.getViewOf(),
+                                   this.getView(),
+                                   this.getZoneReplicationFactor(),
+                                   this.getZoneCountReads(),
+                                   this.getZoneCountWrites(),
+                                   this.getRetentionPeriodDays(),
+                                   this.getRetentionScanThrottleRate(),
+                                   this.getProperties());
     }
 
 }

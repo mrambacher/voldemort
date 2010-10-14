@@ -49,6 +49,7 @@ message FetchPartitionEntriesRequest {
   required string store = 2;
   optional VoldemortFilter filter = 3;
   optional bool fetch_values = 4;
+  optional bool fetch_master_entries = 5;
 }
 
 message FetchPartitionEntriesResponse {
@@ -130,6 +131,47 @@ message AddStoreResponse {
   optional Error error = 1;
 }
 
+message DeleteStoreRequest {
+  required string storeName = 1;
+}
+
+message DeleteStoreResponse {
+  optional Error error = 1;
+}
+
+message FetchStoreRequest {
+  required string store_name = 1;
+  required string store_dir = 2;
+  optional int64 push_version = 3; 
+}
+
+message SwapStoreRequest {
+  required string store_name = 1;
+  required string store_dir = 2;
+}
+
+message SwapStoreResponse {
+  optional Error error = 1;
+}
+
+message RollbackStoreRequest {
+  required string store_name = 1;
+  required int64 push_version = 2; 
+}
+
+message RollbackStoreResponse {
+  optional Error error = 1;
+}
+
+message GetROMaxVersionRequest {
+  required string store_name = 1;
+}
+
+message GetROMaxVersionResponse {
+  optional int64 push_version = 1;
+  optional Error error = 2;
+}
+ 
 enum AdminRequestType {
   GET_METADATA = 0;
   UPDATE_METADATA = 1;
@@ -143,6 +185,11 @@ enum AdminRequestType {
   ASYNC_OPERATION_LIST = 9;
   TRUNCATE_ENTRIES = 10;
   ADD_STORE = 11;
+  DELETE_STORE = 12;
+  FETCH_STORE = 13;
+  SWAP_STORE = 14;
+  ROLLBACK_STORE = 15;
+  GET_RO_MAX_VERSION = 16;
 }
 
 message VoldemortAdminRequest {
@@ -159,6 +206,11 @@ message VoldemortAdminRequest {
   optional AsyncOperationListRequest async_operation_list = 11;
   optional TruncateEntriesRequest truncate_entries = 12;
   optional AddStoreRequest add_store = 13;
+  optional DeleteStoreRequest delete_store = 14;
+  optional FetchStoreRequest fetch_store = 15;
+  optional SwapStoreRequest swap_store = 16;
+  optional RollbackStoreRequest rollback_store = 17;
+  optional GetROMaxVersionRequest get_ro_max_version = 18;
 }
 
 

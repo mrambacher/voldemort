@@ -38,6 +38,7 @@ import voldemort.client.protocol.RequestFormatType;
 import voldemort.server.AbstractSocketService;
 import voldemort.store.AbstractByteArrayStoreTest;
 import voldemort.store.Store;
+import voldemort.store.socket.clientrequest.ClientRequestExecutorPool;
 import voldemort.utils.ByteArray;
 import voldemort.versioning.Versioned;
 
@@ -66,12 +67,14 @@ public abstract class AbstractSocketStoreTest extends AbstractByteArrayStoreTest
     private AbstractSocketService socketService;
     protected final RequestFormatType requestFormatType;
     private final boolean useNio;
+    private SocketStoreFactory socketStoreFactory;
 
     @Override
     @Before
     public void setUp() throws Exception {
         super.setUp();
         this.socketPort = ServerTestUtils.findFreePort();
+        socketStoreFactory = new ClientRequestExecutorPool(2, 10000, 100000, 32 * 1024);
         socketService = ServerTestUtils.getSocketService(useNio,
                                                          VoldemortTestConstants.getOneNodeClusterXml(),
                                                          VoldemortTestConstants.getSimpleStoreDefinitionsXml(),
@@ -85,11 +88,15 @@ public abstract class AbstractSocketStoreTest extends AbstractByteArrayStoreTest
     public void tearDown() throws Exception {
         super.tearDown();
         socketService.stop();
+        socketStoreFactory.close();
     }
 
     @Override
     public Store<ByteArray, byte[]> createStore(String name) {
-        return ServerTestUtils.getSocketStore(name, socketPort, requestFormatType);
+        return ServerTestUtils.getSocketStore(socketStoreFactory,
+                                              name,
+                                              socketPort,
+                                              requestFormatType);
     }
 
     @Override
@@ -98,7 +105,7 @@ public abstract class AbstractSocketStoreTest extends AbstractByteArrayStoreTest
     }
 
     @Test
-    public void testVeryLargeValues() {
+    public void testVeryLargeValues() throws Exception {
         final Store<ByteArray, byte[]> store = getStore();
         byte[] biggie = new byte[1 * 1024 * 1024];
         ByteArray key = new ByteArray(biggie);

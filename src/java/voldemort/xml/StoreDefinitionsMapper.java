@@ -52,7 +52,6 @@ import voldemort.store.StoreDefinitionBuilder;
 import voldemort.store.StoreUtils;
 import voldemort.store.views.View;
 import voldemort.store.views.ViewStorageConfiguration;
-import voldemort.utils.Props;
 import voldemort.utils.ReflectUtils;
 
 /**
@@ -85,6 +84,10 @@ public class StoreDefinitionsMapper {
     public final static String STORE_RETENTION_POLICY_ELMT = "retention-days";
     public final static String STORE_RETENTION_SCAN_THROTTLE_RATE_ELMT = "retention-scan-throttle-rate";
     public final static String STORE_ROUTING_STRATEGY = "routing-strategy";
+    public final static String STORE_ZONE_ID_ELMT = "zone-id";
+    public final static String STORE_ZONE_REPLICATION_FACTOR_ELMT = "zone-replication-factor";
+    public final static String STORE_ZONE_COUNT_READS = "zone-count-reads";
+    public final static String STORE_ZONE_COUNT_WRITES = "zone-count-writes";
     public final static String VIEW_ELMT = "view";
     public final static String VIEW_TARGET_ELMT = "view-of";
     public final static String VIEW_TRANS_ELMT = "view-class";
@@ -114,12 +117,18 @@ public class StoreDefinitionsMapper {
     }
 
     public List<StoreDefinition> readStoreList(Reader input) {
+        return readStoreList(input, true);
+    }
+
+    public List<StoreDefinition> readStoreList(Reader input, boolean verifySchema) {
         try {
 
             SAXBuilder builder = new SAXBuilder();
             Document doc = builder.build(input);
-            Validator validator = schema.newValidator();
-            validator.validate(new JDOMSource(doc));
+            if(verifySchema) {
+                Validator validator = schema.newValidator();
+                validator.validate(new JDOMSource(doc));
+            }
             Element root = doc.getRootElement();
             if(!root.getName().equals(STORES_ELMT))
                 throw new MappingException("Invalid root element: "
@@ -152,10 +161,31 @@ public class StoreDefinitionsMapper {
         }
     }
 
+    @SuppressWarnings("unchecked")
     private StoreDefinition readStore(Element store) {
         String name = store.getChildText(STORE_NAME_ELMT);
         String storeType = store.getChildText(STORE_PERSISTENCE_ELMT);
         int replicationFactor = Integer.parseInt(store.getChildText(STORE_REPLICATION_FACTOR_ELMT));
+        HashMap<Integer, Integer> zoneReplicationFactor = null;
+        Element zoneReplicationFactorNode = store.getChild(STORE_ZONE_REPLICATION_FACTOR_ELMT);
+        if(zoneReplicationFactorNode != null) {
+            zoneReplicationFactor = new HashMap<Integer, Integer>();
+            for(Element node: (List<Element>) zoneReplicationFactorNode.getChildren(STORE_REPLICATION_FACTOR_ELMT)) {
+                int zone = Integer.parseInt(node.getAttribute(STORE_ZONE_ID_ELMT).getValue());
+                int repFactor = Integer.parseInt(node.getText());
+                zoneReplicationFactor.put(zone, repFactor);
+            }
+        }
+        String zoneCountReadsStr = store.getChildText(STORE_ZONE_COUNT_READS);
+        Integer zoneCountReads = null;
+        if(zoneCountReadsStr != null)
+            zoneCountReads = Integer.parseInt(zoneCountReadsStr);
+
+        String zoneCountWritesStr = store.getChildText(STORE_ZONE_COUNT_READS);
+        Integer zoneCountWrites = null;
+        if(zoneCountWritesStr != null)
+            zoneCountWrites = Integer.parseInt(zoneCountWritesStr);
+
         int requiredReads = Integer.parseInt(store.getChildText(STORE_REQUIRED_READS_ELMT));
         int requiredWrites = Integer.parseInt(store.getChildText(STORE_REQUIRED_WRITES_ELMT));
         String preferredReadsStr = store.getChildText(STORE_PREFERRED_READS_ELMT);
@@ -185,18 +215,16 @@ public class StoreDefinitionsMapper {
                 retentionThrottleRate = Integer.parseInt(throttleRate.getText());
         }
 
-        Properties properties = new Properties();
-        Element storeProps = store.getChild(STORE_PROPERTIES_ELMT);
-        if(storeProps != null) {
-            List<?> props = storeProps.getChildren(STORE_PROPERTY_ELMT);
-            Iterator<?> iter = props.iterator();
-            while(iter.hasNext()) {
-                Element prop = (Element) iter.next();
-                String propName = prop.getAttributeValue(STORE_PROPERTY_ATTR);
-                String propValue = prop.getText();
-                if(propName != null) {
-                    properties.setProperty(propName, propValue);
-                }
+        if(routingStrategyType.compareTo(RoutingStrategyType.ZONE_STRATEGY) == 0) {
+            if(zoneCountReads == null || zoneCountWrites == null || zoneReplicationFactor == null) {
+                throw new MappingException("Have not set one of the following correctly for store '"
+                                           + name
+                                           + "' - "
+                                           + STORE_ZONE_COUNT_READS
+                                           + ", "
+                                           + STORE_ZONE_COUNT_WRITES
+                                           + ", "
+                                           + STORE_ZONE_REPLICATION_FACTOR_ELMT);
             }
         }
 
@@ -213,7 +241,9 @@ public class StoreDefinitionsMapper {
                                            .setRequiredWrites(requiredWrites)
                                            .setRetentionPeriodDays(retentionPolicyDays)
                                            .setRetentionScanThrottleRate(retentionThrottleRate)
-                                           .setProperties(properties)
+                                           .setZoneReplicationFactor(zoneReplicationFactor)
+                                           .setZoneCountReads(zoneCountReads)
+                                           .setZoneCountWrites(zoneCountWrites)
                                            .build();
     }
 
@@ -250,6 +280,21 @@ public class StoreDefinitionsMapper {
         // get transformations
         View<?, ?, ?> valTrans = loadTransformation(store.getChildText(VIEW_TRANS_ELMT));
 
+        Properties properties = new Properties();
+        Element storeProps = store.getChild(STORE_PROPERTIES_ELMT);
+        if(storeProps != null) {
+            List<?> props = storeProps.getChildren(STORE_PROPERTY_ELMT);
+            Iterator<?> iter = props.iterator();
+            while(iter.hasNext()) {
+                Element prop = (Element) iter.next();
+                String propName = prop.getAttributeValue(STORE_PROPERTY_ATTR);
+                String propValue = prop.getText();
+                if(propName != null) {
+                    properties.setProperty(propName, propValue);
+                }
+            }
+        }
+
         return new StoreDefinitionBuilder().setName(name)
                                            .setViewOf(targetName)
                                            .setType(ViewStorageConfiguration.TYPE_NAME)
@@ -263,6 +308,7 @@ public class StoreDefinitionsMapper {
                                            .setPreferredWrites(preferredWrites)
                                            .setRequiredWrites(requiredWrites)
                                            .setView(valTrans)
+                                           .setProperties(properties)
                                            .build();
     }
 
@@ -330,15 +376,30 @@ public class StoreDefinitionsMapper {
         Element store = new Element(STORE_ELMT);
         store.addContent(new Element(STORE_NAME_ELMT).setText(storeDefinition.getName()));
         store.addContent(new Element(STORE_PERSISTENCE_ELMT).setText(storeDefinition.getType()));
+        store.addContent(new Element(STORE_ROUTING_STRATEGY).setText(storeDefinition.getRoutingStrategyType()));
         store.addContent(new Element(STORE_ROUTING_TIER_ELMT).setText(storeDefinition.getRoutingPolicy()
                                                                                      .toDisplay()));
         store.addContent(new Element(STORE_REPLICATION_FACTOR_ELMT).setText(Integer.toString(storeDefinition.getReplicationFactor())));
+        HashMap<Integer, Integer> zoneReplicationFactor = storeDefinition.getZoneReplicationFactor();
+        if(zoneReplicationFactor != null) {
+            Element zoneReplicationFactorNode = new Element(STORE_ZONE_REPLICATION_FACTOR_ELMT);
+            for(Integer zone: zoneReplicationFactor.keySet()) {
+                zoneReplicationFactorNode.addContent(new Element(STORE_REPLICATION_FACTOR_ELMT).setText(Integer.toString(zoneReplicationFactor.get(zone)))
+                                                                                               .setAttribute(STORE_ZONE_ID_ELMT,
+                                                                                                             Integer.toString(zone)));
+            }
+            store.addContent(zoneReplicationFactorNode);
+        }
         if(storeDefinition.hasPreferredReads())
             store.addContent(new Element(STORE_PREFERRED_READS_ELMT).setText(Integer.toString(storeDefinition.getPreferredReads())));
         store.addContent(new Element(STORE_REQUIRED_READS_ELMT).setText(Integer.toString(storeDefinition.getRequiredReads())));
         if(storeDefinition.hasPreferredWrites())
             store.addContent(new Element(STORE_PREFERRED_WRITES_ELMT).setText(Integer.toString(storeDefinition.getPreferredWrites())));
         store.addContent(new Element(STORE_REQUIRED_WRITES_ELMT).setText(Integer.toString(storeDefinition.getRequiredWrites())));
+        if(storeDefinition.hasZoneCountReads())
+            store.addContent(new Element(STORE_ZONE_COUNT_READS).setText(Integer.toString(storeDefinition.getZoneCountReads())));
+        if(storeDefinition.hasZoneCountWrites())
+            store.addContent(new Element(STORE_ZONE_COUNT_WRITES).setText(Integer.toString(storeDefinition.getZoneCountWrites())));
 
         Element keySerializer = new Element(STORE_KEY_SERIALIZER_ELMT);
         addSerializer(keySerializer, storeDefinition.getKeySerializer());
@@ -354,18 +415,6 @@ public class StoreDefinitionsMapper {
         if(storeDefinition.hasRetentionScanThrottleRate())
             store.addContent(new Element(STORE_RETENTION_SCAN_THROTTLE_RATE_ELMT).setText(Integer.toString(storeDefinition.getRetentionScanThrottleRate())));
 
-        Props props = storeDefinition.getProperties();
-        if(props.size() > 0) {
-            Element propertiesElement = new Element(STORE_PROPERTIES_ELMT);
-            for(String name: props.keySet()) {
-                String value = props.getString(name);
-                Element property = new Element(STORE_PROPERTY_ELMT);
-                property.setText(value);
-                property.setAttribute(STORE_PROPERTY_ATTR, name);
-                propertiesElement.addContent(property);
-            }
-            store.addContent(propertiesElement);
-        }
         return store;
     }
 

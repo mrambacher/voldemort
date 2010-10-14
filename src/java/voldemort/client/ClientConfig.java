@@ -16,15 +16,22 @@
 
 package voldemort.client;
 
+import java.io.BufferedInputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
 import voldemort.client.protocol.RequestFormatType;
+import voldemort.cluster.Zone;
 import voldemort.cluster.failuredetector.FailureDetectorConfig;
 import voldemort.serialization.DefaultSerializerFactory;
 import voldemort.serialization.SerializerFactory;
+import voldemort.utils.ConfigurationException;
 import voldemort.utils.Props;
 import voldemort.utils.ReflectUtils;
 import voldemort.utils.Utils;
@@ -44,6 +51,7 @@ public class ClientConfig {
     private volatile long connectionTimeoutMs = 500;
     private volatile long socketTimeoutMs = 5000;
     private volatile boolean socketKeepAlive = false;
+    private volatile int selectors = 4;
     private volatile long routingTimeoutMs = 15000;
     private volatile int socketBufferSize = 64 * 1024;
     private volatile SerializerFactory serializerFactory = new DefaultSerializerFactory();
@@ -52,6 +60,9 @@ public class ClientConfig {
     private volatile RoutingTier routingTier = RoutingTier.CLIENT;
     private volatile boolean enableJmx = true;
 
+    private volatile boolean enablePipelineRoutedStore = false;
+    private volatile int clientZoneId = Zone.DEFAULT_ZONE_ID;
+
     private volatile String failureDetectorImplementation = FailureDetectorConfig.DEFAULT_IMPLEMENTATION_CLASS_NAME;
     private volatile long failureDetectorBannagePeriod = FailureDetectorConfig.DEFAULT_BANNAGE_PERIOD;
     private volatile int failureDetectorThreshold = FailureDetectorConfig.DEFAULT_THRESHOLD;
@@ -59,13 +70,11 @@ public class ClientConfig {
     private volatile long failureDetectorThresholdInterval = FailureDetectorConfig.DEFAULT_THRESHOLD_INTERVAL;
     private volatile long failureDetectorAsyncRecoveryInterval = FailureDetectorConfig.DEFAULT_ASYNC_RECOVERY_INTERVAL;
     private volatile List<String> failureDetectorCatastrophicErrorTypes = FailureDetectorConfig.DEFAULT_CATASTROPHIC_ERROR_TYPES;
-    private long failureDetectorRequestLengthThreshold = FailureDetectorConfig.DEFAULT_REQUEST_LENGTH_THRESHOLD;
-    private Props props;
+    private long failureDetectorRequestLengthThreshold = socketTimeoutMs;
+
     private volatile int maxBootstrapRetries = 2;
 
-    public ClientConfig() {
-        this.props = new Props();
-    }
+    public ClientConfig() {}
 
     /* Propery names for propery-based configuration */
 
@@ -77,6 +86,7 @@ public class ClientConfig {
     public static final String CONNECTION_TIMEOUT_MS_PROPERTY = "connection_timeout_ms";
     public static final String SOCKET_TIMEOUT_MS_PROPERTY = "socket_timeout_ms";
     public static final String SOCKET_KEEPALIVE_PROPERTY = "socket_keepalive";
+    public static final String SELECTORS_PROPERTY = "selectors";
     public static final String ROUTING_TIMEOUT_MS_PROPERTY = "routing_timeout_ms";
     public static final String NODE_BANNAGE_MS_PROPERTY = "node_bannage_ms";
     public static final String SOCKET_BUFFER_SIZE_PROPERTY = "socket_buffer_size";
@@ -84,6 +94,8 @@ public class ClientConfig {
     public static final String BOOTSTRAP_URLS_PROPERTY = "bootstrap_urls";
     public static final String REQUEST_FORMAT_PROPERTY = "request_format";
     public static final String ENABLE_JMX_PROPERTY = "enable_jmx";
+    public static final String ENABLE_PIPELINE_ROUTED_STORE_PROPERTY = "enable_pipeline_routed_store";
+    public static final String CLIENT_ZONE_ID = "client_zone_id";
     public static final String FAILUREDETECTOR_IMPLEMENTATION_PROPERTY = "failuredetector_implementation";
     public static final String FAILUREDETECTOR_BANNAGE_PERIOD_PROPERTY = "failuredetector_bannage_period";
     public static final String FAILUREDETECTOR_THRESHOLD_PROPERTY = "failuredetector_threshold";
@@ -95,6 +107,23 @@ public class ClientConfig {
     public static final String MAX_BOOTSTRAP_RETRIES = "max_bootstrap_retries";
 
     /**
+     * Instantiate the client config using a properties file
+     * 
+     * @param propertyFile Properties file
+     */
+    public ClientConfig(File propertyFile) {
+        Properties properties = new Properties();
+        InputStream input = null;
+        try {
+            input = new BufferedInputStream(new FileInputStream(propertyFile.getAbsolutePath()));
+            properties.load(input);
+        } catch(IOException e) {
+            throw new ConfigurationException(e);
+        }
+        setProperties(properties);
+    }
+
+    /**
      * Initiate the client config from a set of properties. This is useful for
      * wiring from Spring or for externalizing client properties to a properties
      * file
@@ -102,7 +131,11 @@ public class ClientConfig {
      * @param properties The properties to use
      */
     public ClientConfig(Properties properties) {
-        this.props = new Props(properties);
+        setProperties(properties);
+    }
+
+    private void setProperties(Properties properties) {
+        Props props = new Props(properties);
         if(props.containsKey(MAX_CONNECTIONS_PER_NODE_PROPERTY))
             this.setMaxConnectionsPerNode(props.getInt(MAX_CONNECTIONS_PER_NODE_PROPERTY));
 
@@ -128,6 +161,9 @@ public class ClientConfig {
         if(props.containsKey(SOCKET_KEEPALIVE_PROPERTY))
             this.setSocketKeepAlive(props.getBoolean(SOCKET_KEEPALIVE_PROPERTY));
 
+        if(props.containsKey(SELECTORS_PROPERTY))
+            this.setSelectors(props.getInt(SELECTORS_PROPERTY));
+
         if(props.containsKey(ROUTING_TIMEOUT_MS_PROPERTY))
             this.setRoutingTimeout(props.getInt(ROUTING_TIMEOUT_MS_PROPERTY), TimeUnit.MILLISECONDS);
 
@@ -149,6 +185,12 @@ public class ClientConfig {
 
         if(props.containsKey(ENABLE_JMX_PROPERTY))
             this.setEnableJmx(props.getBoolean(ENABLE_JMX_PROPERTY));
+
+        if(props.containsKey(ENABLE_PIPELINE_ROUTED_STORE_PROPERTY))
+            this.setEnablePipelineRoutedStore(props.getBoolean(ENABLE_PIPELINE_ROUTED_STORE_PROPERTY));
+
+        if(props.containsKey(CLIENT_ZONE_ID))
+            this.setClientZoneId(props.getInt(CLIENT_ZONE_ID));
 
         if(props.containsKey(FAILUREDETECTOR_IMPLEMENTATION_PROPERTY))
             this.setFailureDetectorImplementation(props.getString(FAILUREDETECTOR_IMPLEMENTATION_PROPERTY));
@@ -243,6 +285,15 @@ public class ClientConfig {
 
     public ClientConfig setSocketKeepAlive(boolean socketKeepAlive) {
         this.socketKeepAlive = socketKeepAlive;
+        return this;
+    }
+
+    public int getSelectors() {
+        return selectors;
+    }
+
+    public ClientConfig setSelectors(int selectors) {
+        this.selectors = selectors;
         return this;
     }
 
@@ -447,6 +498,24 @@ public class ClientConfig {
      */
     public ClientConfig setEnableJmx(boolean enableJmx) {
         this.enableJmx = enableJmx;
+        return this;
+    }
+
+    public ClientConfig setClientZoneId(int clientZoneId) {
+        this.clientZoneId = clientZoneId;
+        return this;
+    }
+
+    public int getClientZoneId() {
+        return this.clientZoneId;
+    }
+
+    public boolean isPipelineRoutedStoreEnabled() {
+        return enablePipelineRoutedStore;
+    }
+
+    public ClientConfig setEnablePipelineRoutedStore(boolean enablePipelineRoutedStore) {
+        this.enablePipelineRoutedStore = enablePipelineRoutedStore;
         return this;
     }
 

@@ -19,10 +19,13 @@ package voldemort.client.protocol.vold;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import org.apache.log4j.Logger;
 
 import voldemort.VoldemortException;
 import voldemort.client.protocol.RequestFormat;
@@ -33,6 +36,7 @@ import voldemort.server.RequestRoutingType;
 import voldemort.store.ErrorCodeMapper;
 import voldemort.store.StoreUtils;
 import voldemort.utils.ByteArray;
+import voldemort.utils.ByteBufferBackedInputStream;
 import voldemort.versioning.VectorClockVersionSerializer;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
@@ -46,6 +50,8 @@ import voldemort.versioning.Versioned;
 public class VoldemortNativeClientRequestFormat implements RequestFormat {
 
     protected final ErrorCodeMapper mapper;
+
+    private final Logger logger = Logger.getLogger(getClass());
 
     public VoldemortNativeClientRequestFormat() {
         mapper = new ErrorCodeMapper();
@@ -67,7 +73,7 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
     @SuppressWarnings("unused")
     protected int getHeaderSize(byte operation, String storeName, RequestRoutingType routingType)
             throws IOException {
-        int headerSize = + // Operation is a byte
+        int headerSize = 1 + // Operation is a byte
         VoldemortNativeProtocol.getStringRequestSize(storeName) + 1; // Size of
         // boolean
         return headerSize;
@@ -85,6 +91,10 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
         // Unlike other methods, delete used shorts not ints
         outputStream.writeShort(VectorClockVersionSerializer.sizeInBytes(version));
         outputStream.write(VectorClockVersionSerializer.toBytes(version));
+    }
+
+    public boolean isCompleteDeleteResponse(ByteBuffer buffer) {
+        return isCompleteResponse(buffer, VoldemortOpCode.DELETE_OP_CODE);
     }
 
     public boolean readDeleteResponse(DataInputStream inputStream) throws IOException {
@@ -144,6 +154,10 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
         return readVersioneds(inputStream);
     }
 
+    public boolean isCompleteGetResponse(ByteBuffer buffer) {
+        return isCompleteResponse(buffer, VoldemortOpCode.GET_OP_CODE);
+    }
+
     public void writeGetAllRequest(DataOutputStream output,
                                    String storeName,
                                    Iterable<ByteArray> keys,
@@ -168,6 +182,10 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
         }
     }
 
+    public boolean isCompleteGetAllResponse(ByteBuffer buffer) {
+        return isCompleteResponse(buffer, VoldemortOpCode.GET_ALL_OP_CODE);
+    }
+
     public Map<ByteArray, List<Versioned<byte[]>>> readGetAllResponse(DataInputStream stream)
             throws IOException {
         checkException(stream);
@@ -189,6 +207,10 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
         this.writeMessageHeader(outputStream, VoldemortOpCode.PUT_OP_CODE, storeName, routingType);
         VoldemortNativeProtocol.writeKey(outputStream, key);
         writeVersioned(outputStream, versioned);
+    }
+
+    public boolean isCompletePutResponse(ByteBuffer buffer) {
+        return isCompleteResponse(buffer, VoldemortOpCode.PUT_OP_CODE);
     }
 
     public Version readPutResponse(DataInputStream inputStream) throws IOException {
@@ -216,6 +238,10 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
         }
     }
 
+    public boolean isCompleteGetVersionResponse(ByteBuffer buffer) {
+        return isCompleteResponse(buffer, VoldemortOpCode.GET_VERSION_OP_CODE);
+    }
+
     public List<Version> readGetVersionResponse(DataInputStream stream) throws IOException {
         checkException(stream);
         int resultSize = stream.readInt();
@@ -233,5 +259,50 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
         StoreUtils.assertValidKey(key);
         this.writeMessageHeader(output, VoldemortOpCode.GET_VERSION_OP_CODE, storeName, routingType);
         VoldemortNativeProtocol.writeKey(output, key);
+    }
+
+    private boolean isCompleteResponse(ByteBuffer buffer, byte opCode) {
+        DataInputStream inputStream = new DataInputStream(new ByteBufferBackedInputStream(buffer));
+
+        try {
+            try {
+                switch(opCode) {
+                    case VoldemortOpCode.GET_OP_CODE:
+                        readGetResponse(inputStream);
+                        break;
+
+                    case VoldemortOpCode.GET_VERSION_OP_CODE:
+                        readGetVersionResponse(inputStream);
+                        break;
+
+                    case VoldemortOpCode.GET_ALL_OP_CODE:
+                        readGetAllResponse(inputStream);
+                        break;
+
+                    case VoldemortOpCode.DELETE_OP_CODE:
+                        readDeleteResponse(inputStream);
+                        break;
+
+                    case VoldemortOpCode.PUT_OP_CODE:
+                        readPutResponse(inputStream);
+                        break;
+                }
+            } catch(VoldemortException e) {
+                // Ignore application-level exceptions
+            }
+
+            // If there aren't any remaining, we've "consumed" all the bytes and
+            // thus have a complete request...
+            return !buffer.hasRemaining();
+        } catch(Exception e) {
+            // This could also occur if the various methods we call into
+            // re-throw a corrupted value error as some other type of exception.
+            // For example, updating the position on a buffer past its limit
+            // throws an InvalidArgumentException.
+            if(logger.isDebugEnabled())
+                logger.debug("Probable partial read occurred causing exception", e);
+
+            return false;
+        }
     }
 }

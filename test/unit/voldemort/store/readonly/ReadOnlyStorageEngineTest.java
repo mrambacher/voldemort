@@ -22,6 +22,7 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 
+import voldemort.Attempt;
 import voldemort.TestUtils;
 import voldemort.VoldemortException;
 import voldemort.cluster.Node;
@@ -239,38 +240,184 @@ public class ReadOnlyStorageEngineTest {
     }
 
     @Test
-    public void testSwap() throws IOException {
-        createStoreFiles(dir, ReadOnlyUtils.INDEX_ENTRY_SIZE * 5, 4 * 5 * 10, 2);
+    public void testSwap() throws Exception {
+        File versionDir = new File(dir, "version-0");
+        createStoreFiles(versionDir, ReadOnlyUtils.INDEX_ENTRY_SIZE * 5, 4 * 5 * 10, 2);
         ReadOnlyStorageEngine engine = new ReadOnlyStorageEngine("test", strategy, dir, 2);
         assertVersionsExist(dir, 0);
 
-        // swap to a new version
-        File newDir = TestUtils.createTempDir();
-        createStoreFiles(newDir, 0, 0, 2);
-        engine.swapFiles(newDir.getAbsolutePath());
+        // swap to a new version with latest present
+        File newDirv1 = new File(dir, "version-1");
+        createStoreFiles(newDirv1, 0, 0, 2);
+        engine.swapFiles(newDirv1.getAbsolutePath());
         assertVersionsExist(dir, 0, 1);
 
-        engine.rollback();
+        // swap to a new version with no latest present
+        File latestSymLink = new File(dir, "latest");
+        latestSymLink.delete();
+        File newDirv2 = new File(dir, "version-2");
+        createStoreFiles(newDirv2, 0, 0, 2);
+        engine.swapFiles(newDirv2.getAbsolutePath());
+        assertVersionsExist(dir, 0, 1, 2);
+
+        // rollback
+        engine.rollback(versionDir);
+        TestUtils.assertWithBackoff(100, 5000, new Attempt() {
+
+            public void checkCondition() throws Exception, AssertionError {
+                assertVersionsExist(dir, 0);
+            }
+        });
+
+        // test initial open without latest
+        engine.close();
+        latestSymLink.delete();
+        File newDirv100 = new File(dir, "version-100");
+        createStoreFiles(newDirv100, 0, 0, 2);
+        File newDirv534 = new File(dir, "version-534");
+        createStoreFiles(newDirv534, 0, 0, 2);
+        engine.open(null);
+        assertTrue(latestSymLink.getCanonicalPath().contains("version-534"));
+        engine.close();
+
+        // test initial open with latest pointing at intermediate version folder
+        Utils.symlink(newDirv100.getAbsolutePath(), latestSymLink.getAbsolutePath());
+        engine.open(null);
+
+    }
+
+    @Test
+    public void testSwapRollbackFail() throws IOException {
+        ReadOnlyStorageEngine engine = new ReadOnlyStorageEngine("test", strategy, dir, 1);
         assertVersionsExist(dir, 0);
+
+        // try to rollback nothing
+        try {
+            engine.rollback(null);
+            fail("Should have thrown an exception since null is passed");
+        } catch(VoldemortException e) {}
+
+        // try to rollback nothing
+        engine.rollback(new File(dir, "version-0"));
+
+        // swap to a new version
+        File newDir = new File(dir, "version-100");
+        createStoreFiles(newDir, 0, 0, 2);
+        engine.swapFiles(newDir.getAbsolutePath());
+        assertVersionsExist(dir, 0, 100);
+
+        // try to swap to a version with version-id less than current max
+        File newDir2 = new File(dir, "version-99");
+        createStoreFiles(newDir2, 0, 0, 2);
+        engine.swapFiles(newDir2.getAbsolutePath());
+
+        // try to swap a version with wrong name format
+        File newDir3 = new File(dir, "version-1a3");
+        createStoreFiles(newDir3, 0, 0, 2);
+        try {
+            engine.swapFiles(newDir3.getAbsolutePath());
+            fail("Should have thrown an exception since version directory name format is incorrect");
+        } catch(VoldemortException e) {}
+
+    }
+
+    @Test
+    public void testBadSwapNameThrows() throws IOException {
+        File versionDir = new File(dir, "version-0");
+        createStoreFiles(versionDir, ReadOnlyUtils.INDEX_ENTRY_SIZE * 5, 4 * 5 * 10, 2);
+        ReadOnlyStorageEngine engine = new ReadOnlyStorageEngine("test", strategy, dir, 2);
+        assertVersionsExist(dir, 0);
+
+        // swap to a directory with an incorrect parent directory
+        File newDir = TestUtils.createTempDir();
+        createStoreFiles(newDir, 73, 1024, 2);
+        try {
+            engine.swapFiles(newDir.getAbsolutePath());
+            fail("Swap files should have failed since parent directory is incorrect");
+        } catch(VoldemortException e) {}
+
+        // swap to a directory with incorrect name
+        newDir = new File(dir, "blah");
+        createStoreFiles(newDir, 73, 1024, 2);
+        try {
+            engine.swapFiles(newDir.getAbsolutePath());
+            fail("Swap files should have failed since name is incorrect");
+        } catch(VoldemortException e) {}
+    }
+
+    @Test
+    public void testBackupLogic() throws Exception {
+        File dirv0 = new File(dir, "version-0");
+        createStoreFiles(dirv0, ReadOnlyUtils.INDEX_ENTRY_SIZE * 5, 4 * 5 * 10, 2);
+        ReadOnlyStorageEngine engine = new ReadOnlyStorageEngine("test", strategy, dir, 0);
+        assertVersionsExist(dir, 0);
+
+        // create directory to imitate a fetch state happening concurrently
+        // with swap
+        File dirv2 = new File(dir, "version-2");
+        createStoreFiles(dirv2, ReadOnlyUtils.INDEX_ENTRY_SIZE * 5, 4 * 5 * 10, 2);
+
+        // swap in directory 1
+        File dirv1 = new File(dir, "version-1");
+        createStoreFiles(dirv1, ReadOnlyUtils.INDEX_ENTRY_SIZE * 5, 4 * 5 * 10, 2);
+        engine.swapFiles(dirv1.getAbsolutePath());
+
+        // check latest symbolic link exists
+        File latest = new File(dir, "latest");
+        assertTrue(latest.exists());
+
+        // ...and points to 1
+        assertTrue(latest.getCanonicalPath().contains("version-1"));
+
+        // ...and version-2 is still in fetch state. Assert with backoff since
+        // delete may take time
+        TestUtils.assertWithBackoff(100, 5000, new Attempt() {
+
+            public void checkCondition() throws Exception, AssertionError {
+                assertEquals(ReadOnlyUtils.getVersionDirs(dir).length, 2);
+            }
+        });
+
     }
 
     @Test(expected = VoldemortException.class)
-    public void testBadSwapThrows() throws IOException {
-        createStoreFiles(dir, ReadOnlyUtils.INDEX_ENTRY_SIZE * 5, 4 * 5 * 10, 2);
+    public void testBadSwapDataThrows() throws IOException {
+        File versionDir = new File(dir, "version-0");
+        createStoreFiles(versionDir, ReadOnlyUtils.INDEX_ENTRY_SIZE * 5, 4 * 5 * 10, 2);
         ReadOnlyStorageEngine engine = new ReadOnlyStorageEngine("test", strategy, dir, 2);
         assertVersionsExist(dir, 0);
 
-        // swap to a new bad version
-        File newDir = TestUtils.createTempDir();
+        // swap to a directory with bad data, rollback should kick-in
+        File newDir = new File(dir, "version-1");
         createStoreFiles(newDir, 73, 1024, 2);
         engine.swapFiles(newDir.getAbsolutePath());
     }
 
-    private void assertVersionsExist(File dir, int... versions) {
+    @Test
+    public void testTruncate() throws IOException {
+        createStoreFiles(dir, ReadOnlyUtils.INDEX_ENTRY_SIZE * 5, 4 * 5 * 10, 2);
+        ReadOnlyStorageEngine engine = new ReadOnlyStorageEngine("test", strategy, dir, 2);
+        assertVersionsExist(dir, 0);
+
+        engine.truncate();
+        assertEquals(dir.exists(), false);
+    }
+
+    private void assertVersionsExist(File dir, int... versions) throws IOException {
+        int max = 0;
         for(int i = 0; i < versions.length; i++) {
             File versionDir = new File(dir, "version-" + versions[i]);
+            if(versions[i] > max)
+                max = versions[i];
             assertTrue("Could not find " + dir + "/version-" + versions[i], versionDir.exists());
         }
+        // check latest symbolic link exists
+        File latest = new File(dir, "latest");
+        assertTrue(latest.exists());
+
+        // ...and points to max
+        assertTrue(latest.getCanonicalPath().contains("version-" + max));
+
         // now check that the next higher version does not exist
         File versionDir = new File(dir, "version-" + versions.length);
         assertFalse("Found version directory that should not exist.", versionDir.exists());

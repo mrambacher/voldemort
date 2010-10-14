@@ -1,8 +1,8 @@
 package voldemort.socketpool;
 
-import voldemort.store.socket.SocketAndStreams;
+import voldemort.client.protocol.admin.SocketAndStreams;
+import voldemort.client.protocol.admin.SocketResourceFactory;
 import voldemort.store.socket.SocketDestination;
-import voldemort.store.socket.SocketResourceFactory;
 import voldemort.utils.pool.ResourceFactory;
 
 public class ResourcePoolTestUtils {
@@ -19,10 +19,14 @@ public class ResourcePoolTestUtils {
             public boolean validate(String key, String value) {
                 return true;
             }
+
+            public void close() {}
+
         };
     }
 
     public static ResourceFactory<SocketDestination, SocketAndStreams> getSocketPoolFactory() {
-        return new SocketResourceFactory(100, 1000) {};
+        return new SocketResourceFactory(100, 1000);
     }
+
 }

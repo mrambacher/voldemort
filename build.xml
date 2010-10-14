@@ -79,7 +79,7 @@
     <!-- place to put log4j.properties -->
     <replace-dir dir="${resources.dir}"/>
     <copy file="${java.dir}/log4j.properties" todir="${resources.dir}"/>
-    <javac destdir="${classes.dir}" target="1.5" debug="true" deprecation="true" failonerror="true">
+    <javac destdir="${classes.dir}" target="1.5" debug="true" deprecation="false" failonerror="true">
       <src path="${java.dir}" />
       <classpath refid="main-classpath" />
     </javac>
@@ -99,7 +99,7 @@
         <exclude name="**/*.html" />
       </fileset>
     </copy>
-    <javac destdir="${testclasses.dir}" target="1.5" debug="true" deprecation="true" failonerror="true">
+    <javac destdir="${testclasses.dir}" target="1.5" debug="true" deprecation="false" failonerror="true">
       <src path="${unittestsrc.dir}" />
       <src path="${inttestsrc.dir}" />
       <src path="${commontestsrc.dir}" />
@@ -179,7 +179,7 @@
 
   <target name="contrib-build" depends="build, buildtest" description="Compile contrib packages (java and test) ">
     <replace-dir dir="${contrib.classes.dir}" />
-    <javac destdir="${contrib.classes.dir}" target="1.5" debug="true" deprecation="true" failonerror="true">
+    <javac destdir="${contrib.classes.dir}" target="1.5" debug="true" deprecation="false" failonerror="true">
       <src path="${contrib.root.dir}" />
       <src path="${contrib.root.dir}" />
       <classpath refid="main-classpath" />
@@ -207,7 +207,7 @@
     </jar>
   </target>
 
-  <target name="contrib-junit" depends="contrib-jar" description="Run contrib junit tests except EC2 tests.">
+  <target name="contrib-junit" depends="contrib-jar" description="Run contrib junit tests except EC2 and Krati tests.">
     <replace-dir dir="${contribtestreport.dir}" />
     <replace-dir dir="${contribtesthtml.dir}" />
     <junit printsummary="yes" maxmemory="1024m" showoutput="true" failureProperty="test.failure">
@@ -219,6 +219,7 @@
           <exclude name="**/*PerformanceTest.class" />
           <exclude name="**/*RemoteTest.class" />
           <exclude name="**/Ec2*Test.class" />
+          <exclude name="**/Krati*Test.class" />
         </fileset>
       </batchtest>
     </junit>
@@ -230,7 +231,7 @@
     </junitreport>
   </target>
 
-  <target name="ec2testing-junit" depends="contrib-jar" description="Run EC2 testing contrib junit tests.">
+  <target name="ec2testing-junit" depends="all" description="Run EC2 testing contrib junit tests.">
     <copy todir="${testclasses.dir}">
       <fileset dir="${contrib.root.dir}/ec2-testing/resources" />
     </copy>
@@ -244,7 +245,7 @@
       <formatter type="xml" />
       <batchtest fork="yes" todir="${contribtestreport.dir}">
         <fileset dir="${contrib.classes.dir}">
-          <include name="**/Ec2*Test.class" />
+          <include name="**/Ec2SmokeTest.class" />
         </fileset>
       </batchtest>
     </junit>

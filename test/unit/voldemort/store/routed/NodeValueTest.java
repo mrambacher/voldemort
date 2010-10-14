@@ -7,7 +7,6 @@ import org.junit.Test;
 
 import voldemort.TestUtils;
 import voldemort.utils.ByteArray;
-import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
@@ -19,7 +18,7 @@ public class NodeValueTest extends TestCase {
     private final static Logger logger = Logger.getLogger(NodeValueTest.class);
 
     public static Version createVersion(int nodeId, int clockEntry) {
-        VectorClock version = TestUtils.getClock(nodeId);
+        Version version = TestUtils.getClock(nodeId);
         for(int i = 0; i < clockEntry - 1; i++) {
             TestUtils.increment(version, nodeId);
         }

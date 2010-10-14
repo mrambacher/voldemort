@@ -43,6 +43,7 @@ import voldemort.utils.ByteUtils;
  * 
  * 
  */
+@SuppressWarnings("deprecation")
 public class HadoopStoreBuilderReducer extends AbstractStoreBuilderConfigurable implements
         Reducer<BytesWritable, BytesWritable, Text, Text> {
 
@@ -81,17 +82,20 @@ public class HadoopStoreBuilderReducer extends AbstractStoreBuilderConfigurable 
 
         // Write key and position
         this.indexFileStream.write(key.get(), 0, key.getSize());
-        this.checkSumDigestIndex.update(key.get(), 0, key.getSize());
         this.indexFileStream.writeInt(this.position);
-        this.checkSumDigestIndex.update(this.position);
+        if(this.checkSumDigestIndex != null) {
+            this.checkSumDigestIndex.update(key.get(), 0, key.getSize());
+            this.checkSumDigestIndex.update(this.position);
+        }
 
         // Write length and value
         int valueLength = writable.getSize() - 4;
         this.valueFileStream.writeInt(valueLength);
-        this.checkSumDigestValue.update(valueLength);
         this.valueFileStream.write(valueBytes, 4, valueLength);
-        this.checkSumDigestValue.update(valueBytes, 4, valueLength);
-
+        if(this.checkSumDigestValue != null) {
+            this.checkSumDigestValue.update(valueLength);
+            this.checkSumDigestValue.update(valueBytes, 4, valueLength);
+        }
         this.position += 4 + valueLength;
         if(this.position < 0)
             throw new VoldemortException("Chunk overflow exception: chunk " + chunkId
@@ -128,7 +132,6 @@ public class HadoopStoreBuilderReducer extends AbstractStoreBuilderConfigurable 
                                                                                    + "."
                                                                                    + this.taskId
                                                                                    + ".data");
-            int replicationFactor = job.getInt("store.output.replication.factor", 2);
 
             logger.info("Opening " + this.taskIndexFileName + " and " + this.taskValueFileName
                         + " for writing.");
@@ -145,6 +148,11 @@ public class HadoopStoreBuilderReducer extends AbstractStoreBuilderConfigurable 
         this.indexFileStream.close();
         this.valueFileStream.close();
 
+        if(this.nodeId == -1 || this.chunkId == -1) {
+            // No data was read in the reduce phase, do not create any output
+            // directory (Also Issue 258)
+            return;
+        }
         Path nodeDir = new Path(this.outputDir, "node-" + this.nodeId);
         Path indexFile = new Path(nodeDir, this.chunkId + ".index");
         Path valueFile = new Path(nodeDir, this.chunkId + ".data");

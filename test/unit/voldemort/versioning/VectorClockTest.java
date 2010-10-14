@@ -30,8 +30,8 @@ import com.google.common.collect.Lists;
 public class VectorClockTest extends TestCase {
 
     public void testEqualsAndHashcode() {
-        VectorClock one = getClock(1, 2);
-        VectorClock other = getClock(1, 2);
+        Version one = getClock(1, 2);
+        Version other = getClock(1, 2);
         assertEquals(one, other);
         assertEquals(one.hashCode(), other.hashCode());
     }
@@ -75,10 +75,10 @@ public class VectorClockTest extends TestCase {
      * passing to ClockEntry constructor
      */
     public void testMergeWithLargeVersion() {
-        VectorClock clock1 = getClock(1);
-        VectorClock clock2 = new VectorClock(Lists.newArrayList(new ClockEntry((short) 1,
-                                                                               Short.MAX_VALUE + 1)),
-                                             System.currentTimeMillis());
+        Version clock1 = getClock(1);
+        Version clock2 = new VectorClock(Lists.newArrayList(new ClockEntry((short) 1,
+                                                                           Short.MAX_VALUE + 1)),
+                                         System.currentTimeMillis());
         VectorClock mergedClock = (VectorClock) clock1.merge(clock2);
         assertEquals(mergedClock.getMaxVersion(), Short.MAX_VALUE + 1);
     }
@@ -87,14 +87,14 @@ public class VectorClockTest extends TestCase {
         assertEquals("The empty clock serializes incorrectly.",
                      getClock(),
                      VersionFactory.toVersion(getClock().toBytes()));
-        VectorClock clock = getClock(1, 1, 2, 3, 4, 4, 6);
+        Version clock = getClock(1, 1, 2, 3, 4, 4, 6);
         assertEquals("This clock does not serialize to itself.",
                      clock,
                      VersionFactory.toVersion(clock.toBytes()));
     }
 
     public void testSerializationWraps() {
-        VectorClock clock = getClock(1, 1, 2, 3, 3, 6);
+        Version clock = getClock(1, 1, 2, 3, 3, 6);
         for(int i = 0; i < 300; i++)
             clock.incrementClock(2, System.currentTimeMillis());
         assertEquals("Clock does not serialize to itself.",
@@ -108,7 +108,7 @@ public class VectorClockTest extends TestCase {
         int numTests = 10;
         int numNodes = 10;
         int numValues = 100;
-        VectorClock[] clocks = new VectorClock[numNodes];
+        Version[] clocks = new Version[numNodes];
         for(int t = 0; t < numTests; t++) {
             int[] test = TestUtils.randomInts(numNodes, numValues);
             for(int n = 0; n < numNodes; n++)
@@ -122,7 +122,7 @@ public class VectorClockTest extends TestCase {
     }
 
     public void testSerializationVersions() {
-        VectorClock clock = getClock(1, 1, 2, 3, 4, 4, 6);
+        Version clock = getClock(1, 1, 2, 3, 4, 4, 6);
         byte[] bytes = VectorClockVersionSerializer.toBytes(clock);
         assertEquals("The clock does not serialize to itself.",
                      clock,
@@ -135,7 +135,7 @@ public class VectorClockTest extends TestCase {
 
     public void testIncrementAndSerialize() {
         int node = 1;
-        VectorClock vc = getClock(node);
+        VectorClock vc = (VectorClock) getClock(node);
         assertEquals(node, vc.getMaxVersion());
         int increments = 3000;
         for(int i = 0; i < increments; i++) {

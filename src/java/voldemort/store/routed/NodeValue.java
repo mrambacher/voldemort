@@ -33,7 +33,7 @@ import com.google.common.base.Preconditions;
  * @param <V> The type of the value
  * 
  */
-final class NodeValue<N, K, V> implements Serializable, Cloneable {
+final public class NodeValue<N, K, V> implements Serializable, Cloneable {
 
     private static final long serialVersionUID = 1;
 

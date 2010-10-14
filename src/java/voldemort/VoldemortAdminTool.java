@@ -1,12 +1,12 @@
 /*
  * Copyright 2008-2010 LinkedIn, Inc
- *
+ * 
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
  * the License at
- *
+ * 
  * http://www.apache.org/licenses/LICENSE-2.0
- *
+ * 
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
  * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
@@ -16,16 +16,32 @@
 
 package voldemort;
 
-import com.google.common.base.Joiner;
-import com.google.common.collect.AbstractIterator;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.BufferedWriter;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.EOFException;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.io.StringWriter;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
+
 import org.codehaus.jackson.JsonFactory;
 import org.codehaus.jackson.JsonGenerator;
 import org.codehaus.jackson.map.ObjectMapper;
+
 import voldemort.annotations.Experimental;
 import voldemort.client.protocol.admin.AdminClient;
 import voldemort.client.protocol.admin.AdminClientConfig;
@@ -33,23 +49,29 @@ import voldemort.serialization.DefaultSerializerFactory;
 import voldemort.serialization.Serializer;
 import voldemort.serialization.SerializerFactory;
 import voldemort.store.StoreDefinition;
-import voldemort.utils.*;
+import voldemort.utils.ByteArray;
+import voldemort.utils.ByteUtils;
+import voldemort.utils.CmdUtils;
+import voldemort.utils.Pair;
+import voldemort.utils.Utils;
 import voldemort.versioning.Version;
-import voldemort.versioning.Versioned;
 import voldemort.versioning.VersionFactory;
+import voldemort.versioning.Versioned;
 import voldemort.xml.StoreDefinitionsMapper;
 
-import java.io.*;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.Iterator;
+import com.google.common.base.Joiner;
+import com.google.common.collect.AbstractIterator;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 
 /**
- * Provides a command line interface to the {@link voldemort.client.protocol.admin.AdminClient}
+ * Provides a command line interface to the
+ * {@link voldemort.client.protocol.admin.AdminClient}
  */
 public class VoldemortAdminTool {
-    public static void main (String [] args) throws Exception {
+
+    public static void main(String[] args) throws Exception {
         OptionParser parser = new OptionParser();
         parser.accepts("help", "print help information");
         parser.accepts("url", "[REQUIRED] bootstrap URL")
@@ -76,7 +98,7 @@ public class VoldemortAdminTool {
               .describedAs("partition-ids")
               .withValuesSeparatedBy(',')
               .ofType(Integer.class);
-        parser.accepts("fetch-entries", "[EXPERIMENTAL] Fetch full entries")
+        parser.accepts("fetch-entries", "Fetch full entries")
               .withRequiredArg()
               .describedAs("partition-ids")
               .withValuesSeparatedBy(',')
@@ -94,24 +116,30 @@ public class VoldemortAdminTool {
               .withRequiredArg()
               .describedAs("stores.xml")
               .ofType(String.class);
+        parser.accepts("delete-store", "Delete store")
+              .withRequiredArg()
+              .describedAs("store-name")
+              .ofType(String.class);
         parser.accepts("update-entries", "[EXPERIMENTAL] Insert or update entries")
               .withRequiredArg()
               .describedAs("input-directory")
               .ofType(String.class);
-        
+        parser.accepts("get-metadata", "retreive metadata information [stores.xml | cluster.xml]")
+              .withRequiredArg()
+              .describedAs("metadata-key")
+              .ofType(String.class);
+
         OptionSet options = parser.parse(args);
 
-        if (options.has("help")) {
+        if(options.has("help")) {
             parser.printHelpOn(System.out);
             System.exit(0);
         }
 
-        Set<String> missing = CmdUtils.missing(options,
-                                               "url",
-                                               "node");
-        if (missing.size() > 0) {
+        Set<String> missing = CmdUtils.missing(options, "url", "node");
+        if(missing.size() > 0) {
             // Not the most elegant way to do this
-            if (!(missing.equals(ImmutableSet.of("node")) && options.has("add-stores"))) {
+            if(!(missing.equals(ImmutableSet.of("node")) && (options.has("add-stores") || options.has("delete-store")))) {
                 System.err.println("Missing required arguments: " + Joiner.on(", ").join(missing));
                 parser.printHelpOn(System.err);
                 System.exit(1);
@@ -125,58 +153,62 @@ public class VoldemortAdminTool {
         AdminClient adminClient = new AdminClient(url, new AdminClientConfig());
 
         String ops = "";
-        if (options.has("delete-partitions")) {
+        if(options.has("delete-partitions")) {
             ops += "d";
         }
-        if (options.has("fetch-keys")) {
+        if(options.has("fetch-keys")) {
             ops += "k";
         }
-        if (options.has("fetch-entries")) {
+        if(options.has("fetch-entries")) {
             ops += "v";
         }
-        if (options.has("restore")) {
+        if(options.has("restore")) {
             ops += "r";
         }
-        if (options.has("add-stores")) {
+        if(options.has("add-stores")) {
             ops += "a";
         }
-        if (options.has("update-entries")) {
+        if(options.has("update-entries")) {
             ops += "u";
         }
-        if (ops.length() < 1) {
-            Utils.croak("At least one of (delete-partitions, restore, add-node, fetch-entries, fetch-keys) must be specified");
+        if(options.has("delete-store")) {
+            ops += "s";
+        }
+        if(options.has("get-metadata")) {
+            ops += "g";
+        }
+        if(ops.length() < 1) {
+            Utils.croak("At least one of (delete-partitions, restore, add-node, fetch-entries, fetch-keys, add-stores, delete-store, update-entries, get-metadata) must be specified");
         }
 
         List<String> storeNames = null;
 
-        if (options.has("stores")) {
-            // For some reason one can't just do @SuppressWarnings without identifier following it
+        if(options.has("stores")) {
+            // For some reason one can't just do @SuppressWarnings without
+            // identifier following it
             @SuppressWarnings("unchecked")
             List<String> temp = (List<String>) options.valuesOf("stores");
             storeNames = temp;
         }
 
         try {
-            if (ops.contains("d")) {
+            if(ops.contains("d")) {
                 System.out.println("Starting delete-partitions");
                 @SuppressWarnings("unchecked")
                 List<Integer> partitionIdList = (List<Integer>) options.valuesOf("delete-partitions");
-                executeDeletePartitions(nodeId,
-                                        adminClient,
-                                        partitionIdList,
-                                        storeNames);
+                executeDeletePartitions(nodeId, adminClient, partitionIdList, storeNames);
                 System.out.println("Finished delete-partitions");
             }
-            if (ops.contains("r")) {
+            if(ops.contains("r")) {
                 System.out.println("Starting restore");
                 adminClient.restoreDataFromReplications(nodeId, parallelism);
                 System.err.println("Finished restore");
             }
-            if (ops.contains("k")) {
-                if (!options.has("outdir")) {
-                    Utils.croak("Directory name (outdir) must be specified for fetch-keys");
+            if(ops.contains("k")) {
+                String outputDir = null;
+                if(options.has("outdir")) {
+                    outputDir = (String) options.valueOf("outdir");
                 }
-                String outputDir = (String) options.valueOf("outdir");
                 boolean useAscii = options.has("ascii");
                 System.out.println("Starting fetch keys");
                 @SuppressWarnings("unchecked")
@@ -188,41 +220,61 @@ public class VoldemortAdminTool {
                                  storeNames,
                                  useAscii);
             }
-            if (ops.contains("v")) {
-                if (!options.has("outdir")) {
-                    Utils.croak("Directory name (outdir) must be specified for fetch-values");
+            if(ops.contains("v")) {
+                String outputDir = null;
+                if(options.has("outdir")) {
+                    outputDir = (String) options.valueOf("outdir");
                 }
-                String outputDir = (String) options.valueOf("outdir");
                 boolean useAscii = options.has("ascii");
                 @SuppressWarnings("unchecked")
-                List<Integer> partitionIdList = (List<Integer>) options.valuesOf("fetch-values");
+                List<Integer> partitionIdList = (List<Integer>) options.valuesOf("fetch-entries");
                 executeFetchEntries(nodeId,
-                                   adminClient,
-                                   partitionIdList,
-                                   outputDir,
-                                   storeNames,
-                                   useAscii);
+                                    adminClient,
+                                    partitionIdList,
+                                    outputDir,
+                                    storeNames,
+                                    useAscii);
             }
-            if (ops.contains("a")) {
+            if(ops.contains("a")) {
                 String storesXml = (String) options.valueOf("add-stores");
-                executeAddStores(adminClient,
-                                 storesXml,
-                                 storeNames);
+                executeAddStores(adminClient, storesXml, storeNames);
             }
-            if (ops.contains("u")) {
+            if(ops.contains("u")) {
                 String inputDir = (String) options.valueOf("update-entries");
                 boolean useAscii = options.has("ascii");
-                executeUpdateEntries(nodeId,
-                                     adminClient,
-                                     storeNames,
-                                     inputDir,
-                                     useAscii);
-                
+                executeUpdateEntries(nodeId, adminClient, storeNames, inputDir, useAscii);
             }
-        } catch (Exception e) {
+            if(ops.contains("s")) {
+                String storeName = (String) options.valueOf("delete-store");
+                executeDeleteStore(adminClient, storeName);
+            }
+            if(ops.contains("g")) {
+                String metadataKey = (String) options.valueOf("get-metadata");
+                executeGetMetadata(nodeId, adminClient, metadataKey);
+            }
+        } catch(Exception e) {
             e.printStackTrace();
             Utils.croak(e.getMessage());
         }
+    }
+
+    public static void executeGetMetadata(Integer nodeId,
+                                          AdminClient adminClient,
+                                          String metadataKey) {
+        Versioned<String> versioned = adminClient.getRemoteMetadata(nodeId, metadataKey);
+        if(versioned == null) {
+            System.out.println("null");
+        } else {
+            System.out.println(versioned.getVersion());
+            System.out.print(": ");
+            System.out.println(versioned.getValue());
+            System.out.println();
+        }
+    }
+
+    public static void executeDeleteStore(AdminClient adminClient, String storeName) {
+        System.out.println("Deleting " + storeName);
+        adminClient.deleteStore(storeName);
     }
 
     public static void executeAddStores(AdminClient adminClient,
@@ -230,15 +282,15 @@ public class VoldemortAdminTool {
                                         List<String> storeNames) throws IOException {
         List<StoreDefinition> storeDefinitionList = new StoreDefinitionsMapper().readStoreList(new File(storesXml));
         Map<String, StoreDefinition> storeDefinitionMap = Maps.newHashMap();
-        for (StoreDefinition storeDefinition: storeDefinitionList) {
+        for(StoreDefinition storeDefinition: storeDefinitionList) {
             storeDefinitionMap.put(storeDefinition.getName(), storeDefinition);
         }
         List<String> stores = storeNames;
-        if (stores == null) {
+        if(stores == null) {
             stores = Lists.newArrayList();
             stores.addAll(storeDefinitionMap.keySet());
         }
-        for (String store: stores) {
+        for(String store: stores) {
             System.out.println("Adding " + store);
             adminClient.addStore(storeDefinitionMap.get(store));
         }
@@ -251,34 +303,48 @@ public class VoldemortAdminTool {
                                            String outputDir,
                                            List<String> storeNames,
                                            boolean useAscii) throws IOException {
-        List<StoreDefinition> storeDefinitionList = adminClient.getRemoteStoreDefList(nodeId).getValue();
+
+        List<StoreDefinition> storeDefinitionList = adminClient.getRemoteStoreDefList(nodeId)
+                                                               .getValue();
         Map<String, StoreDefinition> storeDefinitionMap = Maps.newHashMap();
-        for (StoreDefinition storeDefinition: storeDefinitionList) {
+        for(StoreDefinition storeDefinition: storeDefinitionList) {
             storeDefinitionMap.put(storeDefinition.getName(), storeDefinition);
         }
 
-        File directory = new File(outputDir);
-        if (directory.exists() || directory.mkdir()) {
-            List<String> stores = storeNames;
-            if (stores == null) {
-                stores = Lists.newArrayList();
-                stores.addAll(storeDefinitionMap.keySet());
+        File directory = null;
+        if(outputDir != null) {
+            directory = new File(outputDir);
+            if(!(directory.exists() || directory.mkdir())) {
+                Utils.croak("Can't find or create directory " + outputDir);
             }
-            for (String store: stores) {
-                System.out.println("Fetching entries in partitions " + Joiner.on(", ").join(partitionIdList) + " of " + store);
-                Iterator<Pair<ByteArray, Versioned<byte[]>>> entriesIterator = adminClient.fetchEntries(nodeId,
-                                                                                                           store,
-                                                                                                           partitionIdList,
-                                                                                                           null);
-                File outputFile = new File(directory, store + ".entries");
-                if (useAscii) {
-                    StoreDefinition storeDefinition = storeDefinitionMap.get(store);
-                    writeEntriesAscii(entriesIterator, outputFile, storeDefinition);
-                } else {
-                    writeEntriesBinary(entriesIterator, outputFile);
-                }
+        }
+        List<String> stores = storeNames;
+        if(stores == null) {
+            stores = Lists.newArrayList();
+            stores.addAll(storeDefinitionMap.keySet());
+        }
+        for(String store: stores) {
+            System.out.println("Fetching entries in partitions "
+                               + Joiner.on(", ").join(partitionIdList) + " of " + store);
+            Iterator<Pair<ByteArray, Versioned<byte[]>>> entriesIterator = adminClient.fetchEntries(nodeId,
+                                                                                                    store,
+                                                                                                    partitionIdList,
+                                                                                                    null,
+                                                                                                    false);
+            File outputFile = null;
+            if(directory != null) {
+                outputFile = new File(directory, store + ".entries");
+            }
 
+            if(useAscii) {
+                StoreDefinition storeDefinition = storeDefinitionMap.get(store);
+                writeEntriesAscii(entriesIterator, outputFile, storeDefinition);
+            } else {
+                writeEntriesBinary(entriesIterator, outputFile);
             }
+
+            if(outputFile != null)
+                System.out.println("Fetched keys from " + store + " to " + outputFile);
         }
     }
 
@@ -288,39 +354,39 @@ public class VoldemortAdminTool {
                                              List<String> storeNames,
                                              String inputDirPath,
                                              boolean useAscii) throws IOException {
-        List<StoreDefinition> storeDefinitionList = adminClient.getRemoteStoreDefList(nodeId).getValue();
+        List<StoreDefinition> storeDefinitionList = adminClient.getRemoteStoreDefList(nodeId)
+                                                               .getValue();
         Map<String, StoreDefinition> storeDefinitionMap = Maps.newHashMap();
-        for (StoreDefinition storeDefinition: storeDefinitionList) {
+        for(StoreDefinition storeDefinition: storeDefinitionList) {
             storeDefinitionMap.put(storeDefinition.getName(), storeDefinition);
         }
 
         File inputDir = new File(inputDirPath);
-        if (!inputDir.exists()) {
+        if(!inputDir.exists()) {
             throw new FileNotFoundException("input directory " + inputDirPath + " doesn't exist");
         }
 
-        if (storeNames == null) {
+        if(storeNames == null) {
             storeNames = Lists.newArrayList();
-            for (File storeFile: inputDir.listFiles()) {
+            for(File storeFile: inputDir.listFiles()) {
                 String fileName = storeFile.getName();
-                if (fileName.endsWith(".entries")) {
+                if(fileName.endsWith(".entries")) {
                     int extPosition = fileName.lastIndexOf(".entries");
                     storeNames.add(fileName.substring(0, extPosition));
                 }
             }
         }
 
-        for (String storeName: storeNames) {
+        for(String storeName: storeNames) {
             Iterator<Pair<ByteArray, Versioned<byte[]>>> iterator;
-            if (useAscii) {
+            if(useAscii) {
                 StoreDefinition storeDefinition = storeDefinitionMap.get(storeName);
-                if (storeDefinition == null) {
+                if(storeDefinition == null) {
                     throw new IllegalArgumentException("No definition found for " + storeName);
                 }
-                iterator = readEntriesAscii(inputDir,storeName,storeDefinition);
+                iterator = readEntriesAscii(inputDir, storeName, storeDefinition);
             } else {
-                iterator = readEntriesBinary(inputDir,storeName);
-
+                iterator = readEntriesBinary(inputDir, storeName);
             }
             adminClient.updateEntries(nodeId, storeName, iterator, null);
         }
@@ -328,16 +394,18 @@ public class VoldemortAdminTool {
     }
 
     // TODO: implement this
-    private static Iterator<Pair<ByteArray,Versioned<byte[]>>> readEntriesAscii(File inputDir,
-                                                                                String storeName,
-                                                                                StoreDefinition storeDefinition)
-                   throws IOException {
+    private static Iterator<Pair<ByteArray, Versioned<byte[]>>> readEntriesAscii(File inputDir,
+                                                                                 String storeName,
+                                                                                 StoreDefinition storeDefinition)
+            throws IOException {
         File inputFile = new File(inputDir, storeName + ".entries");
-        if (!inputFile.exists()) {
-            throw new FileNotFoundException("File " + inputFile.getAbsolutePath() + " does not exist!");
+        if(!inputFile.exists()) {
+            throw new FileNotFoundException("File " + inputFile.getAbsolutePath()
+                                            + " does not exist!");
         }
 
-        return new AbstractIterator<Pair<ByteArray, Versioned<byte[]>>> () {
+        return new AbstractIterator<Pair<ByteArray, Versioned<byte[]>>>() {
+
             @Override
             protected Pair<ByteArray, Versioned<byte[]>> computeNext() {
                 System.err.println("Updating stores from ASCII/JSON data is not yet supported!");
@@ -346,15 +414,18 @@ public class VoldemortAdminTool {
         };
     }
 
-    private static Iterator<Pair<ByteArray,Versioned<byte[]>>> readEntriesBinary(File inputDir, String storeName)
-                   throws IOException {
+    private static Iterator<Pair<ByteArray, Versioned<byte[]>>> readEntriesBinary(File inputDir,
+                                                                                  String storeName)
+            throws IOException {
         File inputFile = new File(inputDir, storeName + ".entries");
-        if (!inputFile.exists()) {
-            throw new FileNotFoundException("File " + inputFile.getAbsolutePath() + " does not exist!");
+        if(!inputFile.exists()) {
+            throw new FileNotFoundException("File " + inputFile.getAbsolutePath()
+                                            + " does not exist!");
         }
         final DataInputStream dis = new DataInputStream(new BufferedInputStream(new FileInputStream(inputFile)));
 
-        return new AbstractIterator<Pair<ByteArray, Versioned<byte[]>>> () {
+        return new AbstractIterator<Pair<ByteArray, Versioned<byte[]>>>() {
+
             @Override
             protected Pair<ByteArray, Versioned<byte[]>> computeNext() {
                 try {
@@ -373,17 +444,17 @@ public class VoldemortAdminTool {
                     Versioned<byte[]> value = new Versioned<byte[]>(valueBytes, version);
 
                     return new Pair<ByteArray, Versioned<byte[]>>(key, value);
-                } catch (EOFException e) {
+                } catch(EOFException e) {
                     try {
                         dis.close();
-                    } catch (IOException ie) {
+                    } catch(IOException ie) {
                         ie.printStackTrace();
                     }
                     return endOfData();
-                } catch (IOException e) {
+                } catch(IOException e) {
                     try {
                         dis.close();
-                    } catch (IOException ie) {
+                    } catch(IOException ie) {
                         ie.printStackTrace();
                     }
                     throw new VoldemortException("Error reading from input file ", e);
@@ -395,7 +466,12 @@ public class VoldemortAdminTool {
     private static void writeEntriesAscii(Iterator<Pair<ByteArray, Versioned<byte[]>>> iterator,
                                           File outputFile,
                                           StoreDefinition storeDefinition) throws IOException {
-        BufferedWriter writer = new BufferedWriter(new FileWriter(outputFile));
+        BufferedWriter writer = null;
+        if(outputFile != null) {
+            writer = new BufferedWriter(new FileWriter(outputFile));
+        } else {
+            writer = new BufferedWriter(new OutputStreamWriter(System.out));
+        }
         SerializerFactory serializerFactory = new DefaultSerializerFactory();
         StringWriter stringWriter = new StringWriter();
         JsonGenerator generator = new JsonFactory(new ObjectMapper()).createJsonGenerator(stringWriter);
@@ -406,7 +482,7 @@ public class VoldemortAdminTool {
         Serializer<Object> valueSerializer = (Serializer<Object>) serializerFactory.getSerializer(storeDefinition.getValueSerializer());
 
         try {
-            while (iterator.hasNext()) {
+            while(iterator.hasNext()) {
                 Pair<ByteArray, Versioned<byte[]>> kvPair = iterator.next();
                 byte[] keyBytes = kvPair.getFirst().get();
                 Version version = kvPair.getSecond().getVersion();
@@ -421,7 +497,7 @@ public class VoldemortAdminTool {
                 generator.writeObject(valueObject);
 
                 StringBuffer buf = stringWriter.getBuffer();
-                if (buf.charAt(0) == ' ') {
+                if(buf.charAt(0) == ' ') {
                     buf.setCharAt(0, '\n');
                 }
                 writer.write(buf.toString());
@@ -435,9 +511,14 @@ public class VoldemortAdminTool {
 
     private static void writeEntriesBinary(Iterator<Pair<ByteArray, Versioned<byte[]>>> iterator,
                                            File outputFile) throws IOException {
-        DataOutputStream dos = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(outputFile)));
+        DataOutputStream dos = null;
+        if(outputFile != null) {
+            dos = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(outputFile)));
+        } else {
+            dos = new DataOutputStream(new BufferedOutputStream(System.out));
+        }
         try {
-            while (iterator.hasNext()) {
+            while(iterator.hasNext()) {
                 Pair<ByteArray, Versioned<byte[]>> kvPair = iterator.next();
                 byte[] keyBytes = kvPair.getFirst().get();
                 byte[] versionBytes = kvPair.getSecond().getVersion().toBytes();
@@ -453,61 +534,81 @@ public class VoldemortAdminTool {
             dos.close();
         }
     }
-                                         
+
     public static void executeFetchKeys(Integer nodeId,
                                         AdminClient adminClient,
                                         List<Integer> partitionIdList,
                                         String outputDir,
                                         List<String> storeNames,
                                         boolean useAscii) throws IOException {
-        List<StoreDefinition> storeDefinitionList = adminClient.getRemoteStoreDefList(nodeId).getValue();
+        List<StoreDefinition> storeDefinitionList = adminClient.getRemoteStoreDefList(nodeId)
+                                                               .getValue();
         Map<String, StoreDefinition> storeDefinitionMap = Maps.newHashMap();
-        for (StoreDefinition storeDefinition: storeDefinitionList) {
+        for(StoreDefinition storeDefinition: storeDefinitionList) {
             storeDefinitionMap.put(storeDefinition.getName(), storeDefinition);
         }
 
-        File directory = new File(outputDir);
-        if (directory.exists() || directory.mkdir()) {
-            List<String> stores = storeNames;
-            if (stores == null) {
-                stores = Lists.newArrayList();
-                stores.addAll(storeDefinitionMap.keySet());
+        File directory = null;
+        if(outputDir != null) {
+            directory = new File(outputDir);
+            if(!(directory.exists() || directory.mkdir())) {
+                Utils.croak("Can't find or create directory " + outputDir);
             }
-            for (String store: stores) {
-                System.out.println("Fetching keys in partitions " + Joiner.on(", ").join(partitionIdList) + " of " + store);
-                Iterator<ByteArray> keyIterator = adminClient.fetchKeys(nodeId, store, partitionIdList, null);
-                File outputFile = new File(directory, store + ".keys");
-                if (useAscii) {
-                    StoreDefinition storeDefinition = storeDefinitionMap.get(store);
-                    writeKeysAscii(keyIterator, outputFile, storeDefinition);
-                } else {
-                    writeKeysBinary(keyIterator, outputFile);
-                }
+        }
 
-                System.out.println("Fetched keys from " + store + " to " + outputFile);
+        List<String> stores = storeNames;
+        if(stores == null) {
+            stores = Lists.newArrayList();
+            stores.addAll(storeDefinitionMap.keySet());
+        }
+        for(String store: stores) {
+            System.out.println("Fetching keys in partitions "
+                               + Joiner.on(", ").join(partitionIdList) + " of " + store);
+            Iterator<ByteArray> keyIterator = adminClient.fetchKeys(nodeId,
+                                                                    store,
+                                                                    partitionIdList,
+                                                                    null,
+                                                                    false);
+            File outputFile = null;
+            if(directory != null) {
+                outputFile = new File(directory, store + ".keys");
             }
-        } else {
-            Utils.croak("Can't find or create directory " + outputDir);
+
+            if(useAscii) {
+                StoreDefinition storeDefinition = storeDefinitionMap.get(store);
+                writeKeysAscii(keyIterator, outputFile, storeDefinition);
+            } else {
+                writeKeysBinary(keyIterator, outputFile);
+            }
+
+            if(outputFile != null)
+                System.out.println("Fetched keys from " + store + " to " + outputFile);
         }
     }
 
     private static void writeKeysAscii(Iterator<ByteArray> keyIterator,
                                        File outputFile,
                                        StoreDefinition storeDefinition) throws IOException {
-        BufferedWriter writer = new BufferedWriter(new FileWriter(outputFile));
+        BufferedWriter writer = null;
+        if(outputFile != null) {
+            writer = new BufferedWriter(new FileWriter(outputFile));
+        } else {
+            writer = new BufferedWriter(new OutputStreamWriter(System.out));
+        }
+
         SerializerFactory serializerFactory = new DefaultSerializerFactory();
         StringWriter stringWriter = new StringWriter();
         JsonGenerator generator = new JsonFactory(new ObjectMapper()).createJsonGenerator(stringWriter);
         @SuppressWarnings("unchecked")
         Serializer<Object> serializer = (Serializer<Object>) serializerFactory.getSerializer(storeDefinition.getKeySerializer());
         try {
-            while (keyIterator.hasNext()) {
+            while(keyIterator.hasNext()) {
                 // Ugly hack to be able to separate text by newlines vs. spaces
                 byte[] keyBytes = keyIterator.next().get();
                 Object keyObject = serializer.toObject(keyBytes);
                 generator.writeObject(keyObject);
                 StringBuffer buf = stringWriter.getBuffer();
-                if (buf.charAt(0) == ' ') {
+                if(buf.charAt(0) == ' ') {
                     buf.setCharAt(0, '\n');
                 }
                 writer.write(buf.toString());
@@ -518,12 +619,18 @@ public class VoldemortAdminTool {
             writer.close();
         }
     }
-    
-    private static void writeKeysBinary(Iterator<ByteArray> keyIterator, File outputFile) throws IOException {
-        DataOutputStream dos = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(outputFile)));
+
+    private static void writeKeysBinary(Iterator<ByteArray> keyIterator, File outputFile)
+            throws IOException {
+        DataOutputStream dos = null;
+        if(outputFile != null) {
+            dos = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(outputFile)));
+        } else {
+            dos = new DataOutputStream(new BufferedOutputStream(System.out));
+        }
 
         try {
-            while (keyIterator.hasNext()) {
+            while(keyIterator.hasNext()) {
                 byte[] keyBytes = keyIterator.next().get();
                 dos.writeInt(keyBytes.length);
                 dos.write(keyBytes);
@@ -538,16 +645,18 @@ public class VoldemortAdminTool {
                                                List<Integer> partitionIdList,
                                                List<String> storeNames) {
         List<String> stores = storeNames;
-        if (stores == null) {
+        if(stores == null) {
             stores = Lists.newArrayList();
-            List<StoreDefinition> storeDefinitionList = adminClient.getRemoteStoreDefList(nodeId).getValue();
-            for (StoreDefinition storeDefinition: storeDefinitionList) {
+            List<StoreDefinition> storeDefinitionList = adminClient.getRemoteStoreDefList(nodeId)
+                                                                   .getValue();
+            for(StoreDefinition storeDefinition: storeDefinitionList) {
                 stores.add(storeDefinition.getName());
             }
         }
-        
-        for (String store: stores) {
-            System.out.println("Deleting partitions " + Joiner.on(", ").join(partitionIdList) + " of " + store);
+
+        for(String store: stores) {
+            System.out.println("Deleting partitions " + Joiner.on(", ").join(partitionIdList)
+                               + " of " + store);
             adminClient.deletePartitions(nodeId, store, partitionIdList, null);
         }
     }

@@ -134,7 +134,7 @@ public abstract class AbstractRequestFormatTest extends TestCase {
 
         testGetAllRequest(new ByteArray[] { TestUtils.toByteArray("hello"),
                 TestUtils.toByteArray("holly") }, new byte[][] { "world".getBytes(),
-                "cow".getBytes() }, new VectorClock[] { TestUtils.getClock(1, 1),
+                "cow".getBytes() }, new Version[] { TestUtils.getClock(1, 1),
                 TestUtils.getClock(1, 2) }, new boolean[] { true, false });
     }
 

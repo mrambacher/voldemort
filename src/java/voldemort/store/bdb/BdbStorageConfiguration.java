@@ -46,6 +46,7 @@ import com.sleepycat.je.StatsConfig;
  * 
  * 
  */
+@SuppressWarnings("deprecation")
 public class BdbStorageConfiguration implements StorageConfiguration {
 
     public static final String TYPE_NAME = "bdb";

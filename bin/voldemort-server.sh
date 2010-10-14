@@ -34,7 +34,7 @@ do
   CLASSPATH=$CLASSPATH:$file
 done
 
-for file in $base_dir/contrib/hadoop-store-builder/lib/*.jar;
+for file in $base_dir/contrib/*/lib/*.jar;
 do
   CLASSPATH=$CLASSPATH:$file
 done
@@ -54,4 +54,5 @@ fi
 # option.
 #-----------------------------------------------------------------------
 export CLASSPATH=$CLASSPATH
-java -Dlog4j.configuration=src/java/log4j.properties $VOLD_OPTS  voldemort.server.VoldemortServer $@
+
+java -Dlog4j.configuration=src/java/log4j.properties $VOLD_OPTS voldemort.server.VoldemortServer $@

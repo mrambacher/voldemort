@@ -37,6 +37,7 @@ import voldemort.utils.ByteArray;
 import voldemort.versioning.ObsoleteVersionException;
 import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
+import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
 
 import com.google.common.base.Objects;
@@ -190,6 +191,7 @@ public abstract class AbstractStoreTest<K, V> extends TestCase {
         }
     }
 
+    @Test
     public void testPutNullValue() {
     // Store<K,V> store = getStore();
     // K key = getKey();
@@ -254,7 +256,7 @@ public abstract class AbstractStoreTest<K, V> extends TestCase {
     }
 
     @Test
-    public void testFetchedEqualsPut() {
+    public void testFetchedEqualsPut() throws Exception {
         K key = getKey();
         Store<K, V> store = getStore();
         Version version = TestUtils.getClock(1, 1, 2, 3, 3, 4);
@@ -269,8 +271,8 @@ public abstract class AbstractStoreTest<K, V> extends TestCase {
     public void testVersionedPut() throws Exception {
         K key = getKey();
         Store<K, V> store = getStore();
-        VectorClock clock = getClock(1, 1);
-        VectorClock clockCopy = clock.clone();
+        Version clock = getClock(1, 1);
+        Version clockCopy = VersionFactory.cloneVersion(clock);
         V value = getValue();
         assertEquals("Store not empty at start!", 0, store.get(key).size());
         Versioned<V> versioned = new Versioned<V>(value, clock);
@@ -334,7 +336,7 @@ public abstract class AbstractStoreTest<K, V> extends TestCase {
     }
 
     @Test
-    public void testDelete() {
+    public void testDelete() throws Exception {
         K key = getKey();
         Store<K, V> store = getStore();
         Version c1 = getClock(1, 1);

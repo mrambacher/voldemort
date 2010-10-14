@@ -50,9 +50,15 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
         super.tearDown();
 
         for(String name: engines.keySet()) {
-            try {
-                engines.get(name).close();
-            } catch(Exception e) {}
+            closeStorageEngine(engines.get(name));
+        }
+    }
+
+    protected void closeStorageEngine(StorageEngine<ByteArray, byte[]> engine) {
+        try {
+            engine.close();
+        } catch(Exception e) {
+
         }
     }
 
