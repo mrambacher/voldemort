@@ -87,12 +87,12 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
     private Cluster cluster;
     private final ByteArray aKey = TestUtils.toByteArray("jay");
     private final byte[] aValue = "kreps".getBytes();
-    private final Class<FailureDetector> failureDetectorClass;
+    private final Class<? extends FailureDetector> failureDetectorClass;
     private final boolean isPipelineRoutedStoreEnabled;
     private FailureDetector failureDetector;
     private ExecutorService routedStoreThreadPool;
 
-    public RoutedStoreTest(Class<FailureDetector> failureDetectorClass,
+    public RoutedStoreTest(Class<? extends FailureDetector> failureDetectorClass,
                            boolean isPipelineRoutedStoreEnabled) {
         super("test");
         this.failureDetectorClass = failureDetectorClass;
