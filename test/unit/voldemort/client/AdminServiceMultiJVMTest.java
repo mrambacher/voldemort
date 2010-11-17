@@ -37,6 +37,7 @@ import voldemort.client.protocol.admin.AdminClient;
 import voldemort.cluster.Cluster;
 import voldemort.cluster.Node;
 import voldemort.store.Store;
+import voldemort.store.async.AsyncUtils;
 import voldemort.store.socket.SocketStoreFactory;
 import voldemort.store.socket.clientrequest.ClientRequestExecutorPool;
 import voldemort.utils.ByteArray;
@@ -118,6 +119,8 @@ public class AdminServiceMultiJVMTest extends AbstractAdminServiceFilterTest {
     protected Store<ByteArray, byte[]> getStore(int nodeId, String storeName) {
         Node node = cluster.getNodeById(nodeId);
 
-        return ServerTestUtils.getSocketStore(socketStoreFactory, storeName, node.getSocketPort());
+        return AsyncUtils.asStore(ServerTestUtils.getSocketStore(socketStoreFactory,
+                                                                 storeName,
+                                                                 node.getSocketPort()));
     }
 }

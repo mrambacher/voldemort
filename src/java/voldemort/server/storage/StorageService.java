@@ -61,16 +61,21 @@ import voldemort.store.StorageConfiguration;
 import voldemort.store.StorageEngine;
 import voldemort.store.Store;
 import voldemort.store.StoreDefinition;
+import voldemort.store.async.AsyncUtils;
+import voldemort.store.async.AsynchronousStore;
+import voldemort.store.distributed.DistributedStore;
+import voldemort.store.distributed.DistributedStoreFactory;
+import voldemort.store.failuredetector.FailureDetectingStore;
 import voldemort.store.invalidmetadata.InvalidMetadataCheckingStore;
 import voldemort.store.logging.LoggingStore;
 import voldemort.store.metadata.MetadataStore;
-import voldemort.store.nonblockingstore.NonblockingStore;
 import voldemort.store.readonly.ReadOnlyStorageEngine;
 import voldemort.store.rebalancing.RebootstrappingStore;
 import voldemort.store.rebalancing.RedirectingStore;
 import voldemort.store.routed.RoutedStore;
 import voldemort.store.routed.RoutedStoreFactory;
 import voldemort.store.serialized.SerializingStorageEngine;
+import voldemort.store.socket.SocketStore;
 import voldemort.store.socket.SocketStoreFactory;
 import voldemort.store.socket.clientrequest.ClientRequestExecutorPool;
 import voldemort.store.stats.DataSetStats;
@@ -144,7 +149,7 @@ public class StorageService extends AbstractService {
         this.failureDetector = create(failureDetectorConfig, config.isJmxEnabled());
         this.storeStats = new StoreStats();
         this.routedStoreFactory = new RoutedStoreFactory(voldemortConfig.isPipelineRoutedStoreEnabled(),
-                                                         this.clientThreadPool,
+                                                         this.failureDetector,
                                                          voldemortConfig.getClientRoutingTimeoutMs());
     }
 
@@ -281,9 +286,7 @@ public class StorageService extends AbstractService {
         /* Now add any store wrappers that are enabled */
         Store<ByteArray, byte[]> store = engine;
         if(voldemortConfig.isVerboseLoggingEnabled())
-            store = new LoggingStore<ByteArray, byte[]>(store,
-                                                        cluster.getName(),
-                                                        SystemTime.INSTANCE);
+            store = LoggingStore.create(store, cluster.getName());
 
         if(voldemortConfig.isRedirectRoutingEnabled())
             store = new RedirectingStore(store,
@@ -331,32 +334,30 @@ public class StorageService extends AbstractService {
      * @param localNode
      */
     public void registerNodeStores(StoreDefinition def, Cluster cluster, int localNode) {
-        Map<Integer, Store<ByteArray, byte[]>> nodeStores = new HashMap<Integer, Store<ByteArray, byte[]>>(cluster.getNumberOfNodes());
-        Map<Integer, NonblockingStore> nonblockingStores = new HashMap<Integer, NonblockingStore>(cluster.getNumberOfNodes());
+        Map<Node, AsynchronousStore<ByteArray, byte[]>> nodeStores = new HashMap<Node, AsynchronousStore<ByteArray, byte[]>>(cluster.getNumberOfNodes());
         try {
             for(Node node: cluster.getNodes()) {
                 Store<ByteArray, byte[]> store = getNodeStore(def.getName(), node, localNode);
                 this.storeRepository.addNodeStore(node.getId(), store);
-                nodeStores.put(node.getId(), store);
 
-                NonblockingStore nonblockingStore = routedStoreFactory.toNonblockingStore(store);
-                nonblockingStores.put(node.getId(), nonblockingStore);
+                nodeStores.put(node, AsyncUtils.asAsync(store));
             }
+
+            DistributedStore<Node, ByteArray, byte[]> distributor = DistributedStoreFactory.create(def,
+                                                                                                   nodeStores);
 
             Store<ByteArray, byte[]> store = routedStoreFactory.create(cluster,
                                                                        def,
-                                                                       nodeStores,
-                                                                       nonblockingStores,
-                                                                       true,
+                                                                       distributor,
                                                                        cluster.getNodeById(localNode)
-                                                                              .getZoneId(),
-                                                                       failureDetector);
+                                                                              .getZoneId());
 
             store = new RebootstrappingStore(metadata,
                                              storeRepository,
                                              voldemortConfig,
                                              (RoutedStore) store,
-                                             storeFactory);
+                                             storeFactory,
+                                             this.failureDetector);
 
             store = new InconsistencyResolvingStore<ByteArray, byte[]>(store,
                                                                        new VectorClockInconsistencyResolver<byte[]>());
@@ -380,11 +381,12 @@ public class StorageService extends AbstractService {
     }
 
     private Store<ByteArray, byte[]> createNodeStore(String storeName, Node node) {
-        return storeFactory.create(storeName,
-                                   node.getHost(),
-                                   node.getSocketPort(),
-                                   voldemortConfig.getRequestFormatType(),
-                                   RequestRoutingType.NORMAL);
+        SocketStore store = storeFactory.create(storeName,
+                                                node.getHost(),
+                                                node.getSocketPort(),
+                                                voldemortConfig.getRequestFormatType(),
+                                                RequestRoutingType.NORMAL);
+        return AsyncUtils.asStore(FailureDetectingStore.create(node, this.failureDetector, store));
     }
 
     /**

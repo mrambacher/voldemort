@@ -20,7 +20,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-import voldemort.store.nonblockingstore.NonblockingStore;
+import voldemort.cluster.Node;
+import voldemort.store.distributed.DistributedStore;
 import voldemort.store.routed.GetAllPipelineData;
 import voldemort.store.routed.ReadRepairer;
 import voldemort.store.routed.Response;
@@ -35,9 +36,9 @@ public class GetAllReadRepair
     public GetAllReadRepair(GetAllPipelineData pipelineData,
                             Event completeEvent,
                             int preferred,
-                            Map<Integer, NonblockingStore> nonblockingStores,
-                            ReadRepairer<Integer, ByteArray, byte[]> readRepairer) {
-        super(pipelineData, completeEvent, preferred, nonblockingStores, readRepairer);
+                            DistributedStore<Node, ByteArray, byte[]> distributor,
+                            ReadRepairer<Node, ByteArray, byte[]> readRepairer) {
+        super(pipelineData, completeEvent, preferred, distributor, readRepairer);
     }
 
     @Override

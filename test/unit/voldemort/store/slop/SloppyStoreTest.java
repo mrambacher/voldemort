@@ -70,8 +70,9 @@ public class SloppyStoreTest extends AbstractByteArrayStoreTest {
 
     @Test
     public void testFailingStore() {
-        SloppyStore store = getSloppyStore(new FailingStore<ByteArray, byte[]>("test",
-                                                                               new UnreachableStoreException("Unreachable store.")));
+        Store<ByteArray, byte[]> failing = FailingStore.asStore("test",
+                                                                new UnreachableStoreException("Unreachable store."));
+        SloppyStore store = getSloppyStore(failing);
         try {
             store.put(new ByteArray(testVal), new Versioned<byte[]>(testVal));
             fail("Failing store doesn't fail.");

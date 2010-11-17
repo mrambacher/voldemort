@@ -273,27 +273,111 @@ public class RebalanceClusterTool {
      * {@link RebalanceClusterTool#getMultipleCopies(voldemort.cluster.Cluster)}
      * the return value would be <code>{7: [(7,8), (7,0)]}</code>. </p>
      */
-    public Multimap<Integer, Pair<Integer,Integer>> getRemappedReplicas(Cluster newCluster) {
-        RoutingStrategy routingStrategy = new RoutingStrategyFactory().updateRoutingStrategy(storeDefinition, newCluster);
-        ListMultimap<Integer,Integer> newMasterToReplicas = createMasterToReplicas(newCluster, routingStrategy);
-        Multimap<Integer, Pair<Integer,Integer>> remappedReplicas = ArrayListMultimap.create();
-        for (int partition: masterToReplicas.keySet()) {
-            List<Integer> oldReplicas = masterToReplicas.get(partition);
-            List<Integer> newReplicas = newMasterToReplicas.get(partition);
+//    public Multimap<Integer, Pair<Integer,Integer>> getRemappedReplicas(Cluster newCluster) {
+//        RoutingStrategy routingStrategy = new RoutingStrategyFactory().updateRoutingStrategy(storeDefinition, newCluster);
+//        ListMultimap<Integer,Integer> newMasterToReplicas = createMasterToReplicas(newCluster, routingStrategy);
+//        Multimap<Integer, Pair<Integer,Integer>> remappedReplicas = ArrayListMultimap.create();
+//       for (int partition: masterToReplicas.keySet()) {
+//          List<Integer> oldReplicas = masterToReplicas.get(partition);
+//         List<Integer> newReplicas = newMasterToReplicas.get(partition);
+       public Multimap<Integer, Pair<Integer, Integer>> getRemappedReplicas(Cluster newCluster) {
+           Multimap<Integer, Pair<Integer, Integer>> remappedReplicas = ArrayListMultimap.create();
+           ListMultimap<Integer, PartitionToNode> oldClusterMasterToPartitionToNode = createMasterToReplicasPartitionToNode(cluster, storeDefinition);
+           ListMultimap<Integer, PartitionToNode> newClusterMasterToPartitionToNode = createMasterToReplicasPartitionToNode(newCluster, storeDefinition);
+           
+           for (int partition : masterToReplicas.keySet()) {
+               List<PartitionToNode> oldReplicas = oldClusterMasterToPartitionToNode.get(partition);
+               List<PartitionToNode> newReplicas = newClusterMasterToPartitionToNode.get(partition);
+            
 
             if (oldReplicas.size() != newReplicas.size())
                 throw new IllegalStateException("replica count differs for partition " + partition);
 
             for (int i=0; i < oldReplicas.size(); i++) {
-                int oldReplica = oldReplicas.get(i);
+                PartitionToNode oldReplica = oldReplicas.get(i);
                 if (!newReplicas.contains(oldReplica)) {
-                    Pair<Integer,Integer> pair = new Pair<Integer,Integer>(oldReplica, newReplicas.get(i));
+                    //Pair<Integer,Integer> pair = new Pair<Integer,Integer>(oldReplica, newReplicas.get(i));
+                    Pair<Integer, Integer> pair = new Pair<Integer, Integer>(oldReplica.getPartition(), newReplicas.get(i).getPartition());
                     remappedReplicas.put(partition, pair);
                 }
             }
         }
 
         return remappedReplicas;
+    }
+
+       
+    /**
+     * Creates a {@link ListMultimap} in which the "key" represent the partition and
+     * the "value" represent the list of replicas for this partition.
+     * In the "value" list we are also saving the Node ID that this replica belongs too.
+     *
+     * The idea to save also the NodeId is to determine if a particular replica is now in
+     * a different Node after the remapping of the cluster.
+     * For example:
+     *
+     * <pre>
+     * cluster.xml (before rebalance)
+     * Node Primary Replicas
+     * 0    [0, 4]  (1, 2, 3, 5)
+     * 1    [2, 3]  (0, 1, 4, 5)
+     * 2    [1, 5]  (0, 2, 3, 4)
+     * ==========================
+     *
+     * targetCluster.xml (after rebalance)
+     * Node Primary Replicas
+     * 0    [4]     (1, 2, 3)
+     * 1    [2, 3]  (0, 1, 5)
+     * 2    [1, 5]  (0, 2, 3, 4)
+     * 3    [0]     (4, 5)
+     * =========================
+     * </pre>
+     *
+     * In both cases (before and after) "5" is replicated into partitions "0 and 2"
+     *
+     * In other words the logic fails to find the change because "5(0,2) == 5(0,2)" resulting in partition "5" never moved
+     * to Node 3, but there
+     * is a change after all because partition "0" now belongs to a
+     * different node, Node3 (the new node).
+     *
+     * @param cluster
+     *            Cluster instance to analyze.
+     * @param storeDefinition
+     *            store definition instance.
+     * @return
+     */
+     private ListMultimap<Integer, PartitionToNode> createMasterToReplicasPartitionToNode(Cluster cluster, StoreDefinition storeDefinition) {
+        RoutingStrategy routingStrategy = new RoutingStrategyFactory().updateRoutingStrategy(storeDefinition, cluster);
+        Map<Integer, Integer> partitionToNodeIdMap = createPartitionToNodeIdMap(cluster);
+        ListMultimap<Integer, PartitionToNode> lmm = ArrayListMultimap.create();
+        for (int partitionId = 0; partitionId < cluster.getNumberOfPartitions(); partitionId++) {
+            for (int replica : routingStrategy.getReplicatingPartitionList(partitionId)) {
+                if (replica != partitionId)
+                    lmm.put(partitionId, new PartitionToNode(replica, partitionToNodeIdMap.get(replica)));
+            }
+        }
+
+        return lmm;
+    }
+
+    /**
+     * Based on the passed in {@link Cluster} a map is created which contains
+     * a partition-to-node relationship.
+     *
+     * @param cluster
+     *            instance from where we get the node/partition association.
+     * @return Map of partition to node-id
+     */
+    private Map<Integer, Integer> createPartitionToNodeIdMap(Cluster cluster) {
+        Map<Integer, Integer> map = new HashMap<Integer, Integer>();
+        Collection<Node> nodes = cluster.getNodes();
+        for (Node node : nodes) {
+            List<Integer> partitionIds = node.getPartitionIds();
+            for (Integer partitionId : partitionIds) {
+                map.put(partitionId, node.getId());
+            }
+        }
+        return map;
     }
 
     /**
@@ -321,4 +405,55 @@ public class RebalanceClusterTool {
     public int getRemappedReplicaCount(Cluster newCluster) {
         return getRemappedReplicas(newCluster).entries().size();
     }
+    
+    
+    /**
+     * Utility data class that keeps Node-Partition relationship.
+     * 
+     * @author jocohen
+     */
+    private class PartitionToNode {
+
+        int partition;
+        int node;
+
+        public PartitionToNode(int partition, int node) {
+            this.partition = partition;
+            this.node = node;
+        }
+
+        public int getPartition() {
+            return partition;
+        }
+
+        public int getNode() {
+            return node;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if(obj == null)
+                return false;
+
+            if(!(obj instanceof PartitionToNode))
+                return false;
+
+            PartitionToNode other = (PartitionToNode) obj;
+            if(getNode() != other.getNode())
+                return false;
+
+            if(getPartition() != getPartition())
+                return false;
+
+            // they are the equal
+            return true;
+        }
+
+        @Override
+        public String toString() {
+            return node + "(" + partition + ")";
+        }
+    }
+    
+    
 }

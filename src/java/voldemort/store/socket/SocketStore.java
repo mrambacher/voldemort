@@ -16,38 +16,19 @@
 
 package voldemort.store.socket;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.util.List;
-import java.util.Map;
+import java.util.concurrent.Callable;
 
 import voldemort.VoldemortException;
-import voldemort.client.protocol.RequestFormat;
-import voldemort.client.protocol.RequestFormatFactory;
 import voldemort.server.RequestRoutingType;
-import voldemort.store.NoSuchCapabilityException;
-import voldemort.store.Store;
 import voldemort.store.StoreCapabilityType;
-import voldemort.store.StoreUtils;
-import voldemort.store.UnreachableStoreException;
-import voldemort.store.nonblockingstore.NonblockingStore;
-import voldemort.store.nonblockingstore.NonblockingStoreCallback;
-import voldemort.store.socket.clientrequest.BlockingClientRequest;
+import voldemort.store.async.AsynchronousCallableStore;
+import voldemort.store.async.AsynchronousStore;
+import voldemort.store.async.StoreFuture;
 import voldemort.store.socket.clientrequest.ClientRequest;
 import voldemort.store.socket.clientrequest.ClientRequestExecutor;
 import voldemort.store.socket.clientrequest.ClientRequestExecutorPool;
-import voldemort.store.socket.clientrequest.DeleteClientRequest;
-import voldemort.store.socket.clientrequest.GetAllClientRequest;
-import voldemort.store.socket.clientrequest.GetClientRequest;
-import voldemort.store.socket.clientrequest.GetVersionsClientRequest;
-import voldemort.store.socket.clientrequest.PutClientRequest;
 import voldemort.utils.ByteArray;
-import voldemort.utils.Time;
 import voldemort.utils.Utils;
-import voldemort.versioning.Version;
-import voldemort.versioning.Versioned;
 
 /**
  * The client implementation of a socket store--translates each request into a
@@ -62,255 +43,43 @@ import voldemort.versioning.Versioned;
  * {@link ClientRequest request} to be processed by the NIO thread.
  */
 
-public class SocketStore implements Store<ByteArray, byte[]>, NonblockingStore {
+public class SocketStore extends AsynchronousCallableStore<ByteArray, byte[]> {
 
-    private final RequestFormatFactory requestFormatFactory = new RequestFormatFactory();
-
-    private final String storeName;
     private final ClientRequestExecutorPool pool;
     private final SocketDestination destination;
-    private final RequestFormat requestFormat;
-    private final RequestRoutingType requestRoutingType;
 
     public SocketStore(String storeName,
                        SocketDestination dest,
                        ClientRequestExecutorPool pool,
                        RequestRoutingType requestRoutingType) {
-        this.storeName = Utils.notNull(storeName);
+        super(new ClientRequestStore(storeName, requestRoutingType, dest.getRequestFormatType()));
         this.pool = Utils.notNull(pool);
         this.destination = dest;
-        this.requestFormat = requestFormatFactory.getRequestFormat(dest.getRequestFormatType());
-        this.requestRoutingType = requestRoutingType;
     }
 
-    public void submitDeleteRequest(ByteArray key,
-                                    Version version,
-                                    NonblockingStoreCallback callback) {
-        StoreUtils.assertValidKey(key);
-        DeleteClientRequest clientRequest = new DeleteClientRequest(storeName,
-                                                                    requestFormat,
-                                                                    requestRoutingType,
-                                                                    key,
-                                                                    version);
-        requestAsync(clientRequest, callback);
-    }
-
-    public void submitGetRequest(ByteArray key, NonblockingStoreCallback callback) {
-        StoreUtils.assertValidKey(key);
-        GetClientRequest clientRequest = new GetClientRequest(storeName,
-                                                              requestFormat,
-                                                              requestRoutingType,
-                                                              key);
-        requestAsync(clientRequest, callback);
-    }
-
-    public void submitGetAllRequest(Iterable<ByteArray> keys, NonblockingStoreCallback callback) {
-        StoreUtils.assertValidKeys(keys);
-        GetAllClientRequest clientRequest = new GetAllClientRequest(storeName,
-                                                                    requestFormat,
-                                                                    requestRoutingType,
-                                                                    keys);
-        requestAsync(clientRequest, callback);
-    }
-
-    public void submitGetVersionsRequest(ByteArray key, NonblockingStoreCallback callback) {
-        StoreUtils.assertValidKey(key);
-        GetVersionsClientRequest clientRequest = new GetVersionsClientRequest(storeName,
-                                                                              requestFormat,
-                                                                              requestRoutingType,
-                                                                              key);
-        requestAsync(clientRequest, callback);
-    }
-
-    public void submitPutRequest(ByteArray key,
-                                 Versioned<byte[]> value,
-                                 NonblockingStoreCallback callback) {
-        StoreUtils.assertValidKey(key);
-        PutClientRequest clientRequest = new PutClientRequest(storeName,
-                                                              requestFormat,
-                                                              requestRoutingType,
-                                                              key,
-                                                              value);
-        requestAsync(clientRequest, callback);
-    }
-
-    public boolean delete(ByteArray key, Version version) throws VoldemortException {
-        StoreUtils.assertValidKey(key);
-        DeleteClientRequest clientRequest = new DeleteClientRequest(storeName,
-                                                                    requestFormat,
-                                                                    requestRoutingType,
-                                                                    key,
-                                                                    version);
-        return request(clientRequest, "delete");
-    }
-
-    public List<Versioned<byte[]>> get(ByteArray key) throws VoldemortException {
-        StoreUtils.assertValidKey(key);
-        GetClientRequest clientRequest = new GetClientRequest(storeName,
-                                                              requestFormat,
-                                                              requestRoutingType,
-                                                              key);
-        return request(clientRequest, "get");
-    }
-
-    public Map<ByteArray, List<Versioned<byte[]>>> getAll(Iterable<ByteArray> keys)
-            throws VoldemortException {
-        StoreUtils.assertValidKeys(keys);
-        GetAllClientRequest clientRequest = new GetAllClientRequest(storeName,
-                                                                    requestFormat,
-                                                                    requestRoutingType,
-                                                                    keys);
-        return request(clientRequest, "getAll");
-    }
-
-    public List<Version> getVersions(ByteArray key) {
-        StoreUtils.assertValidKey(key);
-        GetVersionsClientRequest clientRequest = new GetVersionsClientRequest(storeName,
-                                                                              requestFormat,
-                                                                              requestRoutingType,
-                                                                              key);
-        return request(clientRequest, "getVersions");
-    }
-
-    public Version put(ByteArray key, Versioned<byte[]> versioned) throws VoldemortException {
-        StoreUtils.assertValidKey(key);
-        PutClientRequest clientRequest = new PutClientRequest(storeName,
-                                                              requestFormat,
-                                                              requestRoutingType,
-                                                              key,
-                                                              versioned);
-        return request(clientRequest, "put");
-    }
-
+    @Override
     public Object getCapability(StoreCapabilityType capability) {
         if(StoreCapabilityType.SOCKET_POOL.equals(capability))
             return this.pool;
         else
-            throw new NoSuchCapabilityException(capability, getName());
+            return super.getCapability(capability);
     }
 
-    public String getName() {
-        return storeName;
-    }
-
+    @Override
     public void close() throws VoldemortException {
     // don't close the socket pool, it is shared
     }
 
-    /**
-     * This method handles submitting and then waiting for the request from the
-     * server. It uses the ClientRequest API to actually write the request and
-     * then read back the response. This implementation will block for a
-     * response from the server.
-     * 
-     * @param <T> Return type
-     * 
-     * @param clientRequest ClientRequest implementation used to write the
-     *        request and read the response
-     * @param operationName Simple string representing the type of request
-     * 
-     * @return Data returned by the individual requests
-     */
-
-    private <T> T request(ClientRequest<T> delegate, String operationName) {
+    @Override
+    protected <R> StoreFuture<R> submit(AsynchronousStore.Operations operation, Callable<R> task) {
+        ClientRequest<R> delegate = (ClientRequest<R>) task;
         ClientRequestExecutor clientRequestExecutor = pool.checkout(destination);
-
-        try {
-            BlockingClientRequest<T> blockingClientRequest = new BlockingClientRequest<T>(delegate);
-            clientRequestExecutor.addClientRequest(blockingClientRequest);
-            blockingClientRequest.await();
-            return blockingClientRequest.getResult();
-        } catch(InterruptedException e) {
-            throw new UnreachableStoreException("Failure in " + operationName + " on "
-                                                + destination + ": " + e.getMessage(), e);
-        } catch(IOException e) {
-            clientRequestExecutor.close();
-            throw new UnreachableStoreException("Failure in " + operationName + " on "
-                                                + destination + ": " + e.getMessage(), e);
-        } finally {
-            pool.checkin(destination, clientRequestExecutor);
-        }
-    }
-
-    /**
-     * This method handles submitting and then waiting for the request from the
-     * server. It uses the ClientRequest API to actually write the request and
-     * then read back the response. This implementation will block for a
-     * response from the server.
-     * 
-     * @param <T> Return type
-     * 
-     * @param clientRequest ClientRequest implementation used to write the
-     *        request and read the response
-     * @param operationName Simple string representing the type of request
-     * 
-     * @return Data returned by the individual requests
-     */
-
-    private <T> void requestAsync(ClientRequest<T> delegate, NonblockingStoreCallback callback) {
-        ClientRequestExecutor clientRequestExecutor = pool.checkout(destination);
-        NonblockingStoreCallbackClientRequest<T> clientRequest = new NonblockingStoreCallbackClientRequest<T>(delegate,
-                                                                                                              clientRequestExecutor,
-                                                                                                              callback);
-        clientRequestExecutor.addClientRequest(clientRequest);
-    }
-
-    private class NonblockingStoreCallbackClientRequest<T> implements ClientRequest<T> {
-
-        private final ClientRequest<T> clientRequest;
-
-        private final ClientRequestExecutor clientRequestExecutor;
-
-        private final NonblockingStoreCallback callback;
-
-        private final long startNs;
-
-        private volatile boolean isComplete;
-
-        public NonblockingStoreCallbackClientRequest(ClientRequest<T> clientRequest,
-                                                     ClientRequestExecutor clientRequestExecutor,
-                                                     NonblockingStoreCallback callback) {
-            this.clientRequest = clientRequest;
-            this.clientRequestExecutor = clientRequestExecutor;
-            this.callback = callback;
-            this.startNs = System.nanoTime();
-        }
-
-        public void complete() {
-            try {
-                clientRequest.complete();
-                Object result = clientRequest.getResult();
-
-                if(callback != null)
-                    callback.requestComplete(result, (System.nanoTime() - startNs) / Time.NS_PER_MS);
-            } catch(Exception e) {
-                if(callback != null)
-                    callback.requestComplete(e, (System.nanoTime() - startNs) / Time.NS_PER_MS);
-            } finally {
-                pool.checkin(destination, clientRequestExecutor);
-                isComplete = true;
-            }
-        }
-
-        public boolean isComplete() {
-            return isComplete;
-        }
-
-        public boolean formatRequest(DataOutputStream outputStream) {
-            return clientRequest.formatRequest(outputStream);
-        }
-
-        public T getResult() throws VoldemortException, IOException {
-            return clientRequest.getResult();
-        }
-
-        public boolean isCompleteResponse(ByteBuffer buffer) {
-            return clientRequest.isCompleteResponse(buffer);
-        }
-
-        public void parseResponse(DataInputStream inputStream) {
-            clientRequest.parseResponse(inputStream);
-        }
-
+        SocketStoreFuture<R> socketFuture = new SocketStoreFuture<R>(operation.name(),
+                                                                     delegate,
+                                                                     destination,
+                                                                     pool,
+                                                                     clientRequestExecutor);
+        clientRequestExecutor.addClientRequest(socketFuture);
+        return socketFuture;
     }
 }

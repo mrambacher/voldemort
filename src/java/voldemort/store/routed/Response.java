@@ -18,8 +18,7 @@ package voldemort.store.routed;
 
 import voldemort.cluster.Node;
 import voldemort.cluster.failuredetector.FailureDetector;
-import voldemort.store.nonblockingstore.NonblockingStore;
-import voldemort.store.nonblockingstore.NonblockingStoreCallback;
+import voldemort.store.async.NonblockingStore;
 import voldemort.store.routed.Pipeline.Event;
 import voldemort.utils.ByteArray;
 

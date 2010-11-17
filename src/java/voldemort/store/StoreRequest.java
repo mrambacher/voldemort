@@ -17,7 +17,6 @@
 package voldemort.store;
 
 import voldemort.VoldemortException;
-import voldemort.store.nonblockingstore.NonblockingStoreRequest;
 import voldemort.utils.ByteArray;
 
 /**

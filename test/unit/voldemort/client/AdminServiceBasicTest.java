@@ -31,6 +31,7 @@ import junit.framework.TestCase;
 
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -517,6 +518,7 @@ public class AdminServiceBasicTest extends TestCase {
     }
 
     @Test
+    @Ignore
     public void testRecoverData() {
         // use store with replication 2, required write 2 for this test.
         String testStoreName = "test-recovery-data";

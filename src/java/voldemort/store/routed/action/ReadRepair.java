@@ -17,9 +17,9 @@
 package voldemort.store.routed.action;
 
 import java.util.List;
-import java.util.Map;
 
-import voldemort.store.nonblockingstore.NonblockingStore;
+import voldemort.cluster.Node;
+import voldemort.store.distributed.DistributedStore;
 import voldemort.store.routed.BasicPipelineData;
 import voldemort.store.routed.ReadRepairer;
 import voldemort.store.routed.Response;
@@ -33,9 +33,9 @@ public class ReadRepair<PD extends BasicPipelineData<List<Versioned<byte[]>>>> e
     public ReadRepair(PD pipelineData,
                       Event completeEvent,
                       int preferred,
-                      Map<Integer, NonblockingStore> nonblockingStores,
-                      ReadRepairer<Integer, ByteArray, byte[]> readRepairer) {
-        super(pipelineData, completeEvent, preferred, nonblockingStores, readRepairer);
+                      DistributedStore<Node, ByteArray, byte[]> distributor,
+                      ReadRepairer<Node, ByteArray, byte[]> readRepairer) {
+        super(pipelineData, completeEvent, preferred, distributor, readRepairer);
     }
 
     @Override

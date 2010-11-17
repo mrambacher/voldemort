@@ -140,7 +140,8 @@ public class RebalanceClusterPlan {
             int newReplicationPartition = entry.getValue().getSecond();
             if(targetList.contains(newReplicationPartition)) {
                 // stealerNode need to replicate some new partition now.
-                int donorNode = currentPartitionsToNodeMap.get(entry.getKey());
+                //int donorNode = currentPartitionsToNodeMap.get(entry.getKey());
+                int donorNode = currentPartitionsToNodeMap.get(entry.getValue().getFirst()); 
                 // TODO LOW: not copying partitions on same node for now
                 if(donorNode != stealNodeId)
                     createAndAdd(replicationMapping, donorNode, entry.getKey());

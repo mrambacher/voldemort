@@ -79,4 +79,23 @@ public abstract class AbstractAction<K, V, PD extends PipelineData<K, V>> implem
         return false;
     }
 
+    protected boolean handleResponseError(Exception e, Node node, Pipeline pipeline) {
+        if(logger.isEnabledFor(Level.WARN))
+            logger.warn("Error in " + pipeline.getOperation().getSimpleName() + " on node "
+                        + node.getId() + "(" + node.getHost() + ")", e);
+
+        if(e instanceof VoldemortApplicationException) {
+            pipelineData.setFatalError((VoldemortApplicationException) e);
+            pipeline.addEvent(Event.ERROR);
+
+            if(logger.isEnabledFor(Level.WARN))
+                logger.warn("Error is fatal - aborting further pipeline processing");
+
+            return true;
+        } else {
+            pipelineData.recordFailure(e);
+        }
+
+        return false;
+    }
 }

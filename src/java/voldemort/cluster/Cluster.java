@@ -30,6 +30,8 @@ import voldemort.annotations.jmx.JmxGetter;
 import voldemort.annotations.jmx.JmxManaged;
 import voldemort.utils.Utils;
 
+import com.google.common.collect.HashMultimap;
+import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 
 /**
@@ -112,6 +114,19 @@ public class Cluster implements Serializable {
 
     public int getNumberOfZones() {
         return zonesById.size();
+    }
+
+    public Map<Integer, Collection<Node>> getZonesByNode() {
+        Multimap<Integer, Node> nodesByZone = HashMultimap.create();
+        for(Node node: nodesById.values()) {
+            nodesByZone.put(node.getZoneId(), node);
+        }
+        return nodesByZone.asMap();
+    }
+
+    public Collection<Node> getNodesForZone(int id) {
+        Map<Integer, Collection<Node>> nodes = getZonesByNode();
+        return nodes.get(id);
     }
 
     public Node getNodeById(int id) {

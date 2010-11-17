@@ -73,4 +73,13 @@ public class SleepyStore<K, V> extends DelegatingStore<K, V> {
         }
     }
 
+    @Override
+    public List<Version> getVersions(K key) throws VoldemortException {
+        try {
+            Thread.sleep(sleepTimeMs);
+            return getInnerStore().getVersions(key);
+        } catch(InterruptedException e) {
+            throw new VoldemortInterruptedException(e);
+        }
+    }
 }

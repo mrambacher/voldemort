@@ -26,7 +26,9 @@ import voldemort.server.StoreRepository;
 import voldemort.server.VoldemortConfig;
 import voldemort.store.Store;
 import voldemort.store.UnreachableStoreException;
+import voldemort.store.async.AsyncUtils;
 import voldemort.store.metadata.MetadataStore;
+import voldemort.store.socket.SocketStore;
 import voldemort.store.socket.SocketStoreFactory;
 import voldemort.utils.ByteArray;
 import voldemort.utils.Utils;
@@ -67,11 +69,12 @@ public class ServerStoreVerifier implements StoreVerifier {
                 store = stores.get(node.getId());
 
                 if(store == null) {
-                    store = storeFactory.create(MetadataStore.METADATA_STORE_NAME,
-                                                node.getHost(),
-                                                node.getSocketPort(),
-                                                voldemortConfig.getRequestFormatType(),
-                                                RequestRoutingType.NORMAL);
+                    SocketStore socketStore = storeFactory.create(MetadataStore.METADATA_STORE_NAME,
+                                                                  node.getHost(),
+                                                                  node.getSocketPort(),
+                                                                  voldemortConfig.getRequestFormatType(),
+                                                                  RequestRoutingType.NORMAL);
+                    store = AsyncUtils.asStore(socketStore);
                     stores.put(node.getId(), store);
                 }
             }

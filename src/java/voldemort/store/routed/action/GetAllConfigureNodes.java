@@ -62,7 +62,6 @@ public class GetAllConfigureNodes
 
     public void execute(Pipeline pipeline) {
         Map<Node, List<ByteArray>> nodeToKeysMap = Maps.newHashMap();
-        Map<ByteArray, List<Node>> keyToExtraNodesMap = Maps.newHashMap();
 
         for(ByteArray key: keys) {
             List<Node> nodes = null;
@@ -76,7 +75,6 @@ public class GetAllConfigureNodes
             }
 
             List<Node> preferredNodes = Lists.newArrayListWithCapacity(preferred);
-            List<Node> extraNodes = Lists.newArrayListWithCapacity(3);
 
             if(pipelineData.getZonesRequired() != null) {
 
@@ -123,10 +121,7 @@ public class GetAllConfigureNodes
             }
 
             for(Node node: nodes) {
-                if(preferredNodes.size() < preferred)
-                    preferredNodes.add(node);
-                else
-                    extraNodes.add(node);
+                preferredNodes.add(node);
             }
 
             for(Node node: preferredNodes) {
@@ -140,17 +135,8 @@ public class GetAllConfigureNodes
                 nodeKeys.add(key);
             }
 
-            if(!extraNodes.isEmpty()) {
-                List<Node> list = keyToExtraNodesMap.get(key);
-
-                if(list == null)
-                    keyToExtraNodesMap.put(key, extraNodes);
-                else
-                    list.addAll(extraNodes);
-            }
         }
 
-        pipelineData.setKeyToExtraNodesMap(keyToExtraNodesMap);
         pipelineData.setNodeToKeysMap(nodeToKeysMap);
 
         pipeline.addEvent(completeEvent);

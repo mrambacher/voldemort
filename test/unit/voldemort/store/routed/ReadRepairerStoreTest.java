@@ -16,169 +16,296 @@
 
 package voldemort.store.routed;
 
-import static voldemort.FailureDetectorTestUtils.recordException;
-import static voldemort.FailureDetectorTestUtils.recordSuccess;
-import static voldemort.MutableStoreVerifier.create;
-import static voldemort.cluster.failuredetector.FailureDetectorUtils.create;
-
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import junit.framework.TestCase;
-
-import org.junit.After;
 import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
-import org.junit.runners.Parameterized.Parameters;
 
-import voldemort.MockTime;
 import voldemort.ServerTestUtils;
 import voldemort.TestUtils;
-import voldemort.VoldemortTestConstants;
-import voldemort.cluster.Cluster;
-import voldemort.cluster.Node;
-import voldemort.cluster.failuredetector.BannagePeriodFailureDetector;
-import voldemort.cluster.failuredetector.FailureDetector;
-import voldemort.cluster.failuredetector.FailureDetectorConfig;
+import voldemort.VoldemortException;
 import voldemort.routing.RoutingStrategyType;
+import voldemort.store.AbstractVoldemortTest;
+import voldemort.store.FailingStore;
 import voldemort.store.SleepyStore;
 import voldemort.store.Store;
 import voldemort.store.StoreDefinition;
+import voldemort.store.async.AsyncUtils;
+import voldemort.store.async.AsynchronousStore;
+import voldemort.store.async.StoreFuture;
+import voldemort.store.distributed.DistributedFuture;
+import voldemort.store.distributed.DistributedStore;
+import voldemort.store.distributed.DistributedStoreFactory;
+import voldemort.store.distributed.DistributedStoreTest;
 import voldemort.store.memory.InMemoryStorageEngine;
-import voldemort.utils.ByteArray;
-import voldemort.utils.Time;
 import voldemort.versioning.Versioned;
 
-import com.google.common.collect.Iterables;
 import com.google.common.collect.Maps;
 
-@RunWith(Parameterized.class)
-public class ReadRepairerStoreTest extends TestCase {
+public class ReadRepairerStoreTest extends AbstractVoldemortTest<String> {
 
-    private final Class<FailureDetector> failureDetectorClass;
-    private FailureDetector failureDetector;
-    private Time time = new MockTime();
+    ExecutorService threadPool;
 
-    public ReadRepairerStoreTest(Class<FailureDetector> failureDetectorClass) {
-        this.failureDetectorClass = failureDetectorClass;
+    public ReadRepairerStoreTest() {
+        threadPool = Executors.newFixedThreadPool(5);
     }
 
-    @Override
-    @After
-    public void tearDown() throws Exception {
-        if(failureDetector != null)
-            failureDetector.destroy();
+    private Map<Integer, Store<String, String>> buildMemoryStores(String name, int count) {
+        Map<Integer, Store<String, String>> stores = Maps.newHashMap();
+        for(int i = 0; i < count; i++) {
+            stores.put(i, new InMemoryStorageEngine<String, String>(name + "_" + i));
+        }
+        return stores;
     }
 
-    @Parameters
-    public static Collection<Object[]> configs() {
-        return Arrays.asList(new Object[][] { { BannagePeriodFailureDetector.class } });
+    private Map<Integer, Store<String, String>> buildSleepyStores(Map<Integer, Store<String, String>> stores,
+                                                                  int count,
+                                                                  long delay) {
+        Map<Integer, Store<String, String>> sleepies = Maps.newHashMap();
+        sleepies.putAll(stores);
+        for(int i = 0; i < count; i++) {
+            sleepies.put(i, new SleepyStore<String, String>(delay, stores.get(i)));
+        }
+        return sleepies;
+    }
+
+    private Map<Integer, AsynchronousStore<String, String>> toAsyncStores(Map<Integer, Store<String, String>> stores) {
+        Map<Integer, AsynchronousStore<String, String>> async = Maps.newHashMap();
+        for(Map.Entry<Integer, Store<String, String>> entry: stores.entrySet()) {
+            async.put(entry.getKey(),
+                      DistributedStoreTest.toThreadedStore(entry.getValue(), threadPool));
+        }
+        return async;
+    }
+
+    private void awaitCompletion(DistributedStore<?, ?, ?> store) {
+        try {
+            ReadRepairStore<?, ?, ?> readRepair = (ReadRepairStore<?, ?, ?>) store;
+            while((readRepair.pendingRepairs.intValue()) > 0) {
+                Thread.sleep(100);
+            }
+
+        } catch(Exception e) {
+            fail("Unexpected exception " + e.getMessage());
+        }
+    }
+
+    private void awaitCompletion(DistributedStore<?, ?, ?> store, StoreFuture<?> future) {
+        try {
+            DistributedFuture<?, ?> distributed = (DistributedFuture<?, ?>) future;
+            distributed.complete();
+            awaitCompletion(store);
+        } catch(Exception e) {
+            fail("Unexpected exception " + e.getMessage());
+        }
+    }
+
+    private StoreDefinition getStoreDef(String name, int replicas) {
+        return getStoreDef(name, replicas, (replicas + 1) / 2, 1);
+    }
+
+    private StoreDefinition getStoreDef(String name, int replicas, int preferred, int required) {
+        return ServerTestUtils.getStoreDef(name,
+                                           replicas,
+                                           preferred,
+                                           required,
+                                           preferred,
+                                           required,
+                                           RoutingStrategyType.CONSISTENT_STRATEGY);
+    }
+
+    private DistributedStore<Integer, String, String> getRepairStore(Map<Integer, Store<String, String>> stores,
+                                                                     StoreDefinition storeDef) {
+        Map<Integer, AsynchronousStore<String, String>> asyncStores = toAsyncStores(stores);
+        return DistributedStoreFactory.create(storeDef, asyncStores, true);
+
+    }
+
+    private void assertReadRepair(Map<String, List<Versioned<String>>> values,
+                                  Map<Integer, Store<String, String>> stores) {
+        for(String key: values.keySet()) {
+            for(Store<String, String> store: stores.values()) {
+                try {
+                    List<Versioned<String>> expected = values.get(key);
+                    List<Versioned<String>> results = store.get(key);
+                    assertEquals("Sizes match for store " + store.getName() + " for key " + key,
+                                 expected.size(),
+                                 results.size());
+                    for(Versioned<String> result: results) {
+                        this.assertContains(expected, result);
+                    }
+                } catch(VoldemortException e) {
+                    fail("Unexpected exception in store " + store.getName() + " for key " + key
+                         + ":" + e.getMessage());
+                }
+            }
+        }
     }
 
     /**
      * See Issue 150: Missing keys are not added to node when performing
      * read-repair
      */
-
     @Test
     public void testMissingKeysAreAddedToNodeWhenDoingReadRepair() throws Exception {
-        ByteArray key = TestUtils.toByteArray("key");
-        byte[] value = "foo".getBytes();
+        Map<Integer, Store<String, String>> stores = buildMemoryStores("repair", 5);
+        StoreDefinition storeDef = getStoreDef("repair",
+                                               stores.size(),
+                                               stores.size(),
+                                               stores.size());
+        DistributedStore<Integer, String, String> repair = getRepairStore(stores, storeDef);
+        AsynchronousStore<String, String> async = DistributedStoreFactory.asAsync(storeDef, repair);
 
-        Cluster cluster = VoldemortTestConstants.getThreeNodeCluster();
-        StoreDefinition storeDef = ServerTestUtils.getStoreDef("test",
-                                                               3,
-                                                               3,
-                                                               3,
-                                                               2,
-                                                               2,
-                                                               RoutingStrategyType.CONSISTENT_STRATEGY);
-        FailureDetectorConfig failureDetectorConfig = new FailureDetectorConfig().setImplementationClassName(failureDetectorClass.getName())
-                                                                                 .setBannagePeriod(1000)
-                                                                                 .setNodes(cluster.getNodes())
-                                                                                 .setTime(time);
+        Collection<String> keys = Arrays.asList("1", "2");
+        Versioned<String> one = new Versioned<String>("one", TestUtils.getClock(1));
+        Versioned<String> two = new Versioned<String>("two", TestUtils.getClock(2));
+        Versioned<String> value = new Versioned<String>("value", TestUtils.getClock(3, 3));
 
-        failureDetector = create(failureDetectorConfig, false);
+        stores.get(2).put("key", value);
+        stores.get(3).put("key", value);
+        stores.get(4).put("key", value);
+        stores.get(2).put("1", one);
+        stores.get(3).put("1", one);
+        stores.get(4).put("1", one);
+        stores.get(0).put("2", two);
+        stores.get(1).put("2", two);
+        stores.get(2).put("2", two);
 
-        Map<Integer, Store<ByteArray, byte[]>> subStores = Maps.newHashMap();
-        for(int a = 0; a < 3; a++) {
-            Node node = Iterables.get(cluster.getNodes(), a);
-            subStores.put(node.getId(),
-                          new NodeStore<ByteArray, byte[]>(node,
-                                                           failureDetector,
-                                                           new InMemoryStorageEngine<ByteArray, byte[]>("test")));
-        }
-        failureDetector.getConfig().setStoreVerifier(create(subStores));
+        Map<String, List<Versioned<String>>> expected = stores.get(2)
+                                                              .getAll(Collections.singletonList("key"));
 
-        ReadRepairStore<Integer> store = new ReadRepairStore<Integer>("test",
-                                                                      subStores,
-                                                                      storeDef,
-                                                                      1,
-                                                                      1000L,
-                                                                      TimeUnit.MILLISECONDS,
-                                                                      true);
+        awaitCompletion(repair, async.submitGet("key"));
+        assertReadRepair(expected, stores);
 
-        recordException(failureDetector, Iterables.get(cluster.getNodes(), 0));
-        Versioned<byte[]> versioned = new Versioned<byte[]>(value);
-        versioned.getVersion().incrementClock(1);
-        store.put(key, versioned);
-        recordSuccess(failureDetector, Iterables.get(cluster.getNodes(), 0));
-        time.sleep(2000);
-
-        assertEquals(2, store.get(key).size());
-        // Last get should have repaired the missing key from node 0 so all
-        // stores should now return a value
-        assertEquals(3, store.get(key).size());
-
-        ByteArray anotherKey = TestUtils.toByteArray("anotherKey");
-        // Try again, now use getAll to read repair
-        recordException(failureDetector, Iterables.get(cluster.getNodes(), 0));
-        store.put(anotherKey, versioned);
-        recordSuccess(failureDetector, Iterables.get(cluster.getNodes(), 0));
-        assertEquals(2, store.getAll(Arrays.asList(anotherKey)).get(anotherKey).size());
-        assertEquals(3, store.get(anotherKey).size());
+        expected = stores.get(2).getAll(keys);
+        awaitCompletion(repair, async.submitGetAll(keys));
+        assertReadRepair(expected, stores);
     }
 
     @Test
     public void testSlowStoreDuringReadRepair() {
-        ByteArray key = TestUtils.toByteArray("key");
-        byte[] value = "foo".getBytes();
+        Map<Integer, Store<String, String>> stores = buildMemoryStores("repair", 5);
+        Map<Integer, Store<String, String>> sleepies = buildSleepyStores(stores, 2, 100);
+        StoreDefinition storeDef = getStoreDef("repair", sleepies.size(), sleepies.size(), 1);
+        DistributedStore<Integer, String, String> repair = getRepairStore(sleepies, storeDef);
+        AsynchronousStore<String, String> async = DistributedStoreFactory.asAsync(storeDef, repair);
+        Collection<String> keys = Arrays.asList("1", "2");
+        Versioned<String> one = new Versioned<String>("one", TestUtils.getClock(1));
+        Versioned<String> two = new Versioned<String>("two", TestUtils.getClock(2));
+        Versioned<String> value = new Versioned<String>("value", TestUtils.getClock(3, 3));
 
-        StoreDefinition storeDef = ServerTestUtils.getStoreDef("test",
-                                                               3,
-                                                               3,
-                                                               3,
-                                                               2,
-                                                               2,
-                                                               RoutingStrategyType.CONSISTENT_STRATEGY);
-        Map<Integer, Store<ByteArray, byte[]>> subStores = Maps.newHashMap();
-        Store<ByteArray, byte[]> sleepy = new InMemoryStorageEngine<ByteArray, byte[]>("sleepy");
-        subStores.put(0, new InMemoryStorageEngine<ByteArray, byte[]>("test-0"));
-        subStores.put(1, new InMemoryStorageEngine<ByteArray, byte[]>("test-1"));
-        subStores.put(2, new SleepyStore<ByteArray, byte[]>(1000L, sleepy));
+        stores.get(2).put("key", value);
+        stores.get(3).put("key", value);
+        stores.get(4).put("key", value);
+        stores.get(2).put("1", one);
+        stores.get(3).put("1", one);
+        stores.get(4).put("1", one);
+        stores.get(0).put("2", two);
+        stores.get(1).put("2", two);
+        stores.get(2).put("2", two);
 
-        subStores.get(0).put(key, new Versioned<byte[]>(value, TestUtils.getClock(3, 3)));
+        Map<String, List<Versioned<String>>> expected = stores.get(2)
+                                                              .getAll(Collections.singletonList("key"));
 
-        ReadRepairStore<Integer> store = new ReadRepairStore<Integer>("test",
-                                                                      subStores,
-                                                                      storeDef,
-                                                                      1,
-                                                                      1200L,
-                                                                      TimeUnit.MILLISECONDS,
-                                                                      true);
-        List<Versioned<byte[]>> results = store.get(key);
-        results.get(0).setObject("bar".getBytes());
+        awaitCompletion(repair, async.submitGet("key"));
+        assertReadRepair(expected, sleepies);
+
+        expected = stores.get(2).getAll(keys);
+        awaitCompletion(repair, async.submitGetAll(keys));
+        assertReadRepair(expected, sleepies);
+
+    }
+
+    @Test
+    public void testReadRepairWithFailures() {
+        Map<Integer, Store<String, String>> stores = buildMemoryStores("repair", 5);
+
+        stores = buildSleepyStores(stores, 2, 100);
+        Map<Integer, Store<String, String>> failures = Maps.newHashMap(stores);
+        failures.put(5,
+                     AsyncUtils.asStore(new FailingStore<String, String>("failure",
+                                                                         new VoldemortException("oops"))));
+        failures.put(6,
+                     AsyncUtils.asStore(new FailingStore<String, String>("failure",
+                                                                         new VoldemortException("oops"))));
+        StoreDefinition storeDef = getStoreDef("failure", failures.size(), failures.size(), 2);
+        DistributedStore<Integer, String, String> repair = getRepairStore(failures, storeDef);
+        AsynchronousStore<String, String> async = DistributedStoreFactory.asAsync(storeDef, repair);
+        Collection<String> keys = Arrays.asList("1", "2");
+        Versioned<String> one = new Versioned<String>("one", TestUtils.getClock(1));
+        Versioned<String> two = new Versioned<String>("two", TestUtils.getClock(2));
+        Versioned<String> value = new Versioned<String>("value", TestUtils.getClock(3, 3));
+
+        stores.get(2).put("key", value);
+        stores.get(3).put("key", value);
+        stores.get(4).put("key", value);
+        stores.get(2).put("1", one);
+        stores.get(3).put("1", one);
+        stores.get(4).put("1", one);
+        stores.get(0).put("2", two);
+        stores.get(1).put("2", two);
+        stores.get(2).put("2", two);
+
+        Map<String, List<Versioned<String>>> expected = stores.get(2)
+                                                              .getAll(Collections.singletonList("key"));
+
+        awaitCompletion(repair, async.submitGet("key"));
+        assertReadRepair(expected, stores);
+
+        expected = stores.get(2).getAll(keys);
+        awaitCompletion(repair, async.submitGetAll(keys));
+        assertReadRepair(expected, stores);
+
+    }
+
+    @Test
+    public void testReadRepairWithOnlyRequiredResponses() throws Exception {
+        Map<Integer, Store<String, String>> stores = buildMemoryStores("required", 5); // 3
+        // good
+        // stores
+        stores = buildSleepyStores(stores, 2, 1000); // 2 sleepy ones
+
+        StoreDefinition storeDef = getStoreDef("repair", stores.size(), 5, 1);
+        DistributedStore<Integer, String, String> repair = getRepairStore(stores, storeDef);
+
+        Collection<String> keys = Arrays.asList("1", "2");
+        Versioned<String> one = new Versioned<String>("one", TestUtils.getClock(1));
+        Versioned<String> two = new Versioned<String>("two", TestUtils.getClock(2));
+        Versioned<String> value = new Versioned<String>("value", TestUtils.getClock(3, 3));
+
+        stores.get(2).put("key", value);
+        stores.get(3).put("key", value);
+        stores.get(4).put("key", value);
+        stores.get(2).put("1", one);
+        stores.get(3).put("1", one);
+        stores.get(4).put("1", one);
+        stores.get(0).put("2", two);
+        stores.get(1).put("2", two);
+        stores.get(2).put("2", two);
+
+        DistributedFuture<Integer, List<Versioned<String>>> f = repair.submitGet("key",
+                                                                                 stores.keySet(),
+                                                                                 5,
+                                                                                 3);
         try {
-            Thread.sleep(2000);
-        } catch(Exception e) {}
-        List<Versioned<byte[]>> sleepyResults = sleepy.get(key);
-        assertEquals("Sleepy store has all results", results.size(), sleepyResults.size());
-        assertEquals("Sleepy results unchanged",
-                     new String(value),
-                     new String(sleepyResults.get(0).getValue()));
+            List<Versioned<String>> expected = f.get(500, TimeUnit.MILLISECONDS);
+            Collection<Integer> responders = f.getResults().keySet();
+            awaitCompletion(repair);
+            for(Integer r: responders) {
+                List<Versioned<String>> result = stores.get(r).get("key");
+                assertEquals("Same number of results", expected.size(), result.size());
+                for(Versioned<String> v: expected) {
+                    assertContains(result, v);
+                }
+            }
+        } catch(Exception e) {
+            fail("Unexpected exception " + e.getMessage());
+        }
     }
 }

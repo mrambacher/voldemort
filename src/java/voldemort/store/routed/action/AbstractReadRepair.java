@@ -17,11 +17,11 @@
 package voldemort.store.routed.action;
 
 import java.util.List;
-import java.util.Map;
 
 import voldemort.VoldemortApplicationException;
 import voldemort.cluster.Node;
-import voldemort.store.nonblockingstore.NonblockingStore;
+import voldemort.store.async.AsynchronousStore;
+import voldemort.store.distributed.DistributedStore;
 import voldemort.store.routed.NodeValue;
 import voldemort.store.routed.Pipeline;
 import voldemort.store.routed.PipelineData;
@@ -38,20 +38,20 @@ public abstract class AbstractReadRepair<K, V, PD extends PipelineData<K, V>> ex
 
     private final int preferred;
 
-    private final Map<Integer, NonblockingStore> nonblockingStores;
+    private final DistributedStore<Node, ByteArray, byte[]> distributor;
 
-    private final ReadRepairer<Integer, ByteArray, byte[]> readRepairer;
+    private final ReadRepairer<Node, ByteArray, byte[]> readRepairer;
 
-    private final List<NodeValue<Integer, ByteArray, byte[]>> nodeValues;
+    private final List<NodeValue<Node, ByteArray, byte[]>> nodeValues;
 
     public AbstractReadRepair(PD pipelineData,
                               Event completeEvent,
                               int preferred,
-                              Map<Integer, NonblockingStore> nonblockingStores,
-                              ReadRepairer<Integer, ByteArray, byte[]> readRepairer) {
+                              DistributedStore<Node, ByteArray, byte[]> distributor,
+                              ReadRepairer<Node, ByteArray, byte[]> readRepairer) {
         super(pipelineData, completeEvent);
         this.preferred = preferred;
-        this.nonblockingStores = nonblockingStores;
+        this.distributor = distributor;
         this.readRepairer = readRepairer;
         this.nodeValues = Lists.newArrayListWithExpectedSize(pipelineData.getResponses().size());
     }
@@ -61,12 +61,10 @@ public abstract class AbstractReadRepair<K, V, PD extends PipelineData<K, V>> ex
     protected void insertNodeValue(Node node, ByteArray key, List<Versioned<byte[]>> value) {
         if(value.size() == 0) {
             Versioned<byte[]> versioned = new Versioned<byte[]>(null);
-            nodeValues.add(new NodeValue<Integer, ByteArray, byte[]>(node.getId(), key, versioned));
+            nodeValues.add(new NodeValue<Node, ByteArray, byte[]>(node, key, versioned));
         } else {
             for(Versioned<byte[]> versioned: value)
-                nodeValues.add(new NodeValue<Integer, ByteArray, byte[]>(node.getId(),
-                                                                         key,
-                                                                         versioned));
+                nodeValues.add(new NodeValue<Node, ByteArray, byte[]>(node, key, versioned));
         }
     }
 
@@ -74,7 +72,7 @@ public abstract class AbstractReadRepair<K, V, PD extends PipelineData<K, V>> ex
         insertNodeValues();
 
         if(nodeValues.size() > 1 && preferred > 1) {
-            List<NodeValue<Integer, ByteArray, byte[]>> toReadRepair = Lists.newArrayList();
+            List<NodeValue<Node, ByteArray, byte[]>> toReadRepair = Lists.newArrayList();
 
             /*
              * We clone after computing read repairs in the assumption that the
@@ -82,22 +80,21 @@ public abstract class AbstractReadRepair<K, V, PD extends PipelineData<K, V>> ex
              * version, but not the key or value as the latter two are not
              * mutated.
              */
-            for(NodeValue<Integer, ByteArray, byte[]> v: readRepairer.getRepairs(nodeValues)) {
+            for(NodeValue<Node, ByteArray, byte[]> v: readRepairer.getRepairs(nodeValues)) {
                 Versioned<byte[]> versioned = Versioned.value(v.getVersioned().getValue(),
                                                               ((VectorClock) v.getVersion()).clone());
-                toReadRepair.add(new NodeValue<Integer, ByteArray, byte[]>(v.getNode(),
-                                                                           v.getKey(),
-                                                                           versioned));
+                toReadRepair.add(new NodeValue<Node, ByteArray, byte[]>(v.getNode(),
+                                                                        v.getKey(),
+                                                                        versioned));
             }
 
-            for(NodeValue<Integer, ByteArray, byte[]> v: toReadRepair) {
+            for(NodeValue<Node, ByteArray, byte[]> v: toReadRepair) {
                 try {
                     if(logger.isDebugEnabled())
                         logger.debug("Doing read repair on node " + v.getNode() + " for key '"
                                      + v.getKey() + "' with version " + v.getVersion() + ".");
-
-                    NonblockingStore store = nonblockingStores.get(v.getNode());
-                    store.submitPutRequest(v.getKey(), v.getVersioned(), null);
+                    AsynchronousStore<ByteArray, byte[]> async = distributor.getNodeStore(v.getNode());
+                    async.submitPut(v.getKey(), v.getVersioned());
                 } catch(VoldemortApplicationException e) {
                     if(logger.isDebugEnabled())
                         logger.debug("Read repair cancelled due to application level exception on node "

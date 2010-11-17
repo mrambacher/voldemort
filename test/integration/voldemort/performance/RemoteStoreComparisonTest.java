@@ -36,6 +36,7 @@ import voldemort.server.StoreRepository;
 import voldemort.server.http.HttpService;
 import voldemort.server.protocol.RequestHandlerFactory;
 import voldemort.store.Store;
+import voldemort.store.async.AsyncUtils;
 import voldemort.store.http.HttpStore;
 import voldemort.store.memory.InMemoryStorageEngine;
 import voldemort.store.socket.SocketStoreFactory;
@@ -94,11 +95,11 @@ public class RemoteStoreComparisonTest {
         StoreRepository repository = new StoreRepository();
         repository.addLocalStore(new InMemoryStorageEngine<ByteArray, byte[]>(storeName));
         SocketStoreFactory storeFactory = new ClientRequestExecutorPool(10, 1000, 1000, 32 * 1024);
-        final Store<ByteArray, byte[]> socketStore = storeFactory.create(storeName,
-                                                                         "localhost",
-                                                                         6666,
-                                                                         RequestFormatType.VOLDEMORT_V1,
-                                                                         RequestRoutingType.NORMAL);
+        final Store<ByteArray, byte[]> socketStore = AsyncUtils.asStore(storeFactory.create(storeName,
+                                                                                            "localhost",
+                                                                                            6666,
+                                                                                            RequestFormatType.VOLDEMORT_V1,
+                                                                                            RequestRoutingType.NORMAL));
         RequestHandlerFactory factory = ServerTestUtils.getSocketRequestHandlerFactory(repository);
         AbstractSocketService socketService = ServerTestUtils.getSocketService(useNio,
                                                                                factory,

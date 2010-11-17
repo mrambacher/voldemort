@@ -39,6 +39,7 @@ import voldemort.cluster.Node;
 import voldemort.server.RequestRoutingType;
 import voldemort.store.InvalidMetadataException;
 import voldemort.store.Store;
+import voldemort.store.async.AsyncUtils;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.store.socket.SocketStoreFactory;
 import voldemort.store.socket.clientrequest.ClientRequestExecutorPool;
@@ -112,11 +113,11 @@ public class Ec2RebalanceTest extends AbstractRebalanceTest {
                                                                         32 * 1024);
         RequestRoutingType requestRoutingType = RequestRoutingType.getRequestRoutingType(isRouted,
                                                                                          false);
-        return storeFactory.create(storeName,
-                                   host,
-                                   port,
-                                   RequestFormatType.PROTOCOL_BUFFERS,
-                                   requestRoutingType);
+        return AsyncUtils.asStore(storeFactory.create(storeName,
+                                                      host,
+                                                      port,
+                                                      RequestFormatType.PROTOCOL_BUFFERS,
+                                                      requestRoutingType));
     }
 
     @Override

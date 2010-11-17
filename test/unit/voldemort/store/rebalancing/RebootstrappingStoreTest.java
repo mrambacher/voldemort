@@ -1,12 +1,11 @@
 package voldemort.store.rebalancing;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+
+import junit.framework.TestCase;
 
 import org.junit.After;
 import org.junit.Before;
@@ -35,7 +34,7 @@ import com.google.common.collect.Maps;
 /**
  * Test {@link RebootstrappingStore}
  */
-public class RebootstrappingStoreTest {
+public class RebootstrappingStoreTest extends TestCase {
 
     private final static String STORE_NAME = "test";
     private final static String STORES_XML = "test/common/voldemort/config/single-store.xml";
@@ -48,7 +47,9 @@ public class RebootstrappingStoreTest {
     private StoreClient<String, String> storeClient;
 
     @Before
+    @Override
     public void setUp() throws Exception {
+        super.setUp();
         entries = Maps.newHashMap();
         entries.put("a", "1");
         entries.put("b", "2");
@@ -79,10 +80,12 @@ public class RebootstrappingStoreTest {
     }
 
     @After
-    public void tearDown() {
+    @Override
+    public void tearDown() throws Exception {
         if(servers != null)
             for(VoldemortServer server: servers)
                 server.stop();
+        super.tearDown();
     }
 
     public void rebalance() {

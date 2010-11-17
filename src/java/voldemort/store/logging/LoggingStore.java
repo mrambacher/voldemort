@@ -24,6 +24,7 @@ import voldemort.VoldemortException;
 import voldemort.store.DelegatingStore;
 import voldemort.store.Store;
 import voldemort.store.StoreCapabilityType;
+import voldemort.store.async.AsynchronousStore;
 import voldemort.utils.SystemTime;
 import voldemort.utils.Time;
 import voldemort.versioning.Version;
@@ -40,12 +41,29 @@ public class LoggingStore<K, V> extends DelegatingStore<K, V> {
     private final Time time;
     private final String instanceName;
 
+    public static <K, V> AsynchronousStore<K, V> create(AsynchronousStore<K, V> async) {
+        return create(async, null);
+    }
+
+    public static <K, V> AsynchronousStore<K, V> create(AsynchronousStore<K, V> async,
+                                                        String instance) {
+        return new AsyncLoggingStore<K, V>(async, instance);
+    }
+
+    public static <K, V> Store<K, V> create(Store<K, V> store) {
+        return create(store, null);
+    }
+
+    public static <K, V> LoggingStore<K, V> create(Store<K, V> store, String instance) {
+        return new LoggingStore<K, V>(store, instance, SystemTime.INSTANCE);
+    }
+
     /**
      * Create a logging store that wraps the given store
      * 
      * @param store The store to wrap
      */
-    public LoggingStore(Store<K, V> store) {
+    LoggingStore(Store<K, V> store) {
         this(store, new SystemTime());
     }
 

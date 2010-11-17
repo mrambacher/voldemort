@@ -24,6 +24,9 @@ import java.util.Arrays;
 import java.util.List;
 
 import junit.framework.TestCase;
+
+import org.junit.Ignore;
+
 import voldemort.ServerTestUtils;
 import voldemort.client.rebalance.RebalanceClusterPlan;
 import voldemort.client.rebalance.RebalanceNodePlan;
@@ -84,6 +87,7 @@ public class RebalanceUtilsTest extends TestCase {
         }
     }
 
+    @Ignore
     public void testRebalancePlanWithReplicationChanges() {
         currentCluster = ServerTestUtils.getLocalCluster(3, new int[][] { { 0, 1, 2, 3 },
                 { 4, 5, 6 }, { 7, 8, 9 } });
@@ -179,5 +183,5 @@ public class RebalanceUtilsTest extends TestCase {
                      info.toString(),
                      (RebalancePartitionsInfo.create(info.toJsonString())).toString());
     }
-   
+
 }

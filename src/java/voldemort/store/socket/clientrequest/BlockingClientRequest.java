@@ -57,8 +57,8 @@ public class BlockingClientRequest<T> implements ClientRequest<T> {
         latch.await();
     }
 
-    public T getResult() throws VoldemortException, IOException {
-        return delegate.getResult();
+    public T call() throws VoldemortException, IOException {
+        return delegate.call();
     }
 
     public boolean isCompleteResponse(ByteBuffer buffer) {

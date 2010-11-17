@@ -1,7 +1,7 @@
 /*
  * Copyright 2008-2009 LinkedIn, Inc
  * 
- * Portion Copyright (c) 2010 Nokia Corporation. All rights reserved.
+ * Portion Copyright 2010 Nokia Corporation. All rights reserved.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
@@ -22,89 +22,125 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-
-import org.apache.log4j.LogManager;
-import org.apache.log4j.Logger;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import voldemort.VoldemortException;
-import voldemort.store.Store;
 import voldemort.store.StoreCapabilityType;
-import voldemort.store.StoreDefinition;
-import voldemort.utils.ByteArray;
-import voldemort.utils.SystemTime;
-import voldemort.utils.Time;
+import voldemort.store.async.AsynchronousStore;
+import voldemort.store.async.StoreFuture;
+import voldemort.store.async.StoreFutureListener;
+import voldemort.store.distributed.DelegatingDistributedStore;
+import voldemort.store.distributed.DistributedFuture;
+import voldemort.store.distributed.DistributedStore;
 import voldemort.versioning.ObsoleteVersionException;
+import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
 import com.google.common.collect.Lists;
 
-public class ReadRepairStore<N> extends DistributingStore<N> {
+/**
+ * A distributed store that repairs out of date keys returned by read/get
+ * operations. This store listens for the get operations to complete and then
+ * repairs any keys that were missing or had obsolete values.
+ */
+public class ReadRepairStore<N, K, V> extends DelegatingDistributedStore<N, K, V> {
 
-    private static final Logger logger = LogManager.getLogger(ReadRepairStore.class);
-    private final boolean repairReads;
-    private final ReadRepairer<N, ByteArray, byte[]> readRepairer;
+    private final ReadRepairer<N, K, V> readRepairer;
+    /**
+     * The number of read repair operations that have been submitted but not
+     * completed.
+     */
+    final AtomicInteger pendingRepairs;
 
-    public ReadRepairStore(String name,
-                           Map<N, Store<ByteArray, byte[]>> stores,
-                           StoreDefinition storeDef,
-                           int numThreads,
-                           long timeout,
-                           TimeUnit units,
-                           boolean repairReads) {
-        this(name,
-             stores,
-             storeDef,
-             Executors.newFixedThreadPool(numThreads),
-             timeout,
-             units,
-             SystemTime.INSTANCE,
-             repairReads);
+    /**
+     * Creates a read repair store from the input store
+     * 
+     * @param distributor The store to read repair.
+     */
+    public ReadRepairStore(DistributedStore<N, K, V> distributor) {
+        super(distributor);
+        this.pendingRepairs = new AtomicInteger(0);
+        this.readRepairer = new ReadRepairer<N, K, V>();
     }
 
-    public ReadRepairStore(String name,
-                           Map<N, Store<ByteArray, byte[]>> stores,
-                           StoreDefinition storeDef,
-                           ExecutorService threadPool,
-                           long timeout,
-                           TimeUnit units,
-                           Time time,
-                           boolean repairReads) {
-        super(name, stores, storeDef, threadPool, timeout, units, time);
-        this.repairReads = repairReads;
-        this.readRepairer = new ReadRepairer<N, ByteArray, byte[]>();
-    }
-
+    /**
+     * Get the value associated with the given key and issues any necessary read
+     * repairs.
+     * 
+     * @param key The key to check for
+     * @return The value associated with the key or an empty list if no values
+     *         are found.
+     * @throws VoldemortException
+     */
     @Override
-    public List<Versioned<byte[]>> get(final ByteArray key,
-                                       Collection<N> nodes,
-                                       int preferred,
-                                       int required,
-                                       long timeout,
-                                       TimeUnit units) throws VoldemortException {
-        ParallelTask<N, List<Versioned<byte[]>>> job = getJob(key, nodes);
-        Map<N, List<Versioned<byte[]>>> results = job.get(preferred, required, timeout, units);
-        List<NodeValue<N, ByteArray, byte[]>> repairs = buildRepairReads(key, results);
-        repairReads(repairs);
-        return buildResults(results);
+    public DistributedFuture<N, List<Versioned<V>>> submitGet(final K key,
+                                                              Collection<N> nodes,
+                                                              int preferred,
+                                                              int required)
+            throws VoldemortException {
+        final DistributedFuture<N, List<Versioned<V>>> future = super.submitGet(key,
+                                                                                nodes,
+                                                                                preferred,
+                                                                                required);
+        StoreFutureListener<List<Versioned<V>>> listener = new StoreFutureListener<List<Versioned<V>>>() {
+
+            public void futureCompleted(Object arg, List<Versioned<V>> result, long duration) {
+                Map<N, List<Versioned<V>>> results = future.getResults();
+                List<NodeValue<N, K, V>> repairs = buildRepairReads(key, results);
+                if(repairs.size() > 0) {
+                    repairReads(repairs);
+                }
+            }
+
+            public void futureFailed(Object arg, VoldemortException ex, long duration) {
+                Map<N, List<Versioned<V>>> results = future.getResults();
+                List<NodeValue<N, K, V>> repairs = buildRepairReads(key, results);
+                if(repairs.size() > 0) {
+                    repairReads(repairs);
+                }
+            }
+        };
+
+        future.register(listener, future);
+        return future;
     }
 
+    /**
+     * Get the values associated with the given keys and issues any necessary
+     * read repairs.
+     * 
+     * @param nodesToKeys The keys to check for
+     * @return The values associated with the keys
+     * @throws VoldemortException
+     */
     @Override
-    public Map<ByteArray, List<Versioned<byte[]>>> getAll(Map<N, List<ByteArray>> keys,
-                                                          int preferred,
-                                                          int required,
-                                                          long timeout,
-                                                          TimeUnit units) throws VoldemortException {
-        ParallelTask<N, Map<ByteArray, List<Versioned<byte[]>>>> job = getAllJob(keys);
-        Map<N, Map<ByteArray, List<Versioned<byte[]>>>> results = job.get(preferred,
-                                                                          required,
-                                                                          timeout,
-                                                                          units);
-        List<NodeValue<N, ByteArray, byte[]>> repairs = buildRepairReads(keys, results);
-        repairReads(repairs);
-        return buildResults(results);
+    public DistributedFuture<N, Map<K, List<Versioned<V>>>> submitGetAll(final Map<N, List<K>> nodesToKeys,
+                                                                         int preferred,
+                                                                         int required)
+            throws VoldemortException {
+        final DistributedFuture<N, Map<K, List<Versioned<V>>>> future = super.submitGetAll(nodesToKeys,
+                                                                                           preferred,
+                                                                                           required);
+        StoreFutureListener<Map<K, List<Versioned<V>>>> listener = new StoreFutureListener<Map<K, List<Versioned<V>>>>() {
+
+            public void futureCompleted(Object arg, Map<K, List<Versioned<V>>> result, long duration) {
+                Map<N, Map<K, List<Versioned<V>>>> results = future.getResults();
+                List<NodeValue<N, K, V>> repairs = buildRepairReads(nodesToKeys, results);
+                if(repairs.size() > 0) {
+                    repairReads(repairs);
+                }
+            }
+
+            public void futureFailed(Object arg, VoldemortException ex, long duration) {
+                Map<N, Map<K, List<Versioned<V>>>> results = future.getResults();
+                List<NodeValue<N, K, V>> repairs = buildRepairReads(nodesToKeys, results);
+                if(repairs.size() > 0) {
+                    repairReads(repairs);
+                }
+            }
+        };
+        future.register(listener, null);
+        return future;
     }
 
     @Override
@@ -124,8 +160,8 @@ public class ReadRepairStore<N> extends DistributingStore<N> {
      * @param key the key.
      * @return NodeValue with null versioned values.
      */
-    private NodeValue<N, ByteArray, byte[]> nullValue(N node, ByteArray key) {
-        return new NodeValue<N, ByteArray, byte[]>(node, key, new Versioned<byte[]>(null));
+    private NodeValue<N, K, V> nullValue(N node, K key) {
+        return new NodeValue<N, K, V>(node, key, new Versioned<V>(null));
     }
 
     /**
@@ -137,29 +173,27 @@ public class ReadRepairStore<N> extends DistributingStore<N> {
      * @param node The node where the key was obtained from.
      * @param fetched The versions obtained from the node.
      */
-    private void fillRepairReadsValues(final List<NodeValue<N, ByteArray, byte[]>> nodeValues,
-                                       final ByteArray key,
+    private void fillRepairReadsValues(final List<NodeValue<N, K, V>> nodeValues,
+                                       final K key,
                                        N node,
-                                       List<Versioned<byte[]>> fetched) {
-        if(repairReads) {
-            // fetched can be null when used from getAll
-            if(fetched == null || fetched.size() == 0) {
-                nodeValues.add(nullValue(node, key));
-            } else {
-                for(Versioned<byte[]> f: fetched)
-                    nodeValues.add(new NodeValue<N, ByteArray, byte[]>(node, key, f));
-            }
+                                       List<Versioned<V>> fetched) {
+        // fetched can be null when used from getAll
+        if(fetched == null || fetched.size() == 0) {
+            nodeValues.add(nullValue(node, key));
+        } else {
+            for(Versioned<V> f: fetched)
+                nodeValues.add(new NodeValue<N, K, V>(node, key, f));
         }
     }
 
-    private List<NodeValue<N, ByteArray, byte[]>> buildRepairReads(ByteArray key,
-                                                                   Map<N, List<Versioned<byte[]>>> nodeResults) {
+    protected List<NodeValue<N, K, V>> buildRepairReads(K key,
+                                                        Map<N, List<Versioned<V>>> nodeResults) {
         if(logger.isDebugEnabled()) {
             logger.debug("Read repair for key: " + key.toString());
         }
 
-        List<NodeValue<N, ByteArray, byte[]>> nodeValues = Lists.newArrayListWithExpectedSize(nodeResults.size());
-        for(Entry<N, List<Versioned<byte[]>>> entry: nodeResults.entrySet()) {
+        List<NodeValue<N, K, V>> nodeValues = Lists.newArrayListWithExpectedSize(nodeResults.size());
+        for(Entry<N, List<Versioned<V>>> entry: nodeResults.entrySet()) {
             final N node = entry.getKey();
             fillRepairReadsValues(nodeValues, key, node, entry.getValue());
         }
@@ -167,15 +201,15 @@ public class ReadRepairStore<N> extends DistributingStore<N> {
 
     }
 
-    private List<NodeValue<N, ByteArray, byte[]>> buildRepairReads(Map<N, List<ByteArray>> keys,
-                                                                   Map<N, Map<ByteArray, List<Versioned<byte[]>>>> values) {
-        List<NodeValue<N, ByteArray, byte[]>> nodeValues = Lists.newArrayListWithExpectedSize(values.size());
+    protected List<NodeValue<N, K, V>> buildRepairReads(Map<N, List<K>> keys,
+                                                        Map<N, Map<K, List<Versioned<V>>>> values) {
+        List<NodeValue<N, K, V>> nodeValues = Lists.newArrayListWithExpectedSize(values.size());
 
-        for(Entry<N, List<ByteArray>> entry: keys.entrySet()) {
+        for(Entry<N, List<K>> entry: keys.entrySet()) {
             N node = entry.getKey();
-            Map<ByteArray, List<Versioned<byte[]>>> result = values.get(node);
+            Map<K, List<Versioned<V>>> result = values.get(node);
             if(result != null) {
-                for(ByteArray key: entry.getValue()) {
+                for(K key: entry.getValue()) {
                     fillRepairReadsValues(nodeValues, key, node, result.get(key));
                 }
             }
@@ -190,48 +224,57 @@ public class ReadRepairStore<N> extends DistributingStore<N> {
      * @param nodeValues The list of node-value mappings as received in get() or
      *        getAll()
      */
-    private void repairReads(final List<NodeValue<N, ByteArray, byte[]>> nodeValues) {
-        if(!repairReads)
-            return;
-        final List<NodeValue<N, ByteArray, byte[]>> repairList = Lists.newArrayList();
+    private void repairReads(final List<NodeValue<N, K, V>> nodeValues) {
+        final List<NodeValue<N, K, V>> pendingRepairs = Lists.newArrayList();
         /*
          * We clone after computing read repairs in the assumption that the
          * output will be smaller than the input. Note that we clone the
          * version, but not the key or value as the latter two are not mutated.
          */
-        for(NodeValue<N, ByteArray, byte[]> v: readRepairer.getRepairs(nodeValues)) {
-            Versioned<byte[]> cloned = v.getVersioned().cloneVersioned();
-            repairList.add(new NodeValue<N, ByteArray, byte[]>(v.getNode(), v.getKey(), cloned));
+        Collection<NodeValue<N, K, V>> repairs = readRepairer.getRepairs(nodeValues);
+        for(NodeValue<N, K, V> v: repairs) {
+            Versioned<V> cloned = v.getVersioned().cloneVersioned();
+            pendingRepairs.add(new NodeValue<N, K, V>(v.getNode(), v.getKey(), cloned));
         }
+        processRepairs(pendingRepairs);
+    }
 
-        if(repairList.size() > 0) {
-            this.executor.execute(new Runnable() {
+    private void processRepairs(List<NodeValue<N, K, V>> pendingRepairs) {
+        this.pendingRepairs.addAndGet(pendingRepairs.size());
+        for(final NodeValue<N, K, V> repair: pendingRepairs) {
+            startRepair(repair);
+        }
+    }
 
-                public void run() {
-                    for(NodeValue<N, ByteArray, byte[]> v: repairList) {
-                        try {
-                            if(logger.isDebugEnabled())
-                                logger.debug("Doing read repair on node " + v.getNode()
-                                             + " for key '" + v.getKey() + "' with version "
-                                             + v.getVersion() + ".");
-                            Store<ByteArray, byte[]> store = getNodeStore(v.getNode());
-                            store.put(v.getKey(), v.getVersioned());
-                        } catch(ObsoleteVersionException e) {
-                            if(logger.isDebugEnabled())
-                                logger.debug("Read repair cancelled due to obsolete version on node "
-                                             + v.getNode()
-                                             + " for key '"
-                                             + v.getKey()
-                                             + "' with version "
-                                             + v.getVersion()
-                                             + ": "
-                                             + e.getMessage());
-                        } catch(Exception e) {
-                            logger.debug("Read repair failed: ", e);
-                        }
-                    }
+    private StoreFuture<Version> startRepair(final NodeValue<N, K, V> repair) {
+        if(logger.isDebugEnabled())
+            logger.debug("Starting read repair on node " + repair.getNode() + " for key '"
+                         + repair.getKey() + "' with version " + repair.getVersion() + ".");
+        final AsynchronousStore<K, V> store = getNodeStore(repair.getNode());
+        StoreFuture<Version> future = store.submitPut(repair.getKey(), repair.getVersioned());
+        future.register(new StoreFutureListener<Version>() {
+
+            public void futureCompleted(Object arg, Version version, long duration) {
+                pendingRepairs.decrementAndGet();
+                if(logger.isDebugEnabled())
+                    logger.debug("Repaired key '" + repair.getKey() + "' `on node "
+                                 + repair.getNode() + " to version " + version);
+            }
+
+            public void futureFailed(Object arg, VoldemortException ex, long duration) {
+                pendingRepairs.decrementAndGet();
+                if(ex instanceof ObsoleteVersionException) {
+                    if(logger.isDebugEnabled())
+                        logger.debug("Read repair cancelled due to obsolete version on node "
+                                     + repair.getNode() + " for key '" + repair.getKey()
+                                     + "' with version " + repair.getVersion() + ": "
+                                     + ex.getMessage());
+                } else {
+                    logger.debug("Read repair failed: ", ex);
                 }
-            });
-        }
+            }
+        },
+                        repair.getKey());
+        return future;
     }
 }

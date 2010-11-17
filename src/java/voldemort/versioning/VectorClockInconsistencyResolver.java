@@ -30,6 +30,10 @@ import com.google.common.collect.Lists;
 public class VectorClockInconsistencyResolver<T> implements InconsistencyResolver<Versioned<T>> {
 
     public List<Versioned<T>> resolveConflicts(List<Versioned<T>> items) {
+        return ResolveConflicts(items);
+    }
+
+    public static <T> List<Versioned<T>> ResolveConflicts(List<Versioned<T>> items) {
         int size = items.size();
         if(size <= 1)
             return items;

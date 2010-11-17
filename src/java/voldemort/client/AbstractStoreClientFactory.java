@@ -21,7 +21,6 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -38,12 +37,14 @@ import voldemort.serialization.SerializerFactory;
 import voldemort.serialization.StringSerializer;
 import voldemort.store.Store;
 import voldemort.store.StoreDefinition;
+import voldemort.store.async.AsynchronousStore;
+import voldemort.store.async.ThreadedStore;
 import voldemort.store.compress.CompressingStore;
 import voldemort.store.compress.CompressionStrategy;
 import voldemort.store.compress.CompressionStrategyFactory;
-import voldemort.store.logging.LoggingStore;
+import voldemort.store.distributed.DistributedStore;
+import voldemort.store.distributed.DistributedStoreFactory;
 import voldemort.store.metadata.MetadataStore;
-import voldemort.store.nonblockingstore.NonblockingStore;
 import voldemort.store.routed.RoutedStoreFactory;
 import voldemort.store.serialized.SerializingStore;
 import voldemort.store.stats.StatTrackingStore;
@@ -59,8 +60,6 @@ import voldemort.versioning.VectorClockInconsistencyResolver;
 import voldemort.versioning.Versioned;
 import voldemort.xml.ClusterMapper;
 import voldemort.xml.StoreDefinitionsMapper;
-
-import com.google.common.collect.Maps;
 
 /**
  * A base class for various {@link voldemort.client.StoreClientFactory
@@ -82,13 +81,12 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
     private final ExecutorService threadPool;
     private final SerializerFactory serializerFactory;
     private final boolean isJmxEnabled;
-    private final RequestFormatType requestFormatType;
+    protected final RequestFormatType requestFormatType;
     private final int jmxId;
     protected volatile FailureDetector failureDetector;
     private final int maxBootstrapRetries;
     private final StoreStats stats;
     private final ClientConfig config;
-    private final RoutedStoreFactory routedStoreFactory;
     private final int clientZoneId;
 
     public AbstractStoreClientFactory(ClientConfig config) {
@@ -104,9 +102,6 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
         this.maxBootstrapRetries = config.getMaxBootstrapRetries();
         this.stats = new StoreStats();
         this.clientZoneId = config.getClientZoneId();
-        this.routedStoreFactory = new RoutedStoreFactory(config.isPipelineRoutedStoreEnabled(),
-                                                         threadPool,
-                                                         config.getRoutingTimeout(TimeUnit.MILLISECONDS));
 
         if(this.isJmxEnabled) {
             JmxUtils.registerMbean(threadPool,
@@ -129,6 +124,19 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
         return new DefaultStoreClient<K, V>(storeName, resolver, this, 3);
     }
 
+    public AsynchronousStore<ByteArray, byte[]> getAsyncStore(StoreDefinition storeDef, Node node) {
+        Store<ByteArray, byte[]> store = getStore(storeDef.getName(),
+                                                  node.getHost(),
+                                                  getPort(node),
+                                                  requestFormatType);
+        return ThreadedStore.create(store, this.threadPool);
+    }
+
+    protected DistributedStore<Node, ByteArray, byte[]> getDistributedStore(StoreDefinition storeDef,
+                                                                            Cluster cluster) {
+        return DistributedStoreFactory.create(this, storeDef, cluster, this.getFailureDetector());
+    }
+
     @SuppressWarnings("unchecked")
     public <K, V> Store<K, V> getRawStore(String storeName,
                                           InconsistencyResolver<Versioned<V>> resolver) {
@@ -145,31 +153,16 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
         if(storeDef == null)
             throw new BootstrapFailureException("Unknown store '" + storeName + "'.");
 
-        boolean repairReads = !storeDef.isView();
-
-        // construct mapping
-        Map<Integer, Store<ByteArray, byte[]>> clientMapping = Maps.newHashMap();
-        Map<Integer, NonblockingStore> nonblockingStores = Maps.newHashMap();
-
-        for(Node node: cluster.getNodes()) {
-            Store<ByteArray, byte[]> store = getStore(storeDef.getName(),
-                                                      node.getHost(),
-                                                      getPort(node),
-                                                      this.requestFormatType);
-            Store<ByteArray, byte[]> loggingStore = new LoggingStore(store);
-            clientMapping.put(node.getId(), loggingStore);
-
-            NonblockingStore nonblockingStore = routedStoreFactory.toNonblockingStore(store);
-            nonblockingStores.put(node.getId(), nonblockingStore);
-        }
+        RoutedStoreFactory routedStoreFactory = new RoutedStoreFactory(config.isPipelineRoutedStoreEnabled(),
+                                                                       this.getFailureDetector(),
+                                                                       config.getRoutingTimeout(TimeUnit.MILLISECONDS));
+        DistributedStore<Node, ByteArray, byte[]> distributor = this.getDistributedStore(storeDef,
+                                                                                         cluster);
 
         Store<ByteArray, byte[]> store = routedStoreFactory.create(cluster,
                                                                    storeDef,
-                                                                   clientMapping,
-                                                                   nonblockingStores,
-                                                                   repairReads,
-                                                                   clientZoneId,
-                                                                   getFailureDetector());
+                                                                   distributor,
+                                                                   clientZoneId);
 
         if(isJmxEnabled) {
             StatTrackingStore statStore = new StatTrackingStore(store, this.stats);

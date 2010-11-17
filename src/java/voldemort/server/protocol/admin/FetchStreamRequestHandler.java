@@ -112,14 +112,15 @@ public abstract class FetchStreamRequestHandler implements StreamRequestHandler 
     }
 
     protected boolean validPartition(byte[] key) {
-        List<Integer> keyPartitions = routingStrategy.getPartitionList(key);
-
-        for(int p: partitionList) {
-            if(keyPartitions.contains(p))
-                return true;
-        }
-
-        return false;
+        //List<Integer> keyPartitions = routingStrategy.getPartitionList(key);
+//        for(int p: partitionList) {
+//            if(keyPartitions.contains(p))
+//                return true;
+//        }
+//
+//        return false;
+        int partition = routingStrategy.getPrimaryPartition(key);
+        return partitionList.contains(partition);
     }
 
 }

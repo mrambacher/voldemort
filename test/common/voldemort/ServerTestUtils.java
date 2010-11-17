@@ -59,10 +59,12 @@ import voldemort.store.Store;
 import voldemort.store.StoreDefinition;
 import voldemort.store.StoreDefinitionBuilder;
 import voldemort.store.UnreachableStoreException;
+import voldemort.store.async.StoreFuture;
 import voldemort.store.http.HttpStore;
 import voldemort.store.memory.InMemoryStorageConfiguration;
 import voldemort.store.memory.InMemoryStorageEngine;
 import voldemort.store.metadata.MetadataStore;
+import voldemort.store.socket.SocketStore;
 import voldemort.store.socket.SocketStoreFactory;
 import voldemort.utils.ByteArray;
 import voldemort.utils.ByteUtils;
@@ -123,12 +125,18 @@ public class ServerTestUtils {
                                                          String storeName,
                                                          int port,
                                                          long sleepMs) {
+        StoreRepository repository = getStores(storeName, clusterXml, storesXml, sleepMs);
+        return getSocketService(useNio, clusterXml, storesXml, port, repository);
+    }
+
+    public static AbstractSocketService getSocketService(boolean useNio,
+                                                         String clusterXml,
+                                                         String storesXml,
+                                                         int port,
+                                                         StoreRepository repository) {
         RequestHandlerFactory factory = getSocketRequestHandlerFactory(clusterXml,
                                                                        storesXml,
-                                                                       getStores(storeName,
-                                                                                 clusterXml,
-                                                                                 storesXml,
-                                                                                 sleepMs));
+                                                                       repository);
         return getSocketService(useNio, factory, port, 5, 10, 10000);
     }
 
@@ -178,33 +186,33 @@ public class ServerTestUtils {
         return socketService;
     }
 
-    public static Store<ByteArray, byte[]> getSocketStore(SocketStoreFactory storeFactory,
-                                                          String storeName,
-                                                          int port) {
+    public static SocketStore getSocketStore(SocketStoreFactory storeFactory,
+                                             String storeName,
+                                             int port) {
         return getSocketStore(storeFactory, storeName, port, RequestFormatType.VOLDEMORT_V1);
     }
 
-    public static Store<ByteArray, byte[]> getSocketStore(SocketStoreFactory storeFactory,
-                                                          String storeName,
-                                                          int port,
-                                                          RequestFormatType type) {
+    public static SocketStore getSocketStore(SocketStoreFactory storeFactory,
+                                             String storeName,
+                                             int port,
+                                             RequestFormatType type) {
         return getSocketStore(storeFactory, storeName, "localhost", port, type);
     }
 
-    public static Store<ByteArray, byte[]> getSocketStore(SocketStoreFactory storeFactory,
-                                                          String storeName,
-                                                          String host,
-                                                          int port,
-                                                          RequestFormatType type) {
+    public static SocketStore getSocketStore(SocketStoreFactory storeFactory,
+                                             String storeName,
+                                             String host,
+                                             int port,
+                                             RequestFormatType type) {
         return getSocketStore(storeFactory, storeName, host, port, type, false);
     }
 
-    public static Store<ByteArray, byte[]> getSocketStore(SocketStoreFactory storeFactory,
-                                                          String storeName,
-                                                          String host,
-                                                          int port,
-                                                          RequestFormatType type,
-                                                          boolean isRouted) {
+    public static SocketStore getSocketStore(SocketStoreFactory storeFactory,
+                                             String storeName,
+                                             String host,
+                                             int port,
+                                             RequestFormatType type,
+                                             boolean isRouted) {
         RequestRoutingType requestRoutingType = RequestRoutingType.getRequestRoutingType(isRouted,
                                                                                          false);
         return storeFactory.create(storeName, host, port, type, requestRoutingType);
@@ -465,16 +473,20 @@ public class ServerTestUtils {
         return server;
     }
 
+    public static <V> V waitForCompletion(StoreFuture<V> future) throws VoldemortException {
+        return future.get();
+    }
+
     public static void waitForServerStart(SocketStoreFactory socketStoreFactory, Node node) {
         boolean success = false;
         int retries = 10;
-        Store<ByteArray, ?> store = null;
+        SocketStore store = null;
         while(retries-- > 0) {
             store = ServerTestUtils.getSocketStore(socketStoreFactory,
                                                    MetadataStore.METADATA_STORE_NAME,
                                                    node.getSocketPort());
             try {
-                store.get(new ByteArray(MetadataStore.CLUSTER_KEY.getBytes()));
+                waitForCompletion(store.submitGet(new ByteArray(MetadataStore.CLUSTER_KEY.getBytes())));
                 success = true;
             } catch(UnreachableStoreException e) {
                 store.close();

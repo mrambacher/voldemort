@@ -58,10 +58,9 @@ public abstract class AbstractByteArrayStoreTest extends AbstractStoreTest<ByteA
 
     @Test
     public void testEmptyByteArray() throws Exception {
-        Store<ByteArray, byte[]> store = getStore();
         Versioned<byte[]> bytes = new Versioned<byte[]>(new byte[0]);
-        Version stored = store.put(new ByteArray(new byte[0]), bytes);
-        List<Versioned<byte[]>> found = store.get(new ByteArray(new byte[0]));
+        Version stored = doPut(new ByteArray(new byte[0]), bytes);
+        List<Versioned<byte[]>> found = doGet(new ByteArray(new byte[0]));
         assertEquals("Incorrect number of results.", 1, found.size());
         assertEquals("Get doesn't equal put.",
                      new Versioned<byte[]>(bytes.getValue(), stored),
@@ -76,11 +75,10 @@ public abstract class AbstractByteArrayStoreTest extends AbstractStoreTest<ByteA
         HashFunction fnv = new FnvHashFunction();
         assertEquals("Hashes match", fnv.hash(key1.get()), fnv.hash(key2.get()));
 
-        Store<ByteArray, byte[]> store = getStore();
         Versioned<byte[]> value1 = new Versioned<byte[]>(key1.get(), TestUtils.getClock(1));
         Versioned<byte[]> value2 = new Versioned<byte[]>(key2.get(), TestUtils.getClock(2));
-        assertEquals("40186 value matches", testFetchedEqualsPut(store, key1, value1), 1);
-        assertEquals("797189 value matches", testFetchedEqualsPut(store, key2, value2), 1);
+        assertEquals("40186 value matches", testFetchedEqualsPut(storeName, key1, value1), 1);
+        assertEquals("797189 value matches", testFetchedEqualsPut(storeName, key2, value2), 1);
     }
 
     @Test
@@ -138,13 +136,11 @@ public abstract class AbstractByteArrayStoreTest extends AbstractStoreTest<ByteA
                 byte[] valNNNk = new byte[valueSize];
                 java.util.Arrays.fill(valNNNk, (byte) 59);
 
-                Store<ByteArray, byte[]> store = getStore();
-
                 ByteArray keyNNNk = new ByteArray(kNNNk);
                 Versioned<byte[]> valueNNNk = new Versioned<byte[]>(valNNNk, TestUtils.getClock(1));
 
-                Version verNNNk = store.put(keyNNNk, valueNNNk);
-                List<Versioned<byte[]>> rNNNk = store.get(keyNNNk);
+                Version verNNNk = doPut(keyNNNk, valueNNNk);
+                List<Versioned<byte[]>> rNNNk = doGet(keyNNNk);
                 Version rverNNNk = rNNNk.get(0).getVersion();
                 assertTrue(verNNNk.compare(rverNNNk) == rverNNNk.compare(verNNNk));
                 assertTrue(TestUtils.bytesEqual(valueNNNk.getValue(), rNNNk.get(0).getValue()));
@@ -158,15 +154,14 @@ public abstract class AbstractByteArrayStoreTest extends AbstractStoreTest<ByteA
 
     @Test
     public void testPruneOnWrite() {
-        Store<ByteArray, byte[]> engine = getStore();
         Versioned<byte[]> v1 = new Versioned<byte[]>(new byte[] { 1 }, TestUtils.getClock(1));
         Versioned<byte[]> v2 = new Versioned<byte[]>(new byte[] { 2 }, TestUtils.getClock(2));
         Versioned<byte[]> v3 = new Versioned<byte[]>(new byte[] { 3 }, TestUtils.getClock(1, 2));
         ByteArray key = new ByteArray((byte) 3);
-        engine.put(key, v1);
-        engine.put(key, v2);
-        assertEquals(2, engine.get(key).size());
-        engine.put(key, v3);
-        assertEquals(1, engine.get(key).size());
+        doPut(key, v1);
+        doPut(key, v2);
+        assertEquals(2, doGet(key).size());
+        doPut(key, v3);
+        assertEquals(1, doGet(key).size());
     }
 }

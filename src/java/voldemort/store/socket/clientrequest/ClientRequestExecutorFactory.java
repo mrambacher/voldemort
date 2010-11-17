@@ -147,7 +147,7 @@ public class ClientRequestExecutorFactory implements
         // This will throw an error if the result of the protocol negotiation
         // failed, otherwise it returns an uninteresting token we can safely
         // ignore.
-        clientRequest.getResult();
+        clientRequest.call();
 
         return clientRequestExecutor;
     }

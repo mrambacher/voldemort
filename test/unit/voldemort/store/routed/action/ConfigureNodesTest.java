@@ -16,9 +16,6 @@
 
 package voldemort.store.routed.action;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
-
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -59,7 +56,7 @@ public class ConfigureNodesTest extends AbstractActionTest {
         assertEquals(cluster.getNodes().size(), pipelineData.getNodes().size());
     }
 
-    @Test(expected = InsufficientOperationalNodesException.class)
+    @Test
     public void testConfigureNodesNotEnoughNodes() throws Exception {
         RoutingStrategy routingStrategy = new RouteToAllStrategy(cluster.getNodes());
         BasicPipelineData<byte[]> pipelineData = new BasicPipelineData<byte[]>();
@@ -77,9 +74,11 @@ public class ConfigureNodesTest extends AbstractActionTest {
         pipeline.execute();
 
         if(pipelineData.getFatalError() != null)
-            throw pipelineData.getFatalError();
+            assertEquals("Expected Operational Nodes Exception",
+                         InsufficientOperationalNodesException.class,
+                         pipelineData.getFatalError().getClass());
         else
-            fail();
+            fail("Expected InsufficientOperationalNodesException error");
     }
 
     @Test

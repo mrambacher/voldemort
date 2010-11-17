@@ -16,18 +16,17 @@
 
 package voldemort.store.routed.action;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.Test;
 
 import voldemort.TestUtils;
 import voldemort.cluster.Node;
+import voldemort.routing.ConsistentRoutingStrategy;
 import voldemort.routing.RouteToAllStrategy;
 import voldemort.routing.RoutingStrategy;
 import voldemort.store.InsufficientOperationalNodesException;
@@ -42,14 +41,14 @@ public class GetAllConfigureNodesTest extends AbstractActionTest {
 
     @Test
     public void testConfigureNodes() throws Exception {
-        RoutingStrategy routingStrategy = new RouteToAllStrategy(cluster.getNodes());
+        int preferred = cluster.getNumberOfNodes() - 1;
+        RoutingStrategy routingStrategy = new ConsistentRoutingStrategy(cluster.getNodes(),
+                                                                        preferred);
         GetAllPipelineData pipelineData = new GetAllPipelineData();
         List<ByteArray> keys = new ArrayList<ByteArray>();
 
         for(int i = 0; i < 10; i++)
             keys.add(TestUtils.toByteArray("key-" + i));
-
-        int preferred = cluster.getNumberOfNodes() - 1;
 
         GetAllConfigureNodes action = new GetAllConfigureNodes(pipelineData,
                                                                Event.COMPLETED,
@@ -68,31 +67,16 @@ public class GetAllConfigureNodesTest extends AbstractActionTest {
         if(pipelineData.getFatalError() != null)
             throw pipelineData.getFatalError();
 
+        Map<Node, List<ByteArray>> pipelineNodes = pipelineData.getNodeToKeysMap();
         for(ByteArray key: keys) {
-            List<Node> allNodesList = routingStrategy.routeRequest(key.get());
-            assertEquals(cluster.getNumberOfNodes(), allNodesList.size());
-
-            List<Node> extraNodes = pipelineData.getKeyToExtraNodesMap().get(key);
-            assertEquals(cluster.getNumberOfNodes() - preferred, extraNodes.size());
-
-            Node expectedExtraNode = allNodesList.get(preferred);
-            Node actualExtraNode = extraNodes.get(0);
-
-            assertEquals(expectedExtraNode, actualExtraNode);
-
-            List<Node> preferredNodes = allNodesList.subList(0, preferred);
+            List<Node> preferredNodes = routingStrategy.routeRequest(key.get());
             assertEquals(preferred, preferredNodes.size());
-
             for(Node node: preferredNodes) {
-                List<ByteArray> nodeKeys = pipelineData.getNodeToKeysMap().get(node);
-
-                if(!nodeKeys.contains(key))
-                    fail();
+                assertTrue("Pipeline node contains key", pipelineNodes.get(node).contains(key));
             }
         }
     }
 
-    @Test(expected = InsufficientOperationalNodesException.class)
     public void testConfigureNodesNotEnoughNodes() throws Exception {
         for(Node node: cluster.getNodes())
             failureDetector.recordException(node,
@@ -116,8 +100,9 @@ public class GetAllConfigureNodesTest extends AbstractActionTest {
         pipeline.addEventAction(Event.STARTED, action);
         pipeline.addEvent(Event.STARTED);
         pipeline.execute();
-
-        throw pipelineData.getFatalError();
+        assertEquals("Caught Exception",
+                     InsufficientOperationalNodesException.class,
+                     pipelineData.getFatalError().getClass());
     }
 
 }

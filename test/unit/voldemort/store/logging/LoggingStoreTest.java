@@ -38,7 +38,7 @@ public class LoggingStoreTest extends AbstractStoreTest<String, String> {
 
     @Override
     public Store<String, String> createStore(String name) {
-        return new LoggingStore<String, String>(new InMemoryStorageEngine<String, String>(name));
+        return LoggingStore.create(new InMemoryStorageEngine<String, String>(name));
     }
 
     @Override

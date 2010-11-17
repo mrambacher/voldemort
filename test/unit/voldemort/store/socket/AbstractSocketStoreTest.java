@@ -33,11 +33,18 @@ import org.junit.runners.Parameterized.Parameters;
 
 import voldemort.ServerTestUtils;
 import voldemort.TestUtils;
+import voldemort.VoldemortException;
 import voldemort.VoldemortTestConstants;
 import voldemort.client.protocol.RequestFormatType;
 import voldemort.server.AbstractSocketService;
-import voldemort.store.AbstractByteArrayStoreTest;
+import voldemort.server.StoreRepository;
+import voldemort.store.FailingStore;
+import voldemort.store.SleepyStore;
 import voldemort.store.Store;
+import voldemort.store.async.AbstractAsynchronousStoreTest;
+import voldemort.store.async.AsyncUtils;
+import voldemort.store.async.AsynchronousStore;
+import voldemort.store.memory.InMemoryStorageEngine;
 import voldemort.store.socket.clientrequest.ClientRequestExecutorPool;
 import voldemort.utils.ByteArray;
 import voldemort.versioning.Versioned;
@@ -47,7 +54,7 @@ import voldemort.versioning.Versioned;
  * 
  * 
  */
-public abstract class AbstractSocketStoreTest extends AbstractByteArrayStoreTest {
+public abstract class AbstractSocketStoreTest extends AbstractAsynchronousStoreTest {
 
     private static final Logger logger = Logger.getLogger(AbstractSocketStoreTest.class);
 
@@ -68,18 +75,22 @@ public abstract class AbstractSocketStoreTest extends AbstractByteArrayStoreTest
     protected final RequestFormatType requestFormatType;
     private final boolean useNio;
     private SocketStoreFactory socketStoreFactory;
+    private StoreRepository repository;
 
     @Override
     @Before
     public void setUp() throws Exception {
         super.setUp();
+        repository = ServerTestUtils.getStores("test",
+                                               VoldemortTestConstants.getOneNodeClusterXml(),
+                                               VoldemortTestConstants.getSimpleStoreDefinitionsXml());
         this.socketPort = ServerTestUtils.findFreePort();
         socketStoreFactory = new ClientRequestExecutorPool(2, 10000, 100000, 32 * 1024);
         socketService = ServerTestUtils.getSocketService(useNio,
                                                          VoldemortTestConstants.getOneNodeClusterXml(),
                                                          VoldemortTestConstants.getSimpleStoreDefinitionsXml(),
-                                                         "test",
-                                                         socketPort);
+                                                         socketPort,
+                                                         repository);
         socketService.start();
     }
 
@@ -92,7 +103,48 @@ public abstract class AbstractSocketStoreTest extends AbstractByteArrayStoreTest
     }
 
     @Override
+    public AsynchronousStore<ByteArray, byte[]> createAsyncStore(String name) {
+        Store<ByteArray, byte[]> local = repository.getLocalStore(name);
+        if(local == null) {
+            local = new InMemoryStorageEngine<ByteArray, byte[]>(name);
+            repository.addLocalStore(local);
+            repository.addRoutedStore(local);
+        }
+        return ServerTestUtils.getSocketStore(socketStoreFactory,
+                                              name,
+                                              socketPort,
+                                              requestFormatType);
+    }
+
+    @Override
     public Store<ByteArray, byte[]> createStore(String name) {
+        return AsyncUtils.asStore(createAsyncStore(name));
+    }
+
+    @Override
+    public AsynchronousStore<ByteArray, byte[]> createSlowStore(String name, long delay) {
+        Store<ByteArray, byte[]> local = repository.getLocalStore(name);
+        if(local == null) {
+            local = new InMemoryStorageEngine<ByteArray, byte[]>(name);
+            local = new SleepyStore<ByteArray, byte[]>(delay, local);
+            repository.addLocalStore(local);
+            repository.addRoutedStore(local);
+        }
+        return ServerTestUtils.getSocketStore(socketStoreFactory,
+                                              name,
+                                              socketPort,
+                                              requestFormatType);
+    }
+
+    @Override
+    public AsynchronousStore<ByteArray, byte[]> createFailingStore(String name,
+                                                                   VoldemortException ex) {
+        Store<ByteArray, byte[]> local = repository.getLocalStore(name);
+        if(local == null) {
+            local = FailingStore.asStore(name, ex);
+            repository.addLocalStore(local);
+            repository.addRoutedStore(local);
+        }
         return ServerTestUtils.getSocketStore(socketStoreFactory,
                                               name,
                                               socketPort,
@@ -106,22 +158,22 @@ public abstract class AbstractSocketStoreTest extends AbstractByteArrayStoreTest
 
     @Test
     public void testVeryLargeValues() throws Exception {
-        final Store<ByteArray, byte[]> store = getStore();
+        final AsynchronousStore<ByteArray, byte[]> store = this.getAsyncStore(storeName);
         byte[] biggie = new byte[1 * 1024 * 1024];
         ByteArray key = new ByteArray(biggie);
         Random rand = new Random();
         for(int i = 0; i < 10; i++) {
             rand.nextBytes(biggie);
             Versioned<byte[]> versioned = new Versioned<byte[]>(biggie);
-            store.put(key, versioned);
-            assertNotNull(store.get(key));
-            assertTrue(store.delete(key, versioned.getVersion()));
+            this.waitForCompletion(store.submitPut(key, versioned));
+            assertNotNull(waitForCompletion(store.submitGet(key)));
+            assertTrue(waitForCompletion(store.submitDelete(key, versioned.getVersion())));
         }
     }
 
     @Test
     public void testThreadOverload() throws Exception {
-        final Store<ByteArray, byte[]> store = getStore();
+        final AsynchronousStore<ByteArray, byte[]> store = getAsyncStore(storeName);
         int numOps = 100;
         final CountDownLatch latch = new CountDownLatch(numOps);
         Executor exec = Executors.newCachedThreadPool();
@@ -129,9 +181,9 @@ public abstract class AbstractSocketStoreTest extends AbstractByteArrayStoreTest
             exec.execute(new Runnable() {
 
                 public void run() {
-                    store.put(TestUtils.toByteArray(TestUtils.randomString("abcdefghijklmnopqrs",
-                                                                           10)),
-                              new Versioned<byte[]>(TestUtils.randomBytes(8)));
+                    waitForCompletion(store.submitPut(TestUtils.toByteArray(TestUtils.randomString("abcdefghijklmnopqrs",
+                                                                                                   10)),
+                                                      new Versioned<byte[]>(TestUtils.randomBytes(8))));
                     latch.countDown();
                 }
             });

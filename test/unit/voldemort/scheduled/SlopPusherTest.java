@@ -25,6 +25,7 @@ import voldemort.TestUtils;
 import voldemort.server.StoreRepository;
 import voldemort.server.scheduler.SlopPusherJob;
 import voldemort.store.FailingStore;
+import voldemort.store.Store;
 import voldemort.store.memory.InMemoryStorageEngine;
 import voldemort.store.slop.Slop;
 import voldemort.store.slop.Slop.Operation;
@@ -50,7 +51,8 @@ public class SlopPusherTest extends TestCase {
         repo.addNodeStore(0, new InMemoryStorageEngine<ByteArray, byte[]>(STORE_NAME));
         repo.addNodeStore(1, new InMemoryStorageEngine<ByteArray, byte[]>(STORE_NAME));
         this.failingNodeId = 2;
-        repo.addNodeStore(failingNodeId, new FailingStore<ByteArray, byte[]>(STORE_NAME));
+        Store<ByteArray, byte[]> failing = FailingStore.asStore(STORE_NAME);
+        repo.addNodeStore(failingNodeId, failing);
         pusher = new SlopPusherJob(repo);
     }
 

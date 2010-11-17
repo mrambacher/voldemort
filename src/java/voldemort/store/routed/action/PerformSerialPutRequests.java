@@ -17,13 +17,14 @@
 package voldemort.store.routed.action;
 
 import java.util.List;
-import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import voldemort.cluster.Node;
-import voldemort.cluster.failuredetector.FailureDetector;
 import voldemort.store.InsufficientOperationalNodesException;
 import voldemort.store.InsufficientZoneResponsesException;
-import voldemort.store.Store;
+import voldemort.store.async.AsynchronousStore;
+import voldemort.store.async.StoreFuture;
+import voldemort.store.distributed.DistributedStore;
 import voldemort.store.routed.Pipeline;
 import voldemort.store.routed.PutPipelineData;
 import voldemort.store.routed.Pipeline.Event;
@@ -36,11 +37,11 @@ import voldemort.versioning.Versioned;
 public class PerformSerialPutRequests extends
         AbstractKeyBasedAction<ByteArray, Version, PutPipelineData> {
 
-    private final FailureDetector failureDetector;
-
     private final int required;
 
-    private final Map<Integer, Store<ByteArray, byte[]>> stores;
+    private final long timeoutMs;
+
+    private final DistributedStore<Node, ByteArray, byte[]> distributor;
 
     private final Versioned<byte[]> versioned;
 
@@ -51,15 +52,15 @@ public class PerformSerialPutRequests extends
     public PerformSerialPutRequests(PutPipelineData pipelineData,
                                     Event completeEvent,
                                     ByteArray key,
-                                    FailureDetector failureDetector,
-                                    Map<Integer, Store<ByteArray, byte[]>> stores,
-                                    int required,
                                     Versioned<byte[]> versioned,
+                                    long timeoutMs,
+                                    DistributedStore<Node, ByteArray, byte[]> distributor,
+                                    int required,
                                     Time time,
                                     Event masterDeterminedEvent) {
         super(pipelineData, completeEvent, key);
-        this.failureDetector = failureDetector;
-        this.stores = stores;
+        this.distributor = distributor;
+        this.timeoutMs = timeoutMs;
         this.required = required;
         this.versioned = versioned;
         this.time = time;
@@ -109,32 +110,26 @@ public class PerformSerialPutRequests extends
                 logger.trace("Attempt #" + (currentNode + 1) + " to perform put (node "
                              + node.getId() + ")");
 
-            long start = System.nanoTime();
-
             try {
-                stores.get(node.getId()).put(key, versionedCopy);
-                long requestTime = (System.nanoTime() - start) / Time.NS_PER_MS;
+                AsynchronousStore<ByteArray, byte[]> async = distributor.getNodeStore(node);
+                StoreFuture<Version> future = async.submitPut(key, versionedCopy);
+                future.get(this.timeoutMs, TimeUnit.MILLISECONDS);
                 pipelineData.incrementSuccesses();
-                failureDetector.recordSuccess(node, requestTime);
 
                 if(logger.isTraceEnabled())
                     logger.trace("Put on node " + node.getId() + " succeeded, using as master");
-                System.out.println("Master is [" + currentNode + "]: " + node);
                 pipelineData.setMaster(node);
                 pipelineData.setVersionedCopy(versionedCopy);
                 pipelineData.getZoneResponses().add(node.getZoneId());
                 break;
             } catch(Exception e) {
-                long requestTime = (System.nanoTime() - start) / Time.NS_PER_MS;
-
-                if(handleResponseError(e, node, requestTime, pipeline, failureDetector))
+                if(handleResponseError(e, node, pipeline))
                     return;
             }
         }
 
         if(pipelineData.getSuccesses() < 1) {
             List<Exception> failures = pipelineData.getFailures();
-            System.out.println("No master node " + required);
             pipelineData.setFatalError(new InsufficientOperationalNodesException("No master node succeeded!",
                                                                                  failures.size() > 0 ? failures.get(0)
                                                                                                     : null,

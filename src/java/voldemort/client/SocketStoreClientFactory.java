@@ -30,6 +30,9 @@ import voldemort.cluster.failuredetector.FailureDetectorConfig;
 import voldemort.cluster.failuredetector.FailureDetectorListener;
 import voldemort.server.RequestRoutingType;
 import voldemort.store.Store;
+import voldemort.store.StoreDefinition;
+import voldemort.store.async.AsyncUtils;
+import voldemort.store.async.AsynchronousStore;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.store.socket.SocketDestination;
 import voldemort.store.socket.SocketStoreFactory;
@@ -69,11 +72,23 @@ public class SocketStoreClientFactory extends AbstractStoreClientFactory {
     }
 
     @Override
+    public AsynchronousStore<ByteArray, byte[]> getAsyncStore(StoreDefinition storeDef, Node node) {
+        return getAsyncStore(storeDef.getName(), node.getHost(), getPort(node), requestFormatType);
+    }
+
+    private AsynchronousStore<ByteArray, byte[]> getAsyncStore(String storeName,
+                                                               String host,
+                                                               int port,
+                                                               RequestFormatType type) {
+        return storeFactory.create(storeName, host, port, type, requestRoutingType);
+    }
+
+    @Override
     protected Store<ByteArray, byte[]> getStore(String storeName,
                                                 String host,
                                                 int port,
                                                 RequestFormatType type) {
-        return storeFactory.create(storeName, host, port, type, requestRoutingType);
+        return AsyncUtils.asStore(getAsyncStore(storeName, host, port, type));
     }
 
     @Override

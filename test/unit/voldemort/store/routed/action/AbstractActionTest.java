@@ -18,6 +18,8 @@ package voldemort.store.routed.action;
 
 import java.io.StringReader;
 
+import junit.framework.TestCase;
+
 import org.junit.After;
 import org.junit.Before;
 
@@ -31,7 +33,7 @@ import voldemort.store.StoreDefinition;
 import voldemort.utils.ByteArray;
 import voldemort.xml.StoreDefinitionsMapper;
 
-public class AbstractActionTest {
+public class AbstractActionTest extends TestCase {
 
     protected Cluster cluster, clusterWithZones;
     protected StoreDefinition storeDef;
@@ -39,7 +41,9 @@ public class AbstractActionTest {
     protected FailureDetector failureDetector, failureDetectorWithZones;
 
     @Before
+    @Override
     public void setUp() throws Exception {
+        super.setUp();
         cluster = VoldemortTestConstants.getThreeNodeCluster();
         failureDetector = new BannagePeriodFailureDetector(new FailureDetectorConfig().setNodes(cluster.getNodes()));
         clusterWithZones = VoldemortTestConstants.getFourNodeClusterWithZones();
@@ -49,11 +53,13 @@ public class AbstractActionTest {
     }
 
     @After
+    @Override
     public void tearDown() throws Exception {
         if(failureDetector != null)
             failureDetector.destroy();
         if(failureDetectorWithZones != null)
             failureDetectorWithZones.destroy();
+        super.tearDown();
     }
 
 }

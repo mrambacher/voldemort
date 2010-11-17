@@ -70,18 +70,18 @@ public abstract class AbstractClientRequest<T> implements ClientRequest<T> {
         }
     }
 
-    public T getResult() throws VoldemortException, IOException {
+    public T call() throws VoldemortException, IOException {
         if(!isComplete)
             throw new IllegalStateException("Client response not complete, cannot determine result");
 
         if(!isParsed)
             throw new UnreachableStoreException("Client response not read/parsed, cannot determine result");
 
-        if(error instanceof IOException)
+        if(error instanceof IOException) {
             throw (IOException) error;
-        else if(error instanceof VoldemortException)
+        } else if(error instanceof VoldemortException) {
             throw (VoldemortException) error;
-
+        }
         return result;
     }
 

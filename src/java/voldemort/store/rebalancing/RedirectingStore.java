@@ -33,6 +33,7 @@ import voldemort.store.DelegatingStore;
 import voldemort.store.Store;
 import voldemort.store.StoreUtils;
 import voldemort.store.UnreachableStoreException;
+import voldemort.store.async.AsyncUtils;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.store.metadata.MetadataStore.VoldemortState;
 import voldemort.store.socket.SocketStoreFactory;
@@ -338,11 +339,11 @@ public class RedirectingStore extends DelegatingStore<ByteArray, byte[]> {
                     logger.info("Creating redirectingSocketStore for donorNode " + donorNode
                                 + " store " + storeName);
                     storeRepository.addRedirectingSocketStore(donorNode.getId(),
-                                                              storeFactory.create(storeName,
-                                                                                  donorNode.getHost(),
-                                                                                  donorNode.getSocketPort(),
-                                                                                  RequestFormatType.PROTOCOL_BUFFERS,
-                                                                                  RequestRoutingType.IGNORE_CHECKS));
+                                                              AsyncUtils.asStore(storeFactory.create(storeName,
+                                                                                                     donorNode.getHost(),
+                                                                                                     donorNode.getSocketPort(),
+                                                                                                     RequestFormatType.PROTOCOL_BUFFERS,
+                                                                                                     RequestRoutingType.IGNORE_CHECKS)));
                 }
             }
         }

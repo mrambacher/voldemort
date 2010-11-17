@@ -17,27 +17,27 @@
 package voldemort.store.rebalancing;
 
 import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 
-import voldemort.VoldemortException;
 import voldemort.client.DefaultStoreClient;
 import voldemort.client.protocol.admin.AdminClient;
 import voldemort.cluster.Cluster;
 import voldemort.cluster.Node;
+import voldemort.cluster.failuredetector.FailureDetector;
 import voldemort.server.RequestRoutingType;
 import voldemort.server.StoreRepository;
 import voldemort.server.VoldemortConfig;
-import voldemort.store.DelegatingStore;
-import voldemort.store.InvalidMetadataException;
 import voldemort.store.Store;
+import voldemort.store.StoreCapabilityType;
+import voldemort.store.async.AsyncUtils;
+import voldemort.store.async.AsynchronousStore;
+import voldemort.store.failuredetector.FailureDetectingStore;
+import voldemort.store.invalidmetadata.MetadataCheckingStore;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.store.routed.RoutedStore;
 import voldemort.store.socket.SocketStoreFactory;
 import voldemort.utils.ByteArray;
 import voldemort.utils.RebalanceUtils;
-import voldemort.versioning.ObsoleteVersionException;
-import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
 /**
@@ -46,30 +46,34 @@ import voldemort.versioning.Versioned;
  * same in {@link DefaultStoreClient} for server side routing<br>
  * 
  */
-public class RebootstrappingStore extends DelegatingStore<ByteArray, byte[]> {
+public class RebootstrappingStore extends MetadataCheckingStore<ByteArray, byte[]> {
 
-    private final int maxMetadataRefreshAttempts = 3;
+    private final static int maxMetadataRefreshAttempts = 3;
 
     private final MetadataStore metadata;
     private final StoreRepository storeRepository;
     private final VoldemortConfig voldemortConfig;
     private final RoutedStore routedStore;
     private final SocketStoreFactory storeFactory;
+    private final FailureDetector failureDetector;
 
     public RebootstrappingStore(MetadataStore metadata,
                                 StoreRepository storeRepository,
                                 VoldemortConfig voldemortConfig,
                                 RoutedStore routedStore,
-                                SocketStoreFactory storeFactory) {
-        super(routedStore);
+                                SocketStoreFactory storeFactory,
+                                FailureDetector failureDetector) {
+        super(routedStore.getName(), maxMetadataRefreshAttempts, routedStore);
         this.metadata = metadata;
         this.storeRepository = storeRepository;
         this.voldemortConfig = voldemortConfig;
         this.routedStore = routedStore;
         this.storeFactory = storeFactory;
+        this.failureDetector = failureDetector;
     }
 
-    private void reinit() {
+    @Override
+    protected void reinit() {
         AdminClient adminClient = RebalanceUtils.createTempAdminClient(voldemortConfig,
                                                                        metadata.getCluster(),
                                                                        4,
@@ -87,6 +91,11 @@ public class RebootstrappingStore extends DelegatingStore<ByteArray, byte[]> {
         }
     }
 
+    @SuppressWarnings("unchecked")
+    private Map<Node, AsynchronousStore<ByteArray, byte[]>> getNodeStores() {
+        return (Map<Node, AsynchronousStore<ByteArray, byte[]>>) routedStore.getCapability(StoreCapabilityType.NODE_STORES);
+    }
+
     /**
      * Check that all nodes in the new cluster have a corrosponding entry in
      * storeRepositiry and innerStores. add a NodeStore if not present, is
@@ -94,89 +103,25 @@ public class RebootstrappingStore extends DelegatingStore<ByteArray, byte[]> {
      * 
      */
     private void checkAndAddNodeStore() {
+        Map<Node, AsynchronousStore<ByteArray, byte[]>> nodeStores = getNodeStores();
         for(Node node: metadata.getCluster().getNodes()) {
             if(!routedStore.getNodeStores().containsKey(node.getId())) {
                 if(!storeRepository.hasNodeStore(getName(), node.getId())) {
                     storeRepository.addNodeStore(node.getId(), createNodeStore(node));
                 }
-                routedStore.getNodeStores().put(node.getId(),
-                                                storeRepository.getNodeStore(getName(),
-                                                                             node.getId()));
+                nodeStores.put(node, AsyncUtils.asAsync(storeRepository.getNodeStore(getName(),
+                                                                                     node.getId())));
             }
         }
     }
 
     private Store<ByteArray, byte[]> createNodeStore(Node node) {
-        return storeFactory.create(getName(),
-                                   node.getHost(),
-                                   node.getSocketPort(),
-                                   voldemortConfig.getRequestFormatType(),
-                                   RequestRoutingType.NORMAL);
+        AsynchronousStore<ByteArray, byte[]> async = storeFactory.create(getName(),
+                                                                         node.getHost(),
+                                                                         node.getSocketPort(),
+                                                                         voldemortConfig.getRequestFormatType(),
+                                                                         RequestRoutingType.NORMAL);
+        return AsyncUtils.asStore(FailureDetectingStore.create(node, failureDetector, async));
     }
 
-    @Override
-    public boolean delete(final ByteArray key, final Version version) {
-        for(int attempts = 0; attempts < this.maxMetadataRefreshAttempts; attempts++) {
-            try {
-                return super.delete(key, version);
-            } catch(InvalidMetadataException e) {
-                reinit();
-            }
-        }
-        throw new VoldemortException(this.maxMetadataRefreshAttempts
-                                     + " metadata refresh attempts failed for server side routing.");
-    }
-
-    @Override
-    public List<Version> getVersions(ByteArray key) {
-        for(int attempts = 0; attempts < this.maxMetadataRefreshAttempts; attempts++) {
-            try {
-                return super.getVersions(key);
-            } catch(InvalidMetadataException e) {
-                reinit();
-            }
-        }
-        throw new VoldemortException(this.maxMetadataRefreshAttempts
-                                     + " metadata refresh attempts failed for server side routing.");
-    }
-
-    @Override
-    public List<Versioned<byte[]>> get(ByteArray key) {
-        for(int attempts = 0; attempts < this.maxMetadataRefreshAttempts; attempts++) {
-            try {
-                return super.get(key);
-            } catch(InvalidMetadataException e) {
-                reinit();
-            }
-        }
-        throw new VoldemortException(this.maxMetadataRefreshAttempts
-                                     + " metadata refresh attempts failed for server side routing.");
-    }
-
-    @Override
-    public Map<ByteArray, List<Versioned<byte[]>>> getAll(Iterable<ByteArray> keys) {
-        for(int attempts = 0; attempts < this.maxMetadataRefreshAttempts; attempts++) {
-            try {
-                return super.getAll(keys);
-            } catch(InvalidMetadataException e) {
-                reinit();
-            }
-        }
-        throw new VoldemortException(this.maxMetadataRefreshAttempts
-                                     + " metadata refresh attempts failed for server side routing.");
-    }
-
-    @Override
-    public Version put(final ByteArray key, final Versioned<byte[]> versioned)
-            throws ObsoleteVersionException {
-        for(int attempts = 0; attempts < this.maxMetadataRefreshAttempts; attempts++) {
-            try {
-                return super.put(key, versioned);
-            } catch(InvalidMetadataException e) {
-                reinit();
-            }
-        }
-        throw new VoldemortException(this.maxMetadataRefreshAttempts
-                                     + " metadata refresh attempts failed for server side routing.");
-    }
 }

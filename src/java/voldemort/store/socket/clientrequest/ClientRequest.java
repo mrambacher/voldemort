@@ -20,6 +20,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.concurrent.Callable;
 
 import voldemort.VoldemortException;
 import voldemort.client.protocol.RequestFormat;
@@ -37,7 +38,7 @@ import voldemort.client.protocol.RequestFormat;
  * @param <T> Type of data that is returned by the request
  */
 
-public interface ClientRequest<T> {
+public interface ClientRequest<T> extends Callable<T> {
 
     /**
      * Once completed has been called, this will return the result of the
@@ -46,7 +47,7 @@ public interface ClientRequest<T> {
      * @return Result or an exception is thrown if the request failed
      */
 
-    public T getResult() throws VoldemortException, IOException;
+    public T call() throws VoldemortException, IOException;
 
     /**
      * This eventually calls into a nested {@link RequestFormat} instance's

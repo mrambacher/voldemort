@@ -28,7 +28,6 @@ import java.util.concurrent.TimeUnit;
 
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
-import voldemort.MutableStoreVerifier;
 import voldemort.ServerTestUtils;
 import voldemort.TestUtils;
 import voldemort.VoldemortException;
@@ -45,6 +44,10 @@ import voldemort.server.VoldemortServer;
 import voldemort.store.SleepyStore;
 import voldemort.store.Store;
 import voldemort.store.StoreDefinition;
+import voldemort.store.async.AsyncUtils;
+import voldemort.store.async.AsynchronousStore;
+import voldemort.store.async.ThreadedStore;
+import voldemort.store.distributed.DistributedStoreFactory;
 import voldemort.store.memory.InMemoryStorageEngine;
 import voldemort.store.routed.RoutedStore;
 import voldemort.store.routed.RoutedStoreFactory;
@@ -182,32 +185,31 @@ public class RoutedStoreParallelismTest {
             storeRepository.addLocalStore(store);
         }
 
-        Map<Integer, Store<ByteArray, byte[]>> stores = new HashMap<Integer, Store<ByteArray, byte[]>>();
+        ExecutorService routedStoreThreadPool = Executors.newFixedThreadPool(clientConfig.getMaxThreads());
+        Map<Node, AsynchronousStore<ByteArray, byte[]>> stores = new HashMap<Node, AsynchronousStore<ByteArray, byte[]>>();
 
         for(Node node: cluster.getNodes()) {
-            Store<ByteArray, byte[]> socketStore = ServerTestUtils.getSocketStore(socketStoreFactory,
-                                                                                  "test-sleepy",
-                                                                                  node.getSocketPort(),
-                                                                                  clientConfig.getRequestFormatType());
-            stores.put(node.getId(), socketStore);
+            Store<ByteArray, byte[]> socketStore = AsyncUtils.asStore(ServerTestUtils.getSocketStore(socketStoreFactory,
+                                                                                                     "test-sleepy",
+                                                                                                     node.getSocketPort(),
+                                                                                                     clientConfig.getRequestFormatType()));
+            stores.put(node, ThreadedStore.create(socketStore, routedStoreThreadPool));
         }
 
         FailureDetectorConfig failureDetectorConfig = new FailureDetectorConfig().setImplementationClassName(BannagePeriodFailureDetector.class.getName())
                                                                                  .setNodes(cluster.getNodes())
-                                                                                 .setStoreVerifier(MutableStoreVerifier.create(stores));
+        /* .setStoreVerifier(MutableStoreVerifier.create(stores)) */;
         FailureDetector failureDetector = FailureDetectorUtils.create(failureDetectorConfig, false);
 
-        ExecutorService routedStoreThreadPool = Executors.newFixedThreadPool(clientConfig.getMaxThreads());
         RoutedStoreFactory routedStoreFactory = new RoutedStoreFactory(routedStoreType.trim()
                                                                                       .equalsIgnoreCase(PIPELINE_ROUTED_STORE),
-                                                                       routedStoreThreadPool,
+                                                                       failureDetector,
                                                                        clientConfig.getRoutingTimeout(TimeUnit.MILLISECONDS));
 
         final RoutedStore routedStore = routedStoreFactory.create(cluster,
                                                                   storeDefinition,
-                                                                  stores,
-                                                                  true,
-                                                                  failureDetector);
+                                                                  DistributedStoreFactory.create(storeDefinition,
+                                                                                                 stores));
 
         ExecutorService runner = Executors.newFixedThreadPool(numClients);
         long start = System.nanoTime();
