@@ -15,6 +15,7 @@ public enum StoreCapabilityType {
     FAILURE_DETECTOR,
     NODE,
     NODE_STORES,
+    SYNCHRONOUS_NODE_STORES,
     ASYNCHRONOUS,
     BOOT_STRAP;
 }

@@ -16,9 +16,13 @@
 
 package voldemort.store.async;
 
+import java.util.Map;
+
 import voldemort.store.NoSuchCapabilityException;
 import voldemort.store.Store;
 import voldemort.store.StoreCapabilityType;
+
+import com.google.common.collect.Maps;
 
 /**
  * Utility class for converting to and from asynchronous stores.
@@ -90,5 +94,19 @@ public class AsyncUtils {
      */
     public static <K, V> CallableStore<K, V> asCallable(Store<K, V> store) {
         return new WrappedCallableStore<K, V>(store);
+    }
+
+    /**
+     * Converts the map of asynchronous stores to a map of synchronous ones.
+     * 
+     * @param asyncs The map of asynchronous stores
+     * @return The synchronous equivalent
+     */
+    public static <N, K, V> Map<N, Store<K, V>> asStores(Map<N, AsynchronousStore<K, V>> asyncs) {
+        Map<N, Store<K, V>> stores = Maps.newHashMap();
+        for(Map.Entry<N, AsynchronousStore<K, V>> entry: asyncs.entrySet()) {
+            stores.put(entry.getKey(), asStore(entry.getValue()));
+        }
+        return stores;
     }
 }

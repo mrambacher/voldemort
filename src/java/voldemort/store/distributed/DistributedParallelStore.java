@@ -28,6 +28,7 @@ import voldemort.store.NoSuchCapabilityException;
 import voldemort.store.StoreCapabilityType;
 import voldemort.store.StoreDefinition;
 import voldemort.store.StoreUtils;
+import voldemort.store.async.AsyncUtils;
 import voldemort.store.async.AsynchronousStore;
 import voldemort.store.async.StoreFuture;
 import voldemort.versioning.Version;
@@ -261,6 +262,8 @@ public class DistributedParallelStore<N, K, V> implements DistributedStore<N, K,
         switch(capability) {
             case NODE_STORES:
                 return this.nodeStores;
+            case SYNCHRONOUS_NODE_STORES:
+                return AsyncUtils.asStores(nodeStores);
             case ASYNCHRONOUS:
                 return this;
             default:
