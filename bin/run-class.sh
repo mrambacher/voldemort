@@ -40,11 +40,7 @@ done
 CLASSPATH=$CLASSPATH:$base_dir/dist/resources
 
 if [ -z "$VOLD_OPTS" ]; then
-<<<<<<< HEAD
-  VOLD_OPTS="-Xmx2G -server -Dcom.sun.management.jmxremote"
-=======
   VOLD_OPTS="-Xmx2G -server -Dcom.sun.management.jmxremote "
->>>>>>> upstream/master
 fi
 
 export CLASSPATH

@@ -44,6 +44,7 @@ import voldemort.store.compress.CompressionStrategy;
 import voldemort.store.compress.CompressionStrategyFactory;
 import voldemort.store.distributed.DistributedStore;
 import voldemort.store.distributed.DistributedStoreFactory;
+import voldemort.store.limiting.LimitingStore;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.store.routed.RoutedStoreFactory;
 import voldemort.store.serialized.SerializingStore;
@@ -177,6 +178,12 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
             store = new CompressingStore(store,
                                          getCompressionStrategy(storeDef.getKeySerializer()),
                                          getCompressionStrategy(storeDef.getValueSerializer()));
+        }
+        int maxKeySize = storeDef.getIntProperty("max.key.size", 0);
+        int maxValueSize = storeDef.getIntProperty("max.value.size", 0);
+        int maxMetadataSize = storeDef.getIntProperty("max.metadata.size", 0);
+        if(maxKeySize > 0 || maxValueSize > 0 || maxMetadataSize > 0) {
+            store = new LimitingStore(store, maxKeySize, maxValueSize, maxMetadataSize);
         }
 
         Serializer<K> keySerializer = (Serializer<K>) serializerFactory.getSerializer(storeDef.getKeySerializer());
