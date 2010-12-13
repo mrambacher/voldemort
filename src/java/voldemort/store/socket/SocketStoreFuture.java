@@ -40,24 +40,30 @@ public class SocketStoreFuture<V> extends StoreFutureTask<V> implements ClientRe
     private boolean cancelled = false;
     private final ClientRequest<V> clientRequest;
 
-    private final ClientRequestExecutor clientRequestExecutor;
+    private ClientRequestExecutor clientRequestExecutor = null;
 
     public SocketStoreFuture(String operation,
                              ClientRequest<V> clientRequest,
                              SocketDestination destination,
-                             ClientRequestExecutorPool pool,
-                             ClientRequestExecutor clientRequestExecutor) {
+                             ClientRequestExecutorPool pool) {
         super(operation);
 
         this.clientRequest = clientRequest;
         this.destination = destination;
         this.pool = pool;
-        this.clientRequestExecutor = clientRequestExecutor;
         this.result = null;
         this.exception = null;
-        this.started = System.nanoTime();
         this.thread = Thread.currentThread();
 
+        try {
+            this.clientRequestExecutor = pool.checkout(destination);
+            this.started = System.nanoTime();
+        } catch(VoldemortException ex) {
+            this.markAsFailed(ex);
+        }
+        if(clientRequestExecutor != null) {
+            clientRequestExecutor.addClientRequest(this);
+        }
     }
 
     public boolean cancel(boolean interruptIfRunning) {

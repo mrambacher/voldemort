@@ -73,13 +73,10 @@ public class SocketStore extends AsynchronousCallableStore<ByteArray, byte[], by
     @Override
     protected <R> StoreFuture<R> submit(AsynchronousStore.Operations operation, Callable<R> task) {
         ClientRequest<R> delegate = (ClientRequest<R>) task;
-        ClientRequestExecutor clientRequestExecutor = pool.checkout(destination);
         SocketStoreFuture<R> socketFuture = new SocketStoreFuture<R>(operation.name(),
                                                                      delegate,
                                                                      destination,
-                                                                     pool,
-                                                                     clientRequestExecutor);
-        clientRequestExecutor.addClientRequest(socketFuture);
+                                                                     pool);
         return socketFuture;
     }
 }
