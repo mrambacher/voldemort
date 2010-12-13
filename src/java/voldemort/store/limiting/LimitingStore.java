@@ -32,13 +32,13 @@ import voldemort.versioning.Versioned;
  * @author mark
  * 
  */
-public class LimitingStore extends DelegatingStore<ByteArray, byte[]> {
+public class LimitingStore extends DelegatingStore<ByteArray, byte[], byte[]> {
 
     private final int maxKeySize;
     private final int maxMetadataSize;
     private final int maxValueSize;
 
-    public LimitingStore(Store<ByteArray, byte[]> store, StoreDefinition storeDef) {
+    public LimitingStore(Store<ByteArray, byte[], byte[]> store, StoreDefinition storeDef) {
         super(store);
         maxKeySize = storeDef.getIntProperty("max.key.size", 0);
         maxValueSize = storeDef.getIntProperty("max.value.size", 0);
@@ -53,7 +53,7 @@ public class LimitingStore extends DelegatingStore<ByteArray, byte[]> {
      * @param valueLimit The limit to the size of the value (<= 0 means
      *        unlimited)
      */
-    public LimitingStore(Store<ByteArray, byte[]> store,
+    public LimitingStore(Store<ByteArray, byte[], byte[]> store,
                          int keyLimit,
                          int valueLimit,
                          int metadataLimit) {
@@ -70,16 +70,17 @@ public class LimitingStore extends DelegatingStore<ByteArray, byte[]> {
     }
 
     @Override
-    public List<Versioned<byte[]>> get(ByteArray key) throws VoldemortException {
+    public List<Versioned<byte[]>> get(ByteArray key, byte[] transforms) throws VoldemortException {
         checkKeyValidity(key);
-        return super.get(key);
+        return super.get(key, transforms);
     }
 
     @Override
-    public Version put(ByteArray key, Versioned<byte[]> value) throws VoldemortException {
+    public Version put(ByteArray key, Versioned<byte[]> value, byte[] transforms)
+            throws VoldemortException {
         checkKeyValidity(key);
         checkValueValidity(value);
-        return super.put(key, value);
+        return super.put(key, value, transforms);
     }
 
     private void checkKeyValidity(ByteArray key) throws VoldemortException {

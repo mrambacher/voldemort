@@ -33,25 +33,25 @@ import voldemort.versioning.Versioned;
  * 
  * 
  */
-public class FailingStore<K, V> implements CallableStore<K, V> {
+public class FailingStore<K, V, T> implements CallableStore<K, V, T> {
 
     private final String name;
     private final VoldemortException exception;
 
-    public static <K, V> AsynchronousStore<K, V> asAsync(String name) {
+    public static <K, V, T> AsynchronousStore<K, V, T> asAsync(String name) {
         return asAsync(name, new VoldemortException("oops"));
     }
 
-    public static <K, V> AsynchronousStore<K, V> asAsync(String name, VoldemortException e) {
-        return AsyncUtils.asAsync(new FailingStore<K, V>(name, e));
+    public static <K, V, T> AsynchronousStore<K, V, T> asAsync(String name, VoldemortException e) {
+        return AsyncUtils.asAsync(new FailingStore<K, V, T>(name, e));
     }
 
-    public static <K, V> Store<K, V> asStore(String name) {
+    public static <K, V, T> Store<K, V, T> asStore(String name) {
         return asStore(name, new VoldemortException("oops"));
     }
 
-    public static <K, V> Store<K, V> asStore(String name, VoldemortException e) {
-        return AsyncUtils.asStore(new FailingStore<K, V>(name, e));
+    public static <K, V, T> Store<K, V, T> asStore(String name, VoldemortException e) {
+        return AsyncUtils.asStore(new FailingStore<K, V, T>(name, e));
     }
 
     public FailingStore(String name) {
@@ -67,11 +67,7 @@ public class FailingStore<K, V> implements CallableStore<K, V> {
         throw exception;
     }
 
-    public <R> R call(Callable<R> task) throws VoldemortException {
-        throw exception;
-    }
-
-    public Callable<List<Versioned<V>>> callGet(K key) throws VoldemortException {
+    public Callable<List<Versioned<V>>> callGet(K key, T transform) throws VoldemortException {
         return new Callable<List<Versioned<V>>>() {
 
             public List<Versioned<V>> call() {
@@ -93,7 +89,8 @@ public class FailingStore<K, V> implements CallableStore<K, V> {
         };
     }
 
-    public Callable<Version> callPut(K key, Versioned<V> value) throws VoldemortException {
+    public Callable<Version> callPut(K key, Versioned<V> value, T transform)
+            throws VoldemortException {
         return new Callable<Version>() {
 
             public Version call() {
@@ -102,7 +99,7 @@ public class FailingStore<K, V> implements CallableStore<K, V> {
         };
     }
 
-    public Callable<Map<K, List<Versioned<V>>>> callGetAll(Iterable<K> keys)
+    public Callable<Map<K, List<Versioned<V>>>> callGetAll(Iterable<K> keys, Map<K, T> transforms)
             throws VoldemortException {
         return new Callable<Map<K, List<Versioned<V>>>>() {
 

@@ -67,14 +67,14 @@ public class StatTrackingStoreTest extends AbstractByteArrayStoreTest {
     }
 
     @Override
-    public StatTrackingStore<ByteArray, byte[]> createStore(String name) {
-        Store<ByteArray, byte[]> store = inner.createStore(name);
-        return new StatTrackingStore<ByteArray, byte[]>(store, null);
+    public StatTrackingStore<ByteArray, byte[], byte[]> createStore(String name) {
+        Store<ByteArray, byte[], byte[]> store = inner.createStore(name);
+        return new StatTrackingStore<ByteArray, byte[], byte[]>(store, null);
     }
 
     @Override
-    public StatTrackingStore<ByteArray, byte[]> getStore() {
-        return (StatTrackingStore<ByteArray, byte[]>) super.getStore();
+    public StatTrackingStore<ByteArray, byte[], byte[]> getStore() {
+        return (StatTrackingStore<ByteArray, byte[], byte[]>) super.getStore();
     }
 
     @Override
@@ -108,9 +108,9 @@ public class StatTrackingStoreTest extends AbstractByteArrayStoreTest {
         private int threadId;
         private StoreCommand command;
         private long times[];
-        StatTrackingStore<ByteArray, byte[]> store;
+        StatTrackingStore<ByteArray, byte[], byte[]> store;
 
-        public ThreadedStore(StatTrackingStore<ByteArray, byte[]> store,
+        public ThreadedStore(StatTrackingStore<ByteArray, byte[], byte[]> store,
                              StoreCommand command,
                              int threadId,
                              long[] times) {
@@ -129,7 +129,7 @@ public class StatTrackingStoreTest extends AbstractByteArrayStoreTest {
             byte[] data = new byte[1024]; // Get the data
             Versioned<byte[]> versioned = new Versioned<byte[]>(data, version);
             try {
-                version = store.put(key, versioned); // Store the value
+                version = store.put(key, versioned, null); // Store the value
                 versions.put(key, version); // Record the new version
             } catch(ObsoleteVersionException e) {
                 versions.put(key, e.getExistingVersion());
@@ -142,7 +142,7 @@ public class StatTrackingStoreTest extends AbstractByteArrayStoreTest {
         }
 
         public void getValue(ByteArray key) {
-            store.get(key); // Get the value
+            store.get(key, null); // Get the value
         }
 
         public void run() {
@@ -184,7 +184,7 @@ public class StatTrackingStoreTest extends AbstractByteArrayStoreTest {
     }
 
     protected void populateStore(int percent) {
-        StatTrackingStore<ByteArray, byte[]> store = getStore();
+        StatTrackingStore<ByteArray, byte[], byte[]> store = getStore();
         Thread[] threads = new Thread[numThreads];
         int initial = percent * iterations / 100; // What percent of the records
         // are already filled
@@ -199,7 +199,7 @@ public class StatTrackingStoreTest extends AbstractByteArrayStoreTest {
         store.resetStatistics();
     }
 
-    private void checkStats(StatTrackingStore<ByteArray, byte[]> store,
+    private void checkStats(StatTrackingStore<ByteArray, byte[], byte[]> store,
                             StoreCommand command,
                             long[][] times) {
         long total = 0;
@@ -213,7 +213,7 @@ public class StatTrackingStoreTest extends AbstractByteArrayStoreTest {
     }
 
     private void testCommand(StoreCommand command, int percent, int threadCount, int numGets) {
-        StatTrackingStore<ByteArray, byte[]> store = getStore();
+        StatTrackingStore<ByteArray, byte[], byte[]> store = getStore();
         populateStore(percent);
         Thread[] threads = new Thread[threadCount];
         int passes = numGets / threadCount;

@@ -43,7 +43,7 @@ import com.google.common.collect.Lists;
  * operations. This store listens for the get operations to complete and then
  * repairs any keys that were missing or had obsolete values.
  */
-public class ReadRepairStore<N, K, V> extends DelegatingDistributedStore<N, K, V> {
+public class ReadRepairStore<N, K, V, T> extends DelegatingDistributedStore<N, K, V, T> {
 
     private final ReadRepairer<N, K, V> readRepairer;
     /**
@@ -52,12 +52,16 @@ public class ReadRepairStore<N, K, V> extends DelegatingDistributedStore<N, K, V
      */
     final AtomicInteger pendingRepairs;
 
+    public static <N, K, V, T> ReadRepairStore<N, K, V, T> create(DistributedStore<N, K, V, T> distributor) {
+        return new ReadRepairStore<N, K, V, T>(distributor);
+    }
+
     /**
      * Creates a read repair store from the input store
      * 
      * @param distributor The store to read repair.
      */
-    public ReadRepairStore(DistributedStore<N, K, V> distributor) {
+    public ReadRepairStore(DistributedStore<N, K, V, T> distributor) {
         super(distributor);
         this.pendingRepairs = new AtomicInteger(0);
         this.readRepairer = new ReadRepairer<N, K, V>();
@@ -74,11 +78,13 @@ public class ReadRepairStore<N, K, V> extends DelegatingDistributedStore<N, K, V
      */
     @Override
     public DistributedFuture<N, List<Versioned<V>>> submitGet(final K key,
+                                                              final T transform,
                                                               Collection<N> nodes,
                                                               int preferred,
                                                               int required)
             throws VoldemortException {
         final DistributedFuture<N, List<Versioned<V>>> future = super.submitGet(key,
+                                                                                transform,
                                                                                 nodes,
                                                                                 preferred,
                                                                                 required);
@@ -115,10 +121,12 @@ public class ReadRepairStore<N, K, V> extends DelegatingDistributedStore<N, K, V
      */
     @Override
     public DistributedFuture<N, Map<K, List<Versioned<V>>>> submitGetAll(final Map<N, List<K>> nodesToKeys,
+                                                                         final Map<K, T> transforms,
                                                                          int preferred,
                                                                          int required)
             throws VoldemortException {
         final DistributedFuture<N, Map<K, List<Versioned<V>>>> future = super.submitGetAll(nodesToKeys,
+                                                                                           transforms,
                                                                                            preferred,
                                                                                            required);
         StoreFutureListener<Map<K, List<Versioned<V>>>> listener = new StoreFutureListener<Map<K, List<Versioned<V>>>>() {
@@ -250,8 +258,8 @@ public class ReadRepairStore<N, K, V> extends DelegatingDistributedStore<N, K, V
         if(logger.isDebugEnabled())
             logger.debug("Starting read repair on node " + repair.getNode() + " for key '"
                          + repair.getKey() + "' with version " + repair.getVersion() + ".");
-        final AsynchronousStore<K, V> store = getNodeStore(repair.getNode());
-        StoreFuture<Version> future = store.submitPut(repair.getKey(), repair.getVersioned());
+        final AsynchronousStore<K, V, T> store = getNodeStore(repair.getNode());
+        StoreFuture<Version> future = store.submitPut(repair.getKey(), repair.getVersioned(), null);
         future.register(new StoreFutureListener<Version>() {
 
             public void futureCompleted(Object arg, Version version, long duration) {
@@ -273,8 +281,7 @@ public class ReadRepairStore<N, K, V> extends DelegatingDistributedStore<N, K, V
                     logger.debug("Read repair failed: ", ex);
                 }
             }
-        },
-                        repair.getKey());
+        }, repair.getKey());
         return future;
     }
 }

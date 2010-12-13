@@ -35,15 +35,16 @@ import voldemort.versioning.Versioned;
  * 
  * 
  */
-public class GzipStore<K> extends DelegatingStore<K, byte[]> implements Store<K, byte[]> {
+public class GzipStore<K> extends DelegatingStore<K, byte[], byte[]> implements
+        Store<K, byte[], byte[]> {
 
-    public GzipStore(Store<K, byte[]> innerStore) {
+    public GzipStore(Store<K, byte[], byte[]> innerStore) {
         super(innerStore);
     }
 
     @Override
-    public List<Versioned<byte[]>> get(K key) throws VoldemortException {
-        List<Versioned<byte[]>> found = getInnerStore().get(key);
+    public List<Versioned<byte[]>> get(K key, byte[] transforms) throws VoldemortException {
+        List<Versioned<byte[]>> found = getInnerStore().get(key, transforms);
         List<Versioned<byte[]>> results = new ArrayList<Versioned<byte[]>>(found.size());
         try {
             for(Versioned<byte[]> item: found)
@@ -58,12 +59,12 @@ public class GzipStore<K> extends DelegatingStore<K, byte[]> implements Store<K,
     }
 
     @Override
-    public Version put(K key, Versioned<byte[]> value) throws VoldemortException {
+    public Version put(K key, Versioned<byte[]> value, byte[] transforms) throws VoldemortException {
         try {
             return getInnerStore().put(key,
                                        new Versioned<byte[]>(IOUtils.toByteArray(new GZIPInputStream(new ByteArrayInputStream(value.getValue()))),
-                                                             value.getVersion(),
-                                                             value.getMetadata()));
+                                                             value.getVersion()),
+                                       transforms);
         } catch(IOException e) {
             throw new VoldemortException(e);
         }

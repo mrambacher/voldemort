@@ -39,10 +39,10 @@ import voldemort.utils.Utils;
  * 
  * 
  */
-public abstract class RoutedStore implements Store<ByteArray, byte[]> {
+public abstract class RoutedStore implements Store<ByteArray, byte[], byte[]> {
 
     protected final String name;
-    protected final DistributedStore<Node, ByteArray, byte[]> distributor;
+    protected final DistributedStore<Node, ByteArray, byte[], byte[]> distributor;
     protected final long timeoutMs;
     protected final Time time;
     protected final StoreDefinition storeDef;
@@ -50,7 +50,7 @@ public abstract class RoutedStore implements Store<ByteArray, byte[]> {
     protected final Logger logger = Logger.getLogger(getClass());
 
     protected RoutedStore(String name,
-                          DistributedStore<Node, ByteArray, byte[]> distributor,
+                          DistributedStore<Node, ByteArray, byte[], byte[]> distributor,
                           Cluster cluster,
                           StoreDefinition storeDef,
                           long timeoutMs,
@@ -114,7 +114,7 @@ public abstract class RoutedStore implements Store<ByteArray, byte[]> {
         }
     }
 
-    public Map<Node, AsynchronousStore<ByteArray, byte[]>> getNodeStores() {
+    public Map<Node, AsynchronousStore<ByteArray, byte[], byte[]>> getNodeStores() {
         return this.distributor.getNodeStores();
     }
 

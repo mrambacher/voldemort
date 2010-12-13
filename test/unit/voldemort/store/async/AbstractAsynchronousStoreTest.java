@@ -41,15 +41,15 @@ import com.google.common.collect.Maps;
 
 abstract public class AbstractAsynchronousStoreTest extends AbstractByteArrayStoreTest {
 
-    protected Map<String, AsynchronousStore<ByteArray, byte[]>> asyncStores;
+    protected Map<String, AsynchronousStore<ByteArray, byte[], byte[]>> asyncStores;
 
     protected AbstractAsynchronousStoreTest(String name) {
         super(name);
-        asyncStores = new HashMap<String, AsynchronousStore<ByteArray, byte[]>>();
+        asyncStores = new HashMap<String, AsynchronousStore<ByteArray, byte[], byte[]>>();
     }
 
-    public AsynchronousStore<ByteArray, byte[]> getAsyncStore(String name) {
-        AsynchronousStore<ByteArray, byte[]> async = asyncStores.get(name);
+    public AsynchronousStore<ByteArray, byte[], byte[]> getAsyncStore(String name) {
+        AsynchronousStore<ByteArray, byte[], byte[]> async = asyncStores.get(name);
         if(async == null) {
             async = createAsyncStore(name);
             asyncStores.put(name, async);
@@ -57,19 +57,20 @@ abstract public class AbstractAsynchronousStoreTest extends AbstractByteArraySto
         return async;
     }
 
-    protected AsynchronousStore<ByteArray, byte[]> getSlowStore(String name) {
+    protected AsynchronousStore<ByteArray, byte[], byte[]> getSlowStore(String name) {
         return createSlowStore(name, 2000);
     }
 
-    abstract protected AsynchronousStore<ByteArray, byte[]> createSlowStore(String name, long delay);
+    abstract protected AsynchronousStore<ByteArray, byte[], byte[]> createSlowStore(String name,
+                                                                                    long delay);
 
-    abstract protected AsynchronousStore<ByteArray, byte[]> createFailingStore(String name,
-                                                                               VoldemortException ex);
+    abstract protected AsynchronousStore<ByteArray, byte[], byte[]> createFailingStore(String name,
+                                                                                       VoldemortException ex);
 
-    public abstract AsynchronousStore<ByteArray, byte[]> createAsyncStore(String name);
+    public abstract AsynchronousStore<ByteArray, byte[], byte[]> createAsyncStore(String name);
 
     @Override
-    public Store<ByteArray, byte[]> createStore(String name) {
+    public Store<ByteArray, byte[], byte[]> createStore(String name) {
         fail("Unexpected API Invocation");
         return null;
     }
@@ -79,38 +80,40 @@ abstract public class AbstractAsynchronousStoreTest extends AbstractByteArraySto
     }
 
     @Override
-    protected Version doPut(String name, ByteArray key, Versioned<byte[]> value) {
-        AsynchronousStore<ByteArray, byte[]> store = getAsyncStore(name);
-        return waitForCompletion(store.submitPut(key, value));
+    protected Version doPut(String name, ByteArray key, Versioned<byte[]> value, byte[] transform) {
+        AsynchronousStore<ByteArray, byte[], byte[]> store = getAsyncStore(name);
+        return waitForCompletion(store.submitPut(key, value, transform));
     }
 
     @Override
-    protected List<Versioned<byte[]>> doGet(String name, ByteArray key) {
-        AsynchronousStore<ByteArray, byte[]> store = getAsyncStore(name);
-        return waitForCompletion(store.submitGet(key));
+    protected List<Versioned<byte[]>> doGet(String name, ByteArray key, byte[] transform) {
+        AsynchronousStore<ByteArray, byte[], byte[]> store = getAsyncStore(name);
+        return waitForCompletion(store.submitGet(key, transform));
     }
 
     @Override
-    protected Map<ByteArray, List<Versioned<byte[]>>> doGetAll(String name, Iterable<ByteArray> keys) {
-        AsynchronousStore<ByteArray, byte[]> store = getAsyncStore(name);
-        return waitForCompletion(store.submitGetAll(keys));
+    protected Map<ByteArray, List<Versioned<byte[]>>> doGetAll(String name,
+                                                               Iterable<ByteArray> keys,
+                                                               Map<ByteArray, byte[]> transforms) {
+        AsynchronousStore<ByteArray, byte[], byte[]> store = getAsyncStore(name);
+        return waitForCompletion(store.submitGetAll(keys, transforms));
     }
 
     @Override
     protected boolean doDelete(String name, ByteArray key, Version version) {
-        AsynchronousStore<ByteArray, byte[]> store = getAsyncStore(name);
+        AsynchronousStore<ByteArray, byte[], byte[]> store = getAsyncStore(name);
         return waitForCompletion(store.submitDelete(key, version));
     }
 
     @Override
     protected List<Version> doGetVersions(String name, ByteArray key) {
-        AsynchronousStore<ByteArray, byte[]> store = getAsyncStore(name);
+        AsynchronousStore<ByteArray, byte[], byte[]> store = getAsyncStore(name);
         return waitForCompletion(store.submitGetVersions(key));
     }
 
     @Override
     protected void doClose(String name) {
-        AsynchronousStore<ByteArray, byte[]> store = getAsyncStore(name);
+        AsynchronousStore<ByteArray, byte[], byte[]> store = getAsyncStore(name);
         try {
             store.close();
         } catch(VoldemortException e) {
@@ -152,20 +155,22 @@ abstract public class AbstractAsynchronousStoreTest extends AbstractByteArraySto
                 fail("Expected timeout exception");
             }
         } catch(Exception e) {
-            assertEquals("Unexpected exception", exception, e.getClass());
+            assertEquals("Unexpected exception in future " + future.getOperation(),
+                         exception,
+                         e.getClass());
         }
     }
 
     @Test
     public void testInterruptedFuture() {
-        AsynchronousStore<ByteArray, byte[]> store = getSlowStore("slow");
+        AsynchronousStore<ByteArray, byte[], byte[]> store = getSlowStore("slow");
         ByteArray key = getKey();
         byte[] value = getValue();
         List<ByteArray> keys = getKeys(5);
-        testInterruptedFuture(store.submitGet(key));
+        testInterruptedFuture(store.submitGet(key, null));
         testInterruptedFuture(store.submitGetVersions(key));
-        testInterruptedFuture(store.submitGetAll(keys));
-        testInterruptedFuture(store.submitPut(key, new Versioned<byte[]>(value)));
+        testInterruptedFuture(store.submitGetAll(keys, null));
+        testInterruptedFuture(store.submitPut(key, new Versioned<byte[]>(value), null));
         testInterruptedFuture(store.submitDelete(key, VersionFactory.newVersion()));
     }
 
@@ -173,40 +178,40 @@ abstract public class AbstractAsynchronousStoreTest extends AbstractByteArraySto
     public void testFutureTimeouts() {
         long delay = 500;
         Maps.newHashMap();
-        AsynchronousStore<ByteArray, byte[]> store = createSlowStore("sleepy", delay);
+        AsynchronousStore<ByteArray, byte[], byte[]> store = createSlowStore("sleepy", delay);
         ByteArray key = getKey();
         byte[] value = getValue();
         List<ByteArray> keys = getKeys(5);
-        testFutureTimeout(400, delay, store.submitGet(key));
+        testFutureTimeout(400, delay, store.submitGet(key, null));
         testFutureTimeout(400, delay, store.submitGetVersions(key));
-        testFutureTimeout(400, delay, store.submitGetAll(keys));
-        testFutureTimeout(400, delay, store.submitPut(key, new Versioned<byte[]>(value)));
+        testFutureTimeout(400, delay, store.submitGetAll(keys, null));
+        testFutureTimeout(400, delay, store.submitPut(key, new Versioned<byte[]>(value), null));
         testFutureTimeout(400, delay, store.submitDelete(key, VersionFactory.newVersion()));
     }
 
     @Test
     public void testTimedFutures() {
-        AsynchronousStore<ByteArray, byte[]> store = createSlowStore("timed", 100);
+        AsynchronousStore<ByteArray, byte[], byte[]> store = createSlowStore("timed", 100);
         ByteArray key = getKey();
         byte[] value = getValue();
         List<ByteArray> keys = getKeys(5);
-        testSlowFuture(200, store.submitGet(key), null);
+        testSlowFuture(200, store.submitGet(key, null), null);
         testSlowFuture(200, store.submitGetVersions(key), null);
-        testSlowFuture(200, store.submitGetAll(keys), null);
-        testSlowFuture(200, store.submitPut(key, new Versioned<byte[]>(value)), null);
+        testSlowFuture(200, store.submitGetAll(keys, null), null);
+        testSlowFuture(200, store.submitPut(key, new Versioned<byte[]>(value), null), null);
         testSlowFuture(200, store.submitDelete(key, VersionFactory.newVersion()), null);
     }
 
     @Test
     public void testFailingFutures() {
-        AsynchronousStore<ByteArray, byte[]> store = createSlowStore(storeName, 100);
+        AsynchronousStore<ByteArray, byte[], byte[]> store = createSlowStore(storeName, 100);
         ByteArray key = getKey();
         byte[] value = getValue();
         List<ByteArray> keys = getKeys(5);
-        testSlowFuture(200, store.submitGet(key), null);
+        testSlowFuture(200, store.submitGet(key, null), null);
         testSlowFuture(200, store.submitGetVersions(key), null);
-        testSlowFuture(200, store.submitGetAll(keys), null);
-        testSlowFuture(200, store.submitPut(key, new Versioned<byte[]>(value)), null);
+        testSlowFuture(200, store.submitGetAll(keys, null), null);
+        testSlowFuture(200, store.submitPut(key, new Versioned<byte[]>(value), null), null);
         testSlowFuture(200, store.submitDelete(key, VersionFactory.newVersion()), null);
     }
 
@@ -292,14 +297,14 @@ abstract public class AbstractAsynchronousStoreTest extends AbstractByteArraySto
 
     @Test
     public void testFutureListeners() {
-        AsynchronousStore<ByteArray, byte[]> store = getSlowStore("slow");
+        AsynchronousStore<ByteArray, byte[], byte[]> store = getSlowStore("slow");
         ByteArray key = getKey();
         byte[] value = getValue();
         List<ByteArray> keys = getKeys(5);
         List<StoreFuture<?>> futures = new ArrayList<StoreFuture<?>>();
-        futures.add(store.submitGet(key));
-        futures.add(store.submitGetAll(keys));
-        futures.add(store.submitPut(key, new Versioned<byte[]>(value)));
+        futures.add(store.submitGet(key, null));
+        futures.add(store.submitGetAll(keys, null));
+        futures.add(store.submitPut(key, new Versioned<byte[]>(value), null));
         futures.add(store.submitDelete(key, VersionFactory.newVersion()));
         futures.add(store.submitGetVersions(key));
         final AtomicInteger finished = registerCountedListeners(futures, 0);
@@ -308,15 +313,15 @@ abstract public class AbstractAsynchronousStoreTest extends AbstractByteArraySto
 
     @Test
     public void testFutureFailureListeners() {
-        AsynchronousStore<ByteArray, byte[]> store = createFailingStore("faililng",
-                                                                        new VoldemortException("oops"));
+        AsynchronousStore<ByteArray, byte[], byte[]> store = createFailingStore("faililng",
+                                                                                new VoldemortException("oops"));
         ByteArray key = getKey();
         byte[] value = getValue();
         List<ByteArray> keys = getKeys(5);
         List<StoreFuture<?>> futures = new ArrayList<StoreFuture<?>>();
-        futures.add(store.submitGet(key));
-        futures.add(store.submitGetAll(keys));
-        futures.add(store.submitPut(key, new Versioned<byte[]>(value)));
+        futures.add(store.submitGet(key, null));
+        futures.add(store.submitGetAll(keys, null));
+        futures.add(store.submitPut(key, new Versioned<byte[]>(value), null));
         futures.add(store.submitDelete(key, VersionFactory.newVersion()));
         futures.add(store.submitGetVersions(key));
         final AtomicInteger finished = registerCountedListeners(futures,
@@ -327,14 +332,14 @@ abstract public class AbstractAsynchronousStoreTest extends AbstractByteArraySto
 
     @Test
     public void testSlowListeners() {
-        AsynchronousStore<ByteArray, byte[]> store = getSlowStore("slow");
+        AsynchronousStore<ByteArray, byte[], byte[]> store = getSlowStore("slow");
         ByteArray key = getKey();
         byte[] value = getValue();
         List<ByteArray> keys = getKeys(5);
         List<StoreFuture<?>> futures = new ArrayList<StoreFuture<?>>();
-        futures.add(store.submitGet(key));
-        futures.add(store.submitGetAll(keys));
-        futures.add(store.submitPut(key, new Versioned<byte[]>(value)));
+        futures.add(store.submitGet(key, null));
+        futures.add(store.submitGetAll(keys, null));
+        futures.add(store.submitPut(key, new Versioned<byte[]>(value), null));
         futures.add(store.submitDelete(key, VersionFactory.newVersion()));
         futures.add(store.submitGetVersions(key));
         final AtomicInteger finished = registerCountedListeners(futures, 100);
@@ -350,14 +355,14 @@ abstract public class AbstractAsynchronousStoreTest extends AbstractByteArraySto
 
     @Test
     public void testFailingListeners() {
-        AsynchronousStore<ByteArray, byte[]> store = getSlowStore("slow");
+        AsynchronousStore<ByteArray, byte[], byte[]> store = getSlowStore("slow");
         ByteArray key = getKey();
         byte[] value = getValue();
         List<ByteArray> keys = getKeys(5);
         List<StoreFuture<?>> futures = new ArrayList<StoreFuture<?>>();
-        futures.add(store.submitGet(key));
-        futures.add(store.submitGetAll(keys));
-        futures.add(store.submitPut(key, new Versioned<byte[]>(value)));
+        futures.add(store.submitGet(key, null));
+        futures.add(store.submitGetAll(keys, null));
+        futures.add(store.submitPut(key, new Versioned<byte[]>(value), null));
         futures.add(store.submitDelete(key, VersionFactory.newVersion()));
         futures.add(store.submitGetVersions(key));
         final AtomicInteger finished = registerFailingListeners(futures, 0, null);
@@ -367,14 +372,14 @@ abstract public class AbstractAsynchronousStoreTest extends AbstractByteArraySto
 
     @Test
     public void testTwoListeners() {
-        AsynchronousStore<ByteArray, byte[]> store = getSlowStore("slow");
+        AsynchronousStore<ByteArray, byte[], byte[]> store = getSlowStore("slow");
         ByteArray key = getKey();
         byte[] value = getValue();
         List<ByteArray> keys = getKeys(5);
         List<StoreFuture<?>> futures = new ArrayList<StoreFuture<?>>();
-        futures.add(store.submitGet(key));
-        futures.add(store.submitGetAll(keys));
-        futures.add(store.submitPut(key, new Versioned<byte[]>(value)));
+        futures.add(store.submitGet(key, null));
+        futures.add(store.submitGetAll(keys, null));
+        futures.add(store.submitPut(key, new Versioned<byte[]>(value), null));
         futures.add(store.submitDelete(key, VersionFactory.newVersion()));
         futures.add(store.submitGetVersions(key));
         final AtomicInteger finished1 = registerCountedListeners(futures, 0);
@@ -393,20 +398,22 @@ abstract public class AbstractAsynchronousStoreTest extends AbstractByteArraySto
 
     @Test
     public void testFutureIsIdempotent() {
-        AsynchronousStore<ByteArray, byte[]> store = getSlowStore("slow");
+        AsynchronousStore<ByteArray, byte[], byte[]> store = getSlowStore("slow");
         byte[] value = getValue();
         ByteArray key = getKey();
         AtomicInteger futureCount = new AtomicInteger(4);
         StoreFuture<Version> put = store.submitPut(key,
-                                                   new Versioned<byte[]>(value, getClock(1, 1)));
+                                                   new Versioned<byte[]>(value, getClock(1, 1)),
+                                                   null);
         this.registerCountedListener(0, put, 0, false, null, futureCount);
         Version version = this.waitForCompletion(put);
         Versioned<byte[]> expected = new Versioned<byte[]>(value, version);
 
-        StoreFuture<List<Versioned<byte[]>>> get = store.submitGet(key);
+        StoreFuture<List<Versioned<byte[]>>> get = store.submitGet(key, null);
         this.registerCountedListener(0, get, 0, false, null, futureCount);
         assertContainsVersioned("Version found", expected, waitForCompletion(get));
-        StoreFuture<Map<ByteArray, List<Versioned<byte[]>>>> getAll = store.submitGetAll(Collections.singleton(key));
+        StoreFuture<Map<ByteArray, List<Versioned<byte[]>>>> getAll = store.submitGetAll(Collections.singleton(key),
+                                                                                         null);
 
         this.registerCountedListener(0, getAll, 0, false, null, futureCount);
         Map<ByteArray, List<Versioned<byte[]>>> all = waitForCompletion(getAll);

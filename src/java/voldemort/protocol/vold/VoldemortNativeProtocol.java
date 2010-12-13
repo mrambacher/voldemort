@@ -24,6 +24,14 @@ public class VoldemortNativeProtocol {
         return 4 + key.length();
     }
 
+    public static int getTransformSize(byte[] transform) {
+        if(transform != null) {
+            return 4 + transform.length;
+        } else {
+            return 0;
+        }
+    }
+
     public static void writeKey(DataOutputStream outputStream, ByteArray key) throws IOException {
         outputStream.writeInt(key.length());
         outputStream.write(key.get());

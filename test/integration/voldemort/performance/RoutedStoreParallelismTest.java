@@ -176,23 +176,23 @@ public class RoutedStoreParallelismTest {
                                                                           cluster);
             serverMap.put(i, server);
 
-            Store<ByteArray, byte[]> store = new InMemoryStorageEngine<ByteArray, byte[]>("test-sleepy");
+            Store<ByteArray, byte[], byte[]> store = new InMemoryStorageEngine<ByteArray, byte[], byte[]>("test-sleepy");
 
             if(i < numSlowNodes)
-                store = new SleepyStore<ByteArray, byte[]>(delay, store);
+                store = new SleepyStore<ByteArray, byte[], byte[]>(delay, store);
 
             StoreRepository storeRepository = server.getStoreRepository();
             storeRepository.addLocalStore(store);
         }
 
         ExecutorService routedStoreThreadPool = Executors.newFixedThreadPool(clientConfig.getMaxThreads());
-        Map<Node, AsynchronousStore<ByteArray, byte[]>> stores = new HashMap<Node, AsynchronousStore<ByteArray, byte[]>>();
+        Map<Node, AsynchronousStore<ByteArray, byte[], byte[]>> stores = new HashMap<Node, AsynchronousStore<ByteArray, byte[], byte[]>>();
 
         for(Node node: cluster.getNodes()) {
-            Store<ByteArray, byte[]> socketStore = AsyncUtils.asStore(ServerTestUtils.getSocketStore(socketStoreFactory,
-                                                                                                     "test-sleepy",
-                                                                                                     node.getSocketPort(),
-                                                                                                     clientConfig.getRequestFormatType()));
+            Store<ByteArray, byte[], byte[]> socketStore = AsyncUtils.asStore(ServerTestUtils.getSocketStore(socketStoreFactory,
+                                                                                                             "test-sleepy",
+                                                                                                             node.getSocketPort(),
+                                                                                                             clientConfig.getRequestFormatType()));
             stores.put(node, ThreadedStore.create(socketStore, routedStoreThreadPool));
         }
 
@@ -208,8 +208,11 @@ public class RoutedStoreParallelismTest {
 
         final RoutedStore routedStore = routedStoreFactory.create(cluster,
                                                                   storeDefinition,
-                                                                  DistributedStoreFactory.create(storeDefinition,
-                                                                                                 stores));
+                                                                  DistributedStoreFactory.create(stores,
+                                                                                                 storeDefinition,
+                                                                                                 cluster,
+                                                                                                 failureDetector,
+                                                                                                 0));
 
         ExecutorService runner = Executors.newFixedThreadPool(numClients);
         long start = System.nanoTime();
@@ -223,7 +226,7 @@ public class RoutedStoreParallelismTest {
                         for(int i = 0; i < numKeys; i++) {
                             ByteArray key = new ByteArray(("test-key-" + i).getBytes());
                             try {
-                                routedStore.get(key);
+                                routedStore.get(key, null);
                             } catch(VoldemortException e) {
                                 // 
                             }

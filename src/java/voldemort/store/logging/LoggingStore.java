@@ -35,27 +35,27 @@ import voldemort.versioning.Versioned;
  * 
  * 
  */
-public class LoggingStore<K, V> extends DelegatingStore<K, V> {
+public class LoggingStore<K, V, T> extends DelegatingStore<K, V, T> {
 
     private final Logger logger;
     private final Time time;
     private final String instanceName;
 
-    public static <K, V> AsynchronousStore<K, V> create(AsynchronousStore<K, V> async) {
+    public static <K, V, T> AsynchronousStore<K, V, T> create(AsynchronousStore<K, V, T> async) {
         return create(async, null);
     }
 
-    public static <K, V> AsynchronousStore<K, V> create(AsynchronousStore<K, V> async,
-                                                        String instance) {
-        return new AsyncLoggingStore<K, V>(async, instance);
+    public static <K, V, T> AsynchronousStore<K, V, T> create(AsynchronousStore<K, V, T> async,
+                                                              String instance) {
+        return new AsyncLoggingStore<K, V, T>(async, instance);
     }
 
-    public static <K, V> Store<K, V> create(Store<K, V> store) {
+    public static <K, V, T> Store<K, V, T> create(Store<K, V, T> store) {
         return create(store, null);
     }
 
-    public static <K, V> LoggingStore<K, V> create(Store<K, V> store, String instance) {
-        return new LoggingStore<K, V>(store, instance, SystemTime.INSTANCE);
+    public static <K, V, T> LoggingStore<K, V, T> create(Store<K, V, T> store, String instance) {
+        return new LoggingStore<K, V, T>(store, instance, SystemTime.INSTANCE);
     }
 
     /**
@@ -63,7 +63,7 @@ public class LoggingStore<K, V> extends DelegatingStore<K, V> {
      * 
      * @param store The store to wrap
      */
-    LoggingStore(Store<K, V> store) {
+    public LoggingStore(Store<K, V, T> store) {
         this(store, new SystemTime());
     }
 
@@ -73,7 +73,7 @@ public class LoggingStore<K, V> extends DelegatingStore<K, V> {
      * @param store The store to wrap
      * @param time The time implementation to use for computing ellapsed time
      */
-    public LoggingStore(Store<K, V> store, Time time) {
+    public LoggingStore(Store<K, V, T> store, Time time) {
         this(store, null, time);
     }
 
@@ -84,7 +84,7 @@ public class LoggingStore<K, V> extends DelegatingStore<K, V> {
      * @param instance The instance name to display in logging messages
      * @param time The time implementation to use for computing ellapsed time
      */
-    public LoggingStore(Store<K, V> store, String instance, Time time) {
+    public LoggingStore(Store<K, V, T> store, String instance, Time time) {
         super(store);
         this.logger = Logger.getLogger(store.getClass());
         this.time = time;
@@ -114,13 +114,13 @@ public class LoggingStore<K, V> extends DelegatingStore<K, V> {
     }
 
     @Override
-    public List<Versioned<V>> get(K key) throws VoldemortException {
+    public List<Versioned<V>> get(K key, T transform) throws VoldemortException {
         long startTimeNs = 0;
         boolean succeeded = false;
         if(logger.isDebugEnabled())
             startTimeNs = time.getNanoseconds();
         try {
-            List<Versioned<V>> l = getInnerStore().get(key);
+            List<Versioned<V>> l = getInnerStore().get(key, transform);
             succeeded = true;
             return l;
         } finally {
@@ -129,16 +129,16 @@ public class LoggingStore<K, V> extends DelegatingStore<K, V> {
     }
 
     @Override
-    public Version put(K key, Versioned<V> value) throws VoldemortException {
+    public Version put(K key, Versioned<V> value, T transform) throws VoldemortException {
         long startTimeNs = 0;
         boolean succeeded = false;
         if(logger.isDebugEnabled()) {
             startTimeNs = time.getNanoseconds();
         }
         try {
-            Version version = getInnerStore().put(key, value);
+            Version result = getInnerStore().put(key, value, transform);
             succeeded = true;
-            return version;
+            return result;
         } finally {
             printTimedMessage("PUT", succeeded, startTimeNs);
         }
@@ -147,9 +147,8 @@ public class LoggingStore<K, V> extends DelegatingStore<K, V> {
     private void printTimedMessage(String operation, boolean success, long startNs) {
         if(logger.isDebugEnabled()) {
             double elapsedMs = (time.getNanoseconds() - startNs) / (double) Time.NS_PER_MS;
-            logger.debug(instanceName + operation + " operation on store '" + getName()
-                         + "' completed " + (success ? "successfully" : "unsuccessfully") + " in "
-                         + elapsedMs + " ms.");
+            logger.debug(instanceName + operation + " " + getName() + " "
+                         + (success ? "successful" : "unsuccessful") + " in " + elapsedMs + " ms");
         }
     }
 

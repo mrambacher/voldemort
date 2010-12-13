@@ -34,8 +34,8 @@ import com.google.common.collect.Maps;
 /**
  * Allows a distributed store to be treated as an asynchronous one.
  */
-public class AsynchronousDistributedStore<N, K, V> extends DelegatingDistributedStore<N, K, V>
-        implements AsynchronousStore<K, V> {
+public class AsynchronousDistributedStore<N, K, V, T> extends
+        DelegatingDistributedStore<N, K, V, T> implements AsynchronousStore<K, V, T> {
 
     private final StoreDefinition storeDef;
 
@@ -45,7 +45,7 @@ public class AsynchronousDistributedStore<N, K, V> extends DelegatingDistributed
      * @param storeDef The store definition for this store.
      * @param inner The underlying distributed store.
      */
-    public AsynchronousDistributedStore(StoreDefinition storeDef, DistributedStore<N, K, V> inner) {
+    public AsynchronousDistributedStore(StoreDefinition storeDef, DistributedStore<N, K, V, T> inner) {
         super(inner);
         this.storeDef = storeDef;
     }
@@ -114,11 +114,12 @@ public class AsynchronousDistributedStore<N, K, V> extends DelegatingDistributed
      *         are found.
      * @throws VoldemortException
      */
-    public StoreFuture<List<Versioned<V>>> submitGet(final K key) throws VoldemortException {
+    public StoreFuture<List<Versioned<V>>> submitGet(final K key, final T transform)
+            throws VoldemortException {
         StoreUtils.assertValidKey(key);
         Collection<N> nodes = getNodesForKey(key);
         checkRequiredReads(nodes, getRequiredReads());
-        return this.submitGet(key, nodes, getPreferredReads(), getRequiredReads());
+        return this.submitGet(key, transform, nodes, getPreferredReads(), getRequiredReads());
     }
 
     protected Map<N, List<K>> getNodesForKeys(Iterable<K> keys) throws VoldemortException {
@@ -148,11 +149,12 @@ public class AsynchronousDistributedStore<N, K, V> extends DelegatingDistributed
      * @return A Map of keys to a list of versioned values.
      * @throws VoldemortException
      */
-    public StoreFuture<Map<K, List<Versioned<V>>>> submitGetAll(final Iterable<K> keys)
+    public StoreFuture<Map<K, List<Versioned<V>>>> submitGetAll(final Iterable<K> keys,
+                                                                final Map<K, T> transforms)
             throws VoldemortException {
         StoreUtils.assertValidKeys(keys);
         Map<N, List<K>> nodesToKeys = getNodesForKeys(keys);
-        return this.submitGetAll(nodesToKeys, getPreferredReads(), getRequiredReads());
+        return this.submitGetAll(nodesToKeys, transforms, getPreferredReads(), getRequiredReads());
     }
 
     /**
@@ -161,11 +163,17 @@ public class AsynchronousDistributedStore<N, K, V> extends DelegatingDistributed
      * @param key The key to use
      * @param value The value to store and its version.
      */
-    public StoreFuture<Version> submitPut(K key, Versioned<V> value) throws VoldemortException {
+    public StoreFuture<Version> submitPut(K key, Versioned<V> value, final T transform)
+            throws VoldemortException {
         StoreUtils.assertValidKey(key);
         Collection<N> nodes = getNodesForKey(key);
         checkRequiredWrites(nodes, getRequiredWrites());
-        return this.submitPut(key, value, nodes, getPreferredWrites(), getRequiredWrites());
+        return this.submitPut(key,
+                              value,
+                              transform,
+                              nodes,
+                              getPreferredWrites(),
+                              getRequiredWrites());
     }
 
     /**

@@ -37,11 +37,11 @@ import voldemort.versioning.Versioned;
  * @param <K> The type of keys for this store.
  * @param <V> The type of values for this store.
  */
-abstract public class AsynchronousCallableStore<K, V> implements AsynchronousStore<K, V> {
+abstract public class AsynchronousCallableStore<K, V, T> implements AsynchronousStore<K, V, T> {
 
-    private final CallableStore<K, V> inner;
+    private final CallableStore<K, V, T> inner;
 
-    protected AsynchronousCallableStore(CallableStore<K, V> inner) {
+    protected AsynchronousCallableStore(CallableStore<K, V, T> inner) {
         this.inner = inner;
     }
 
@@ -55,8 +55,9 @@ abstract public class AsynchronousCallableStore<K, V> implements AsynchronousSto
     abstract protected <R> StoreFuture<R> submit(AsynchronousStore.Operations operation,
                                                  Callable<R> callable);
 
-    public StoreFuture<List<Versioned<V>>> submitGet(final K key) throws VoldemortException {
-        Callable<List<Versioned<V>>> callable = inner.callGet(key);
+    public StoreFuture<List<Versioned<V>>> submitGet(final K key, final T transform)
+            throws VoldemortException {
+        Callable<List<Versioned<V>>> callable = inner.callGet(key, transform);
         return submit(AsynchronousStore.Operations.GET, callable);
     }
 
@@ -70,9 +71,10 @@ abstract public class AsynchronousCallableStore<K, V> implements AsynchronousSto
      * @return A Map of keys to a list of versioned values.
      * @throws VoldemortException
      */
-    public StoreFuture<Map<K, List<Versioned<V>>>> submitGetAll(final Iterable<K> keys)
+    public StoreFuture<Map<K, List<Versioned<V>>>> submitGetAll(final Iterable<K> keys,
+                                                                final Map<K, T> transforms)
             throws VoldemortException {
-        Callable<Map<K, List<Versioned<V>>>> callable = inner.callGetAll(keys);
+        Callable<Map<K, List<Versioned<V>>>> callable = inner.callGetAll(keys, transforms);
         return submit(AsynchronousStore.Operations.GETALL, callable);
     }
 
@@ -82,8 +84,9 @@ abstract public class AsynchronousCallableStore<K, V> implements AsynchronousSto
      * @param key The key to use
      * @param value The value to store and its version.
      */
-    public StoreFuture<Version> submitPut(K key, Versioned<V> value) throws VoldemortException {
-        Callable<Version> callable = inner.callPut(key, value);
+    public StoreFuture<Version> submitPut(K key, Versioned<V> value, final T transform)
+            throws VoldemortException {
+        Callable<Version> callable = inner.callPut(key, value, transform);
         return submit(AsynchronousStore.Operations.PUT, callable);
     }
 

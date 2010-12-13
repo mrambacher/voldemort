@@ -46,7 +46,7 @@ import voldemort.versioning.Versioned;
  * same in {@link DefaultStoreClient} for server side routing<br>
  * 
  */
-public class RebootstrappingStore extends MetadataCheckingStore<ByteArray, byte[]> {
+public class RebootstrappingStore extends MetadataCheckingStore<ByteArray, byte[], byte[]> {
 
     private final static int maxMetadataRefreshAttempts = 3;
 
@@ -92,8 +92,8 @@ public class RebootstrappingStore extends MetadataCheckingStore<ByteArray, byte[
     }
 
     @SuppressWarnings("unchecked")
-    private Map<Node, AsynchronousStore<ByteArray, byte[]>> getNodeStores() {
-        return (Map<Node, AsynchronousStore<ByteArray, byte[]>>) routedStore.getCapability(StoreCapabilityType.NODE_STORES);
+    private Map<Node, AsynchronousStore<ByteArray, byte[], byte[]>> getNodeStores() {
+        return (Map<Node, AsynchronousStore<ByteArray, byte[], byte[]>>) routedStore.getCapability(StoreCapabilityType.NODE_STORES);
     }
 
     /**
@@ -103,7 +103,7 @@ public class RebootstrappingStore extends MetadataCheckingStore<ByteArray, byte[
      * 
      */
     private void checkAndAddNodeStore() {
-        Map<Node, AsynchronousStore<ByteArray, byte[]>> nodeStores = getNodeStores();
+        Map<Node, AsynchronousStore<ByteArray, byte[], byte[]>> nodeStores = getNodeStores();
         for(Node node: metadata.getCluster().getNodes()) {
             if(!routedStore.getNodeStores().containsKey(node.getId())) {
                 if(!storeRepository.hasNodeStore(getName(), node.getId())) {
@@ -115,12 +115,12 @@ public class RebootstrappingStore extends MetadataCheckingStore<ByteArray, byte[
         }
     }
 
-    private Store<ByteArray, byte[]> createNodeStore(Node node) {
-        AsynchronousStore<ByteArray, byte[]> async = storeFactory.create(getName(),
-                                                                         node.getHost(),
-                                                                         node.getSocketPort(),
-                                                                         voldemortConfig.getRequestFormatType(),
-                                                                         RequestRoutingType.NORMAL);
+    private Store<ByteArray, byte[], byte[]> createNodeStore(Node node) {
+        AsynchronousStore<ByteArray, byte[], byte[]> async = storeFactory.create(getName(),
+                                                                                 node.getHost(),
+                                                                                 node.getSocketPort(),
+                                                                                 voldemortConfig.getRequestFormatType(),
+                                                                                 RequestRoutingType.NORMAL);
         return AsyncUtils.asStore(FailureDetectingStore.create(node, failureDetector, async));
     }
 

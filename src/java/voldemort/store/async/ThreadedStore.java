@@ -24,7 +24,7 @@ import voldemort.store.Store;
 /**
  * An asynchronous store that runs store tasks in a thread pool.
  */
-public class ThreadedStore<K, V> extends AsynchronousCallableStore<K, V> {
+public class ThreadedStore<K, V, T> extends AsynchronousCallableStore<K, V, T> {
 
     protected final ExecutorService executor;
 
@@ -35,8 +35,9 @@ public class ThreadedStore<K, V> extends AsynchronousCallableStore<K, V> {
      * @param executor The thread pool to use
      * @return The threaded store
      */
-    public static <K, V> ThreadedStore<K, V> create(Store<K, V> store, ExecutorService executor) {
-        return new ThreadedStore<K, V>(store, executor);
+    public static <K, V, T> ThreadedStore<K, V, T> create(Store<K, V, T> store,
+                                                          ExecutorService executor) {
+        return new ThreadedStore<K, V, T>(store, executor);
     }
 
     /**
@@ -46,7 +47,7 @@ public class ThreadedStore<K, V> extends AsynchronousCallableStore<K, V> {
      * @param executor The thread pool to use
      * @return The threaded store
      */
-    public ThreadedStore(Store<K, V> inner, ExecutorService executor) {
+    public ThreadedStore(Store<K, V, T> inner, ExecutorService executor) {
         super(AsyncUtils.asCallable(inner));
         this.executor = executor;
     }
@@ -58,7 +59,7 @@ public class ThreadedStore<K, V> extends AsynchronousCallableStore<K, V> {
      * @param executor The thread pool to use
      * @return The threaded store
      */
-    public ThreadedStore(CallableStore<K, V> inner, ExecutorService executor) {
+    public ThreadedStore(CallableStore<K, V, T> inner, ExecutorService executor) {
         super(inner);
         this.executor = executor;
     }

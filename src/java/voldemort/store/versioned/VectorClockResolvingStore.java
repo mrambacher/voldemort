@@ -25,9 +25,9 @@ import voldemort.store.Store;
 import voldemort.versioning.VectorClockInconsistencyResolver;
 import voldemort.versioning.Version;
 
-public class VectorClockResolvingStore<K, V> extends InconsistencyResolvingStore<K, V> {
+public class VectorClockResolvingStore<K, V, T> extends InconsistencyResolvingStore<K, V, T> {
 
-    public VectorClockResolvingStore(Store<K, V> innerStore) {
+    public VectorClockResolvingStore(Store<K, V, T> innerStore) {
         super(innerStore, new VectorClockInconsistencyResolver<V>());
     }
 

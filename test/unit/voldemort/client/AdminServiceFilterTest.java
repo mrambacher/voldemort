@@ -98,7 +98,7 @@ public class AdminServiceFilterTest extends AbstractAdminServiceFilterTest {
     }
 
     @Override
-    protected Set<Pair<ByteArray, Versioned<byte[]>>> createEntries() {
+    public Set<Pair<ByteArray, Versioned<byte[]>>> createEntries() {
         Set<Pair<ByteArray, Versioned<byte[]>>> entrySet = new HashSet<Pair<ByteArray, Versioned<byte[]>>>();
         for(Entry<ByteArray, byte[]> entry: ServerTestUtils.createRandomKeyValuePairs(TEST_KEYS)
                                                            .entrySet()) {
@@ -115,7 +115,7 @@ public class AdminServiceFilterTest extends AbstractAdminServiceFilterTest {
     }
 
     @Override
-    protected Store<ByteArray, byte[]> getStore(int nodeId, String storeName) {
+    protected Store<ByteArray, byte[], byte[]> getStore(int nodeId, String storeName) {
         return server.getStoreRepository().getStorageEngine(storeName);
     }
 

@@ -98,15 +98,27 @@ public class VoldemortTestConstants {
         }
     }
 
+    public static String getStoreWithPropertiesXml() {
+        return readString("config/store-with-properties.xml");
+    }
+
+    public static String getTwoStoresDefinitionsXml() {
+        return readString("config/two-stores.xml");
+    }
+
+    public static String getEightNodeClusterWithZonesXml() {
+        return readString("config/eight-node-cluster-with-zones.xml");
+    }
+
+    public static Cluster getEightNodeClusterWithZones() {
+        return new ClusterMapper().readCluster(new StringReader(getEightNodeClusterWithZonesXml()));
+    }
+
     public static String getCompressedStoreDefinitionsXml() {
         return readString("config/compressed-store.xml");
     }
 
     public static String getViewStoreDefinitionXml() {
         return readString("config/view-store.xml");
-    }
-
-    public static String getStoreWithPropertiesXml() {
-        return readString("config/store-with-properties.xml");
     }
 }

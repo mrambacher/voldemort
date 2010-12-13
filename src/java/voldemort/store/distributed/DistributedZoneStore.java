@@ -20,6 +20,9 @@ import java.util.List;
 import java.util.Map;
 
 import voldemort.VoldemortException;
+import voldemort.cluster.Cluster;
+import voldemort.cluster.Node;
+import voldemort.cluster.Zone;
 import voldemort.store.StoreDefinition;
 import voldemort.store.async.AsynchronousStore;
 import voldemort.versioning.Version;
@@ -33,36 +36,49 @@ import com.google.common.collect.Multimap;
 /**
  * A Distributed Store that is zone-aware.
  */
-public class DistributedZoneStore<N, K, V> extends DelegatingDistributedStore<N, K, V> {
+public class DistributedZoneStore<K, V, T> extends DelegatingDistributedStore<Node, K, V, T> {
 
     private final StoreDefinition storeDef;
-    private final Map<N, Integer> nodesByZone;
-    protected final ResultsBuilder<N, List<Versioned<V>>> getBuilder;
-    protected final ResultsBuilder<N, List<Version>> versionsBuilder;
-    protected final ResultsBuilder<N, Version> putBuilder;
-    protected final ResultsBuilder<N, Boolean> deleteBuilder;
+    private final Map<Node, Integer> nodesByZone;
+    protected final ResultsBuilder<Node, List<Versioned<V>>> getBuilder;
+    protected final ResultsBuilder<Node, List<Version>> versionsBuilder;
+    protected final ResultsBuilder<Node, Version> putBuilder;
+    protected final ResultsBuilder<Node, Boolean> deleteBuilder;
+    private final Zone clientZone;
 
-    public DistributedZoneStore(DistributedStore<N, K, V> distributor,
+    public static <K, V, T> DistributedZoneStore<K, V, T> create(DistributedStore<Node, K, V, T> distributor,
+                                                                 StoreDefinition storeDef,
+                                                                 Cluster cluster,
+                                                                 int zoneId,
+                                                                 boolean unique) {
+        return new DistributedZoneStore<K, V, T>(distributor, storeDef, cluster, zoneId, unique);
+    }
+
+    public DistributedZoneStore(DistributedStore<Node, K, V, T> distributor,
                                 StoreDefinition storeDef,
-                                Map<Integer, Collection<N>> zonesByNode,
+                                Cluster cluster,
+                                int zoneId,
                                 boolean unique) {
+
         super(distributor);
+        this.clientZone = cluster.getZoneById(zoneId);
         this.storeDef = storeDef;
         this.getBuilder = DistributedStoreFactory.GetBuilder(unique);
         this.versionsBuilder = DistributedStoreFactory.GetVersionsBuilder(unique);
         this.putBuilder = DistributedStoreFactory.PutBuilder();
         this.deleteBuilder = DistributedStoreFactory.DeleteBuilder();
+        Map<Integer, Collection<Node>> zonesByNode = cluster.getZonesByNode();
         this.nodesByZone = Maps.newHashMap();
-        for(Map.Entry<Integer, Collection<N>> entry: zonesByNode.entrySet()) {
-            for(N node: entry.getValue()) {
+        for(Map.Entry<Integer, Collection<Node>> entry: zonesByNode.entrySet()) {
+            for(Node node: entry.getValue()) {
                 nodesByZone.put(node, entry.getKey());
             }
         }
     }
 
-    private Map<Integer, Collection<N>> getZonesForNodes(Collection<N> nodes) {
-        Multimap<Integer, N> zonesByNode = HashMultimap.create();
-        for(N node: nodes) {
+    private Map<Integer, Collection<Node>> getZonesForNodes(Collection<Node> nodes) {
+        Multimap<Integer, Node> zonesByNode = HashMultimap.create();
+        for(Node node: nodes) {
             int zone = nodesByZone.get(node);
             zonesByNode.put(zone, node);
         }
@@ -70,112 +86,116 @@ public class DistributedZoneStore<N, K, V> extends DelegatingDistributedStore<N,
     }
 
     @Override
-    public DistributedFuture<N, List<Versioned<V>>> submitGet(final K key,
-                                                              Collection<N> nodes,
-                                                              int preferred,
-                                                              int required)
-            throws VoldemortException {
-        DistributedStoreFactory.checkRequiredReads(nodes.size(), required);
-        Map<Integer, Collection<N>> zones = getZonesForNodes(nodes);
-        DistributedStoreFactory.checkRequiredZones(zones.keySet().size(),
-                                                   storeDef.getZoneCountReads());
-        Collection<DistributedFuture<N, List<Versioned<V>>>> futures = Lists.newArrayList();
-
-        for(Collection<N> zoneNodes: zones.values()) {
-            int preferredZone = Math.min(preferred, zoneNodes.size());
-            DistributedFuture<N, List<Versioned<V>>> future = super.submitGet(key,
-                                                                              nodes,
-                                                                              preferredZone,
-                                                                              1);
-            futures.add(future);
-        }
-        return new ZoneFutureTask<N, List<Versioned<V>>>(AsynchronousStore.Operations.GET.name(),
-                                                         futures,
-                                                         this.getBuilder,
-                                                         storeDef.getZoneCountReads(),
-                                                         storeDef.getZoneCountReads());
-    }
-
-    @Override
-    public DistributedFuture<N, List<Version>> submitGetVersions(final K key,
-                                                                 Collection<N> nodes,
+    public DistributedFuture<Node, List<Versioned<V>>> submitGet(final K key,
+                                                                 final T transform,
+                                                                 Collection<Node> nodes,
                                                                  int preferred,
                                                                  int required)
             throws VoldemortException {
         DistributedStoreFactory.checkRequiredReads(nodes.size(), required);
-        Map<Integer, Collection<N>> zones = getZonesForNodes(nodes);
+        Map<Integer, Collection<Node>> zones = getZonesForNodes(nodes);
         DistributedStoreFactory.checkRequiredZones(zones.keySet().size(),
                                                    storeDef.getZoneCountReads());
-        Collection<DistributedFuture<N, List<Version>>> futures = Lists.newArrayList();
+        Collection<DistributedFuture<Node, List<Versioned<V>>>> futures = Lists.newArrayList();
 
-        for(Collection<N> zoneNodes: zones.values()) {
+        for(Collection<Node> zoneNodes: zones.values()) {
             int preferredZone = Math.min(preferred, zoneNodes.size());
-            DistributedFuture<N, List<Version>> future = super.submitGetVersions(key,
+            DistributedFuture<Node, List<Versioned<V>>> future = super.submitGet(key,
+                                                                                 transform,
                                                                                  nodes,
                                                                                  preferredZone,
                                                                                  1);
             futures.add(future);
         }
-        return new ZoneFutureTask<N, List<Version>>(AsynchronousStore.Operations.GETVERSIONS.name(),
-                                                    futures,
-                                                    this.versionsBuilder,
-                                                    storeDef.getZoneCountReads(),
-                                                    storeDef.getZoneCountReads());
+        return new ZoneFutureTask<Node, List<Versioned<V>>>(AsynchronousStore.Operations.GET.name(),
+                                                            futures,
+                                                            this.getBuilder,
+                                                            storeDef.getZoneCountReads(),
+                                                            storeDef.getZoneCountReads());
     }
 
     @Override
-    public DistributedFuture<N, Boolean> submitDelete(K key,
-                                                      Version version,
-                                                      Collection<N> nodes,
+    public DistributedFuture<Node, List<Version>> submitGetVersions(final K key,
+                                                                    Collection<Node> nodes,
+                                                                    int preferred,
+                                                                    int required)
+            throws VoldemortException {
+        DistributedStoreFactory.checkRequiredReads(nodes.size(), required);
+        Map<Integer, Collection<Node>> zones = getZonesForNodes(nodes);
+        DistributedStoreFactory.checkRequiredZones(zones.keySet().size(),
+                                                   storeDef.getZoneCountReads());
+        Collection<DistributedFuture<Node, List<Version>>> futures = Lists.newArrayList();
+
+        for(Collection<Node> zoneNodes: zones.values()) {
+            int preferredZone = Math.min(preferred, zoneNodes.size());
+            DistributedFuture<Node, List<Version>> future = super.submitGetVersions(key,
+                                                                                    nodes,
+                                                                                    preferredZone,
+                                                                                    1);
+            futures.add(future);
+        }
+        return new ZoneFutureTask<Node, List<Version>>(AsynchronousStore.Operations.GETVERSIONS.name(),
+                                                       futures,
+                                                       this.versionsBuilder,
+                                                       storeDef.getZoneCountReads(),
+                                                       storeDef.getZoneCountReads());
+    }
+
+    @Override
+    public DistributedFuture<Node, Boolean> submitDelete(K key,
+                                                         Version version,
+                                                         Collection<Node> nodes,
+                                                         int preferred,
+                                                         int required) throws VoldemortException {
+        DistributedStoreFactory.checkRequiredWrites(nodes.size(), required);
+        Map<Integer, Collection<Node>> zones = getZonesForNodes(nodes);
+        DistributedStoreFactory.checkRequiredZones(zones.keySet().size(),
+                                                   storeDef.getZoneCountWrites());
+        Collection<DistributedFuture<Node, Boolean>> futures = Lists.newArrayList();
+
+        for(Collection<Node> zoneNodes: zones.values()) {
+            int preferredZone = Math.min(preferred, zoneNodes.size());
+            DistributedFuture<Node, Boolean> future = super.submitDelete(key,
+                                                                         version,
+                                                                         nodes,
+                                                                         preferredZone,
+                                                                         1);
+            futures.add(future);
+        }
+        return new ZoneFutureTask<Node, Boolean>(AsynchronousStore.Operations.DELETE.name(),
+                                                 futures,
+                                                 deleteBuilder,
+                                                 storeDef.getZoneCountWrites(),
+                                                 storeDef.getZoneCountWrites());
+    }
+
+    @Override
+    public DistributedFuture<Node, Version> submitPut(K key,
+                                                      Versioned<V> value,
+                                                      T transform,
+                                                      Collection<Node> nodes,
                                                       int preferred,
                                                       int required) throws VoldemortException {
         DistributedStoreFactory.checkRequiredWrites(nodes.size(), required);
-        Map<Integer, Collection<N>> zones = getZonesForNodes(nodes);
+        Map<Integer, Collection<Node>> zones = getZonesForNodes(nodes);
         DistributedStoreFactory.checkRequiredZones(zones.keySet().size(),
                                                    storeDef.getZoneCountWrites());
-        Collection<DistributedFuture<N, Boolean>> futures = Lists.newArrayList();
+        Collection<DistributedFuture<Node, Version>> futures = Lists.newArrayList();
 
-        for(Collection<N> zoneNodes: zones.values()) {
+        for(Collection<Node> zoneNodes: zones.values()) {
             int preferredZone = Math.min(preferred, zoneNodes.size());
-            DistributedFuture<N, Boolean> future = super.submitDelete(key,
-                                                                      version,
+            DistributedFuture<Node, Version> future = super.submitPut(key,
+                                                                      value,
+                                                                      transform,
                                                                       nodes,
                                                                       preferredZone,
                                                                       1);
             futures.add(future);
         }
-        return new ZoneFutureTask<N, Boolean>(AsynchronousStore.Operations.DELETE.name(),
-                                              futures,
-                                              deleteBuilder,
-                                              storeDef.getZoneCountWrites(),
-                                              storeDef.getZoneCountWrites());
-    }
-
-    @Override
-    public DistributedFuture<N, Version> submitPut(K key,
-                                                   Versioned<V> value,
-                                                   Collection<N> nodes,
-                                                   int preferred,
-                                                   int required) throws VoldemortException {
-        DistributedStoreFactory.checkRequiredWrites(nodes.size(), required);
-        Map<Integer, Collection<N>> zones = getZonesForNodes(nodes);
-        DistributedStoreFactory.checkRequiredZones(zones.keySet().size(),
-                                                   storeDef.getZoneCountWrites());
-        Collection<DistributedFuture<N, Version>> futures = Lists.newArrayList();
-
-        for(Collection<N> zoneNodes: zones.values()) {
-            int preferredZone = Math.min(preferred, zoneNodes.size());
-            DistributedFuture<N, Version> future = super.submitPut(key,
-                                                                   value,
-                                                                   nodes,
-                                                                   preferredZone,
-                                                                   1);
-            futures.add(future);
-        }
-        return new ZoneFutureTask<N, Version>(AsynchronousStore.Operations.PUT.name(),
-                                              futures,
-                                              putBuilder,
-                                              storeDef.getZoneCountWrites(),
-                                              storeDef.getZoneCountWrites());
+        return new ZoneFutureTask<Node, Version>(AsynchronousStore.Operations.PUT.name(),
+                                                 futures,
+                                                 putBuilder,
+                                                 storeDef.getZoneCountWrites(),
+                                                 storeDef.getZoneCountWrites());
     }
 }

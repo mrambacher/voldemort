@@ -22,6 +22,10 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.log4j.Logger;
 
@@ -47,7 +51,7 @@ public class RebalanceUtils {
 
     private static Logger logger = Logger.getLogger(RebalanceUtils.class);
 
-    public static List<String> rebalancingStoreEngineBlackList = Arrays.asList("read-only");
+    public static List<String> rebalancingStoreEngineBlackList = Arrays.asList("mysql", "krati");
 
     public static boolean containsNode(Cluster cluster, int nodeId) {
         try {
@@ -166,16 +170,16 @@ public class RebalanceUtils {
         for(Node node: adminClient.getAdminClientCluster().getNodes()) {
             try {
                 Versioned<Cluster> versionedCluster = adminClient.getRemoteCluster(node.getId());
-                Version newClock = versionedCluster.getVersion();
-                if(null != newClock && !clusterList.contains(versionedCluster)) {
+                Version newVersion = versionedCluster.getVersion();
+                if(null != newVersion && !clusterList.contains(versionedCluster)) {
                     // check no two clocks are concurrent.
-                    checkNotConcurrent(clusterList, newClock);
+                    checkNotConcurrent(clusterList, newVersion);
 
                     // add to clock list
                     clusterList.add(versionedCluster);
 
                     // update latestClock
-                    Occured occured = newClock.compare(latestCluster.getVersion());
+                    Occured occured = newVersion.compare(latestCluster.getVersion());
                     if(Occured.AFTER.equals(occured))
                         latestCluster = versionedCluster;
                 }
@@ -191,12 +195,13 @@ public class RebalanceUtils {
         return latestCluster;
     }
 
-    public static void checkNotConcurrent(ArrayList<Versioned<Cluster>> clockList, Version newClock) {
+    public static void checkNotConcurrent(ArrayList<Versioned<Cluster>> clockList,
+                                          Version newVersion) {
         for(Versioned<Cluster> versionedCluster: clockList) {
             Version clock = versionedCluster.getVersion();
-            if(Occured.CONCURRENTLY.equals(clock.compare(newClock)))
+            if(Occured.CONCURRENTLY.equals(clock.compare(newVersion)))
                 throw new VoldemortException("Cluster is in inconsistent state got conflicting clocks "
-                                             + clock + " and " + newClock);
+                                             + clock + " and " + newVersion);
 
         }
     }
@@ -215,13 +220,13 @@ public class RebalanceUtils {
      */
     public static void propagateCluster(AdminClient adminClient,
                                         Cluster cluster,
-                                        Version clock,
+                                        Version version,
                                         List<Integer> requireNodeIds) {
         List<Integer> allNodeIds = new ArrayList<Integer>();
         for(Node node: cluster.getNodes()) {
             allNodeIds.add(node.getId());
         }
-        propagateCluster(adminClient, cluster, clock, allNodeIds, requireNodeIds);
+        propagateCluster(adminClient, cluster, version, allNodeIds, requireNodeIds);
     }
 
     /**
@@ -239,7 +244,7 @@ public class RebalanceUtils {
      */
     public static void propagateCluster(AdminClient adminClient,
                                         Cluster cluster,
-                                        Version clock,
+                                        Version version,
                                         List<Integer> attemptNodeIds,
                                         List<Integer> requiredNodeIds) {
         List<Integer> failures = new ArrayList<Integer>();
@@ -248,7 +253,7 @@ public class RebalanceUtils {
         for(int nodeId: attemptNodeIds) {
             if(!requiredNodeIds.contains(nodeId)) {
                 try {
-                    adminClient.updateRemoteCluster(nodeId, cluster, clock);
+                    adminClient.updateRemoteCluster(nodeId, cluster, version);
                 } catch(VoldemortException e) {
                     // ignore these
                     logger.debug("Failed to copy new cluster.xml(" + cluster
@@ -262,7 +267,7 @@ public class RebalanceUtils {
             Node node = cluster.getNodeById(nodeId);
             try {
                 logger.debug("Updating remote node:" + nodeId + " with cluster:" + cluster);
-                adminClient.updateRemoteCluster(node.getId(), cluster, clock);
+                adminClient.updateRemoteCluster(node.getId(), cluster, version);
             } catch(Exception e) {
                 failures.add(node.getId());
                 logger.debug(e);
@@ -309,9 +314,6 @@ public class RebalanceUtils {
         for(StoreDefinition def: storeDefList) {
             if(!def.isView() && !rebalancingStoreEngineBlackList.contains(def.getName())) {
                 storeNameList.add(def);
-            }
-            if(rebalancingStoreEngineBlackList.contains(def.getType())) {
-
             } else {
                 logger.debug("ignoring store " + def.getName() + " for rebalancing");
             }
@@ -338,5 +340,26 @@ public class RebalanceUtils {
             storeList.add(def.getName());
         }
         return storeList;
+    }
+
+    public static void executorShutDown(ExecutorService executorService, int timeOutSec) {
+        try {
+            executorService.shutdown();
+            executorService.awaitTermination(timeOutSec, TimeUnit.SECONDS);
+        } catch(Exception e) {
+            logger.warn("Error while stoping executor service.", e);
+        }
+    }
+
+    public static ExecutorService createExecutors(int numThreads) {
+
+        return Executors.newFixedThreadPool(numThreads, new ThreadFactory() {
+
+            public Thread newThread(Runnable r) {
+                Thread thread = new Thread(r);
+                thread.setName(r.getClass().getName());
+                return thread;
+            }
+        });
     }
 }

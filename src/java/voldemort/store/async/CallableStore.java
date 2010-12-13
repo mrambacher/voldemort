@@ -30,7 +30,7 @@ import voldemort.versioning.Versioned;
  * The basic interface used for callable storage operations. The methods here
  * are the callable equivalents of those in @link Store}.
  */
-public interface CallableStore<K, V> {
+public interface CallableStore<K, V, T> {
 
     /**
      * Get the value associated with the given key
@@ -40,7 +40,8 @@ public interface CallableStore<K, V> {
      *         are found.
      * @throws VoldemortException
      */
-    public Callable<List<Versioned<V>>> callGet(final K key) throws VoldemortException;
+    public Callable<List<Versioned<V>>> callGet(final K key, final T transform)
+            throws VoldemortException;
 
     /**
      * Get the values associated with the given keys and returns them in a Map
@@ -52,7 +53,8 @@ public interface CallableStore<K, V> {
      * @return A Map of keys to a list of versioned values.
      * @throws VoldemortException
      */
-    public Callable<Map<K, List<Versioned<V>>>> callGetAll(final Iterable<K> keys)
+    public Callable<Map<K, List<Versioned<V>>>> callGetAll(final Iterable<K> keys,
+                                                           final Map<K, T> transforms)
             throws VoldemortException;
 
     /**
@@ -61,7 +63,7 @@ public interface CallableStore<K, V> {
      * @param key The key to use
      * @param value The value to store and its version.
      */
-    public Callable<Version> callPut(final K key, final Versioned<V> value)
+    public Callable<Version> callPut(final K key, final Versioned<V> value, final T transforms)
             throws VoldemortException;
 
     /**

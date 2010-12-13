@@ -66,7 +66,7 @@ public class ThreadPoolRoutedStore extends RoutedStore {
      * @param numberOfThreads The number of threads in the threadpool
      */
     public ThreadPoolRoutedStore(String name,
-                                 DistributedStore<Node, ByteArray, byte[]> distributor,
+                                 DistributedStore<Node, ByteArray, byte[], byte[]> distributor,
                                  Cluster cluster,
                                  StoreDefinition storeDef,
                                  FailureDetector failureDetector,
@@ -119,28 +119,32 @@ public class ThreadPoolRoutedStore extends RoutedStore {
         return nodeToKeys;
     }
 
-    public Map<ByteArray, List<Versioned<byte[]>>> getAll(Iterable<ByteArray> keys)
+    public Map<ByteArray, List<Versioned<byte[]>>> getAll(Iterable<ByteArray> keys,
+                                                          Map<ByteArray, byte[]> transforms)
             throws VoldemortException {
         StoreUtils.assertValidKeys(keys);
         Map<Node, List<ByteArray>> nodesForKeys = getNodesForKeys(keys);
         return waitForCompletion(distributor.submitGetAll(nodesForKeys,
+                                                          transforms,
                                                           storeDef.getPreferredReads(),
                                                           storeDef.getRequiredReads()));
     }
 
-    public List<Versioned<byte[]>> get(ByteArray key) {
+    public List<Versioned<byte[]>> get(ByteArray key, byte[] transform) {
         StoreUtils.assertValidKey(key);
         final List<Node> nodes = availableNodes(routingStrategy.routeRequest(key.get()));
         checkRequiredReads(nodes.size());
 
         return waitForCompletion(distributor.submitGet(key,
+                                                       transform,
                                                        nodes,
                                                        storeDef.getPreferredReads(),
                                                        storeDef.getRequiredReads()));
     }
 
-    public Version put(final ByteArray key, final Versioned<byte[]> versioned)
-            throws VoldemortException {
+    public Version put(final ByteArray key,
+                       final Versioned<byte[]> versioned,
+                       final byte[] transform) throws VoldemortException {
         StoreUtils.assertValidKey(key);
         final List<Node> nodes = availableNodes(routingStrategy.routeRequest(key.get()));
         // quickly fail if there aren't enough nodes to meet the requirement
@@ -161,8 +165,8 @@ public class ThreadPoolRoutedStore extends RoutedStore {
             try {
                 Node current = nodes.get(currentNode);
                 versionedCopy = incremented(versioned, current.getId());
-                AsynchronousStore<ByteArray, byte[]> async = distributor.getNodeStore(current);
-                retVersion = waitForCompletion(async.submitPut(key, versionedCopy));
+                AsynchronousStore<ByteArray, byte[], byte[]> async = distributor.getNodeStore(current);
+                retVersion = waitForCompletion(async.submitPut(key, versionedCopy, transform));
                 master = currentNode;
                 break;
             } catch(UnreachableStoreException e) {
@@ -216,6 +220,7 @@ public class ThreadPoolRoutedStore extends RoutedStore {
             try {
                 waitForCompletion(distributor.submitPut(key,
                                                         versionedCopy,
+                                                        transform,
                                                         replicas,
                                                         storeDef.getPreferredWrites() - 1,
                                                         storeDef.getRequiredWrites() - 1));

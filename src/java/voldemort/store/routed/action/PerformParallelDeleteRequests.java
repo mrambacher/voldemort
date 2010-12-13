@@ -41,7 +41,7 @@ public class PerformParallelDeleteRequests extends
     private final long timeoutMs;
 
     private final Version version;
-    private final DistributedStore<Node, ByteArray, byte[]> distributor;
+    private final DistributedStore<Node, ByteArray, byte[], byte[]> distributor;
 
     public PerformParallelDeleteRequests(BasicPipelineData<Boolean> pipelineData,
                                          Event completeEvent,
@@ -50,7 +50,7 @@ public class PerformParallelDeleteRequests extends
                                          int preferred,
                                          int required,
                                          long timeoutMs,
-                                         DistributedStore<Node, ByteArray, byte[]> distributor) {
+                                         DistributedStore<Node, ByteArray, byte[], byte[]> distributor) {
         super(pipelineData, completeEvent, key);
         this.version = version;
         this.preferred = preferred;

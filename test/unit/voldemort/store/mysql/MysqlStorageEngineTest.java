@@ -59,18 +59,18 @@ public class MysqlStorageEngineTest extends AbstractStorageEngineTest {
 
     @Override
     public void setUp() throws Exception {
-        StorageEngine<ByteArray, byte[]> engine = getStorageEngine();
+        StorageEngine<ByteArray, byte[], byte[]> engine = getStorageEngine();
         destroyEngine(engine);
         createEngine(engine);
         super.setUp();
     }
 
-    protected void destroyEngine(StorageEngine<ByteArray, byte[]> engine) {
+    protected void destroyEngine(StorageEngine<ByteArray, byte[], byte[]> engine) {
         MysqlStorageEngine mysql = (MysqlStorageEngine) engine;
         mysql.destroy();
     }
 
-    protected void createEngine(StorageEngine<ByteArray, byte[]> engine) {
+    protected void createEngine(StorageEngine<ByteArray, byte[], byte[]> engine) {
         MysqlStorageEngine mysql = (MysqlStorageEngine) engine;
         mysql.create();
     }
@@ -135,7 +135,7 @@ public class MysqlStorageEngineTest extends AbstractStorageEngineTest {
     }
 
     @Override
-    public StorageEngine<ByteArray, byte[]> createStorageEngine(String name) {
+    public StorageEngine<ByteArray, byte[], byte[]> createStorageEngine(String name) {
         MysqlStorageEngine engine = new MysqlStorageEngine(name, getDataSource());
         engine.destroy();
         engine.create();
@@ -145,7 +145,7 @@ public class MysqlStorageEngineTest extends AbstractStorageEngineTest {
     @Override
     public void tearDown() throws Exception {
         for(String engine: this.engines.keySet()) {
-            StorageEngine<ByteArray, byte[]> storageEngine = engines.get(engine);
+            StorageEngine<ByteArray, byte[], byte[]> storageEngine = engines.get(engine);
             destroyEngine(storageEngine);
         }
         super.tearDown();

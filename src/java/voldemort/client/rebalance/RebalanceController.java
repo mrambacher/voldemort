@@ -18,11 +18,13 @@ package voldemort.client.rebalance;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.log4j.Logger;
@@ -33,17 +35,21 @@ import voldemort.cluster.Cluster;
 import voldemort.cluster.Node;
 import voldemort.server.rebalance.AlreadyRebalancingException;
 import voldemort.server.rebalance.VoldemortRebalancingException;
+import voldemort.store.StoreDefinition;
 import voldemort.store.UnreachableStoreException;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.store.metadata.MetadataStore.VoldemortState;
+import voldemort.store.readonly.ReadOnlyStorageConfiguration;
 import voldemort.store.rebalancing.RedirectingStore;
 import voldemort.utils.RebalanceUtils;
 import voldemort.versioning.Version;
-import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
 
 import com.google.common.collect.HashMultimap;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import com.google.common.collect.SetMultimap;
+import java.util.Queue;
 
 public class RebalanceController {
 
@@ -63,18 +69,6 @@ public class RebalanceController {
         this.rebalanceConfig = config;
     }
 
-    private ExecutorService createExecutors(int numThreads) {
-
-        return Executors.newFixedThreadPool(numThreads, new ThreadFactory() {
-
-            public Thread newThread(Runnable r) {
-                Thread thread = new Thread(r);
-                thread.setName(r.getClass().getName());
-                return thread;
-            }
-        });
-    }
-
     /**
      * Grabs the latest cluster definition and calls
      * {@link #rebalance(voldemort.cluster.Cluster, voldemort.cluster.Cluster)}
@@ -87,6 +81,13 @@ public class RebalanceController {
         rebalance(currentVersionedCluster.getValue(), targetCluster);
     }
 
+    /**
+     * Splits the rebalance node plan of a single stealer node to return a map
+     * of per donor node plan
+     * 
+     * @param rebalanceNodePlan The complete rebalance plan
+     * @return MultiMap with key being donor node id
+     */
     private SetMultimap<Integer, RebalancePartitionsInfo> divideRebalanceNodePlan(RebalanceNodePlan rebalanceNodePlan) {
         SetMultimap<Integer, RebalancePartitionsInfo> plan = HashMultimap.create();
         List<RebalancePartitionsInfo> rebalanceSubTaskList = rebalanceNodePlan.getRebalanceTaskList();
@@ -111,32 +112,74 @@ public class RebalanceController {
      * @param targetCluster: target cluster configuration
      */
     public void rebalance(Cluster currentCluster, final Cluster targetCluster) {
-        logger.debug("Current Cluster configuration:" + currentCluster);
-        logger.debug("Target Cluster configuration:" + targetCluster);
-
+        if (logger.isDebugEnabled()) {
+            logger.debug("Current Cluster configuration:" + currentCluster);
+            logger.debug("Target Cluster configuration:" + targetCluster);
+        }
+        
         adminClient.setAdminClientCluster(currentCluster);
 
-        final RebalanceClusterPlan rebalanceClusterPlan = new RebalanceClusterPlan(currentCluster,
-                                                                                   targetCluster,
-                                                                                   RebalanceUtils.getStoreNameList(currentCluster,
-                                                                                                                   adminClient),
-                                                                                   rebalanceConfig.isDeleteAfterRebalancingEnabled());
-        logger.info(rebalanceClusterPlan);
+        Cluster oldCluster = currentCluster;
+        // Retrieve list of stores
+        List<StoreDefinition> storesList = RebalanceUtils.getStoreNameList(currentCluster,
+                                                                           adminClient);
 
-        // add all new nodes to currentCluster and propagate to all
+        // Add all new nodes to currentCluster
         currentCluster = getClusterWithNewNodes(currentCluster, targetCluster);
         adminClient.setAdminClientCluster(currentCluster);
+
+        // Maintain nodeId to map of read-only store name to current version
+        // dirs
+        final Map<Integer, Map<String, String>> currentROStoreVersionsDirs = Maps.newHashMapWithExpectedSize(storesList.size());
+
+        // Retrieve list of read-only stores
+        List<String> readOnlyStores = Lists.newArrayList();
+        for(StoreDefinition store: storesList) {
+            if(store.getType().compareTo(ReadOnlyStorageConfiguration.TYPE_NAME) == 0) {
+                readOnlyStores.add(store.getName());
+            }
+        }
+
+        // Retrieve current versions dirs for all nodes (old + new), required
+        // for swapping at end
+        if(readOnlyStores.size() > 0) {
+            for(Node node: currentCluster.getNodes()) {
+                currentROStoreVersionsDirs.put(node.getId(),
+                                               adminClient.getROCurrentVersionDir(node.getId(),
+                                                                                  readOnlyStores));
+            }
+        }
+
+        final RebalanceClusterPlan rebalanceClusterPlan = new RebalanceClusterPlan(oldCluster,
+                                                                                   targetCluster,
+                                                                                   storesList,
+                                                                                   rebalanceConfig.isDeleteAfterRebalancingEnabled(),
+                                                                                   currentROStoreVersionsDirs);
+        // Prints the original rebalace cluster plan.
+        if (logger.isInfoEnabled()) {
+            logger.info("Original Rebalance Cluster Plan \n" + rebalanceClusterPlan);
+        }
+
+        if(rebalanceClusterPlan.getRebalancingTaskQueue().isEmpty()) {
+            // Nothing to rebalance
+            return;
+        }
+
+        // propagate new cluster information to all
         Node firstNode = currentCluster.getNodes().iterator().next();
         Version latest = RebalanceUtils.getLatestCluster(new ArrayList<Integer>(), adminClient)
                                        .getVersion();
         RebalanceUtils.propagateCluster(adminClient,
                                         currentCluster,
-                                        VersionFactory.incremented(latest,
-                                                                   firstNode.getId(),
-                                                                   System.currentTimeMillis()),
+                                        latest.incremented(firstNode.getId(),
+                                                           System.currentTimeMillis()),
                                         new ArrayList<Integer>());
 
-        ExecutorService executor = createExecutors(rebalanceConfig.getMaxParallelRebalancing());
+        ExecutorService executor = RebalanceUtils.createExecutors(rebalanceConfig.getMaxParallelRebalancing());
+        final List<Exception> failures = new ArrayList<Exception>();
+
+        // All stealer and donor nodes
+        final Set<Integer> nodeIds = Collections.synchronizedSet(new HashSet<Integer>());
 
         // start all threads
         for(int nThreads = 0; nThreads < this.rebalanceConfig.getMaxParallelRebalancing(); nThreads++) {
@@ -145,17 +188,17 @@ public class RebalanceController {
                 public void run() {
                     // pick one node to rebalance from queue
                     while(!rebalanceClusterPlan.getRebalancingTaskQueue().isEmpty()) {
-
                         RebalanceNodePlan rebalanceTask = rebalanceClusterPlan.getRebalancingTaskQueue()
-                                                                              .poll();
-
+                        .poll();
                         if(null != rebalanceTask) {
                             final int stealerNodeId = rebalanceTask.getStealerNode();
+                            nodeIds.add(stealerNodeId);
                             final SetMultimap<Integer, RebalancePartitionsInfo> rebalanceSubTaskMap = divideRebalanceNodePlan(rebalanceTask);
                             final Set<Integer> parallelDonors = rebalanceSubTaskMap.keySet();
-                            ExecutorService parallelDonorExecutor = createExecutors(rebalanceConfig.getMaxParallelDonors());
+                            ExecutorService parallelDonorExecutor = RebalanceUtils.createExecutors(rebalanceConfig.getMaxParallelDonors());
 
                             for(final int donorNodeId: parallelDonors) {
+                                nodeIds.add(donorNodeId);
                                 parallelDonorExecutor.execute(new Runnable() {
 
                                     public void run() {
@@ -193,14 +236,17 @@ public class RebalanceController {
                                                                      + stealerNodeId
                                                                      + " is unreachable, please make sure it is up and running.",
                                                              e);
+                                                failures.add(e);
                                             } catch(VoldemortRebalancingException e) {
                                                 logger.error(e);
                                                 for(Exception cause: e.getCauses()) {
                                                     logger.error(cause);
                                                 }
+                                                failures.add(e);
                                             } catch(Exception e) {
                                                 logger.error("Rebalancing task failed with exception",
                                                              e);
+                                                failures.add(e);
                                             }
                                         }
                                     }
@@ -208,9 +254,11 @@ public class RebalanceController {
                             }
 
                             try {
-                                executorShutDown(parallelDonorExecutor);
+                                RebalanceUtils.executorShutDown(parallelDonorExecutor,
+                                                                rebalanceConfig.getRebalancingClientTimeoutSeconds());
                             } catch(Exception e) {
                                 logger.error("Interrupted", e);
+                                failures.add(e);
                             }
                         }
                     }
@@ -219,7 +267,135 @@ public class RebalanceController {
 
             });
         }// for (nThreads ..
-        executorShutDown(executor);
+
+        try {
+            RebalanceUtils.executorShutDown(executor,
+                                            rebalanceConfig.getRebalancingClientTimeoutSeconds());
+        } catch(Exception e) {
+            logger.error("Interrupted rebalance executor ", e);
+            return;
+        }
+
+        // If everything successful, swap the read-only stores
+        if(failures.size() == 0 && readOnlyStores.size() > 0) {
+            logger.info("Swapping stores " + readOnlyStores + " on " + nodeIds);
+            ExecutorService swapExecutors = RebalanceUtils.createExecutors(targetCluster.getNumberOfNodes());
+            for(final Integer nodeId: nodeIds) {
+                swapExecutors.submit(new Runnable() {
+
+                    public void run() {
+                        Map<String, String> storeDirs = currentROStoreVersionsDirs.get(nodeId);
+
+                        try {
+                            logger.info("Swapping read-only stores on node " + nodeId);
+                            adminClient.swapStoresAndCleanState(nodeId, storeDirs);
+                            logger.info("Successfully swapped on node " + nodeId);
+                        } catch(Exception e) {
+                            logger.error("Failed swapping on node " + nodeId, e);
+                        }
+
+                    }
+                });
+            }
+
+            try {
+                RebalanceUtils.executorShutDown(swapExecutors,
+                                                rebalanceConfig.getRebalancingClientTimeoutSeconds());
+            } catch(Exception e) {
+                logger.error("Interrupted swapping executor ", e);
+                return;
+            }
+        }
+    }
+
+    private String printRebalanceTaskQueue(Queue<RebalanceNodePlan> rebalancingTaskQueue) {
+        if (rebalancingTaskQueue.isEmpty()) {
+            return "Cluster is already balanced, No rebalancing needed";
+        }
+
+        StringBuilder builder = new StringBuilder();
+        builder.append("Cluster Rebalancing Plan:\n");
+        for (RebalanceNodePlan nodePlan : rebalancingTaskQueue) {
+            builder.append("StealerNode:" + nodePlan.getStealerNode() + "\n");
+            for (RebalancePartitionsInfo stealInfo : nodePlan.getRebalanceTaskList()) {
+                builder.append("\t" + stealInfo + "\n");
+                builder.append("\t\t stealInfo.getStealMasterPartitions(): " + stealInfo.getStealMasterPartitions());
+                builder.append("\t\t getPartitionList(): " + stealInfo.getPartitionList());
+                builder.append("\t\t getDeletePartitionsList(): " + stealInfo.getDeletePartitionsList());
+                builder.append("\t\t getUnbalancedStoreList(): " + stealInfo.getUnbalancedStoreList());
+            }
+        }
+
+        return builder.toString();
+    }
+
+    /**
+     * Optimizes the rebalance plan.
+     * 
+     * Optimizations can be made to the original rebalance plan.
+     * This method servers as a hub for individual method calls that 
+     * will contribute to the optimization of the plan that will be 
+     * executed later on.
+     * 
+     * 
+     * 
+     * @param originalRebalanceClusterPlan
+     *            original rebalance plan
+     * @return optimized rebalance plan
+     */
+    private Queue<RebalanceNodePlan> optimizeRebalancePlan(final RebalanceClusterPlan originalRebalanceClusterPlan) {
+        return avoidDeletePartitions(originalRebalanceClusterPlan);
+    }
+
+    /**
+     * Primary partition 'Z' is donated from node 'A' to node 'B' and the same partition
+     * 'Z' comes back now as a Replica to node 'A'.  Under this scenario this partition will be deleted 
+     * if Rebalance CLI {@link RebalanceCLI} is launched without the option 'no-delete' (which is the default)
+     * 
+     * The side effect of this is that 'Z' will be deleted all together if the Rebalance Plan executes 
+     * the migration of the Primary partition after the Rebalance Plan that copy the partition as Replica.
+     *  
+     * @param clusterPlan
+     * @return queue containing the rebalance node plan (@link {@link RebalanceNodePlan}
+     */
+    private Queue<RebalanceNodePlan> avoidDeletePartitions(RebalanceClusterPlan clusterPlan) {
+        int planSize = clusterPlan.getRebalancingTaskQueue().size();
+        RebalanceNodePlan[] oldNodePlans = new RebalanceNodePlan[planSize];
+        RebalanceNodePlan[] newNodePlans = new RebalanceNodePlan[planSize];
+
+        clusterPlan.getRebalancingTaskQueue().toArray(oldNodePlans);
+        clusterPlan.getRebalancingTaskQueue().toArray(newNodePlans);
+
+        // Take the original rebalance plan and loop through the Rebalance Node Plans
+        for (RebalanceNodePlan oldNodePlan : oldNodePlans) {
+            List<RebalancePartitionsInfo> rebalanceTaskList = oldNodePlan.getRebalanceTaskList();
+            for (RebalancePartitionsInfo oldPartitionInfo : rebalanceTaskList) {
+
+                final List<Integer> oldPartitionsList = oldPartitionInfo.getPartitionList();
+                if (oldPartitionsList == null || oldPartitionsList.size() == 0)
+                    continue;
+
+                final int oldStealerId = oldPartitionInfo.getStealerId();
+
+                // Now look thrown the newNodePlan and remove the partition that is check to
+                // be deleted only if it's a replica in other plans.
+                for (RebalanceNodePlan newNodePlan : newNodePlans) {
+                    for (RebalancePartitionsInfo newPartitionInfo : newNodePlan.getRebalanceTaskList()) {
+
+                        // Check if you have a Donor that happend to be a Stealer in another NodePlan.
+                        int newDonorId = newPartitionInfo.getDonorId();
+                        if (newDonorId == oldStealerId) {
+                            newPartitionInfo.getDeletePartitionsList().removeAll(oldPartitionsList);
+                        }
+                    }
+
+                }
+
+            }
+        }
+        List<RebalanceNodePlan> collection = Arrays.asList(newNodePlans);
+        ConcurrentLinkedQueue<RebalanceNodePlan> queue = new ConcurrentLinkedQueue<RebalanceNodePlan>(collection);
+        return queue;
     }
 
     private int startNodeRebalancing(RebalancePartitionsInfo rebalanceSubTask) {
@@ -245,16 +421,6 @@ public class RebalanceController {
         throw new VoldemortException("Failed to start rebalancing at node "
                                      + rebalanceSubTask.getStealerId() + " with rebalanceInfo:"
                                      + rebalanceSubTask, exception);
-    }
-
-    private void executorShutDown(ExecutorService executorService) {
-        try {
-            executorService.shutdown();
-            executorService.awaitTermination(rebalanceConfig.getRebalancingClientTimeoutSeconds(),
-                                             TimeUnit.SECONDS);
-        } catch(Exception e) {
-            logger.warn("Error while stoping executor service.", e);
-        }
     }
 
     public AdminClient getAdminClient() {
@@ -293,17 +459,12 @@ public class RebalanceController {
             Version latest = latestCluster.getVersion();
 
             // apply changes and create new updated cluster.
+            // use steal master partitions to update cluster increment clock
+            // version on stealerNodeId
             Cluster updatedCluster = RebalanceUtils.createUpdatedCluster(currentCluster,
                                                                          stealerNode,
                                                                          donorNode,
-                                                                         rebalanceStealInfo.getStealMasterPartitions());// use
-                                                                                                                        // steal
-                                                                                                                        // master
-                                                                                                                        // partitions
-                                                                                                                        // to
-                                                                                                                        // update
-                                                                                                                        // cluster
-            // increment clock version on stealerNodeId
+                                                                         rebalanceStealInfo.getStealMasterPartitions());
             latest.incrementClock(stealerNode.getId(), System.currentTimeMillis());
             try {
                 // propagates changes to all nodes.
@@ -323,7 +484,7 @@ public class RebalanceController {
                                                 updatedCluster,
                                                 latest,
                                                 new ArrayList<Integer>());
-
+                logger.error("Exception during comming changes in the cluster.xml - " + e.getMessage(), e);
                 throw e;
             }
 

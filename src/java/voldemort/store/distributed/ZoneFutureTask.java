@@ -62,6 +62,18 @@ public class ZoneFutureTask<N, V> extends StoreFutureTask<V> implements Distribu
         this.running = new CountDownLatch(submitted.size());
     }
 
+    public int getPreferred() {
+        return preferred;
+    }
+
+    public int getAvailable() {
+        return submitted.size();
+    }
+
+    public int getRequired() {
+        return required;
+    }
+
     public int getCompleted() {
         int completed = 0;
         for(DistributedFuture<N, V> future: submitted) {
@@ -80,6 +92,14 @@ public class ZoneFutureTask<N, V> extends StoreFutureTask<V> implements Distribu
         return results;
     }
 
+    public Map<N, VoldemortException> getExceptions() {
+        Map<N, VoldemortException> exceptions = Maps.newHashMap();
+        for(DistributedFuture<N, V> future: submitted) {
+            exceptions.putAll(future.getExceptions());
+        }
+        return exceptions;
+    }
+
     public boolean isDone(N node) {
         for(DistributedFuture<N, V> future: submitted) {
             if(future.getNodes().contains(node)) {
@@ -96,6 +116,15 @@ public class ZoneFutureTask<N, V> extends StoreFutureTask<V> implements Distribu
             }
         }
         return 0;
+    }
+
+    public StoreFuture<V> getFuture(N node) {
+        for(DistributedFuture<N, V> future: submitted) {
+            if(future.getNodes().contains(node)) {
+                return future.getFuture(node);
+            }
+        }
+        throw new IllegalArgumentException("No future found for " + node);
     }
 
     @Override
@@ -186,17 +215,13 @@ public class ZoneFutureTask<N, V> extends StoreFutureTask<V> implements Distribu
      * @param result The result of this future
      * @param duration How long that future took
      */
-    @SuppressWarnings("unchecked")
     public void futureCompleted(Object key, V result, long duration) {
         if(successes.incrementAndGet() == preferred) {
             super.markAsCompleted(getResult());
-        } else {
-            remaining.countDown();
         }
         running.countDown();
     }
 
-    @SuppressWarnings("unchecked")
     public void futureFailed(Object key, VoldemortException exception, long duration) {
         if(required > submitted.size() - failures.incrementAndGet()) {
             // If there are not enough responses left,then throw an exception

@@ -143,6 +143,7 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
     public void writeGetRequest(DataOutputStream outputStream,
                                 String storeName,
                                 ByteArray key,
+                                byte[] transforms,
                                 RequestRoutingType routingType) throws IOException {
         StoreUtils.assertValidKey(key);
         writeMessageHeader(outputStream, VoldemortOpCode.GET_OP_CODE, storeName, routingType);
@@ -161,6 +162,7 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
     public void writeGetAllRequest(DataOutputStream output,
                                    String storeName,
                                    Iterable<ByteArray> keys,
+                                   Map<ByteArray, byte[]> transforms,
                                    RequestRoutingType routingType) throws IOException {
         StoreUtils.assertValidKeys(keys);
         // write out keys
@@ -168,12 +170,14 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
         for(ByteArray key: keys) {
             list.add(key);
         }
-        writeGetAllRequest(output, storeName, list, routingType);
+        writeGetAllRequest(output, storeName, list, transforms, routingType);
     }
 
+    @SuppressWarnings("unused")
     protected void writeGetAllRequest(DataOutputStream output,
                                       String storeName,
                                       List<ByteArray> keys,
+                                      Map<ByteArray, byte[]> transforms,
                                       RequestRoutingType routingType) throws IOException {
         this.writeMessageHeader(output, VoldemortOpCode.GET_ALL_OP_CODE, storeName, routingType);
         output.writeInt(keys.size());
@@ -202,6 +206,7 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
                                 String storeName,
                                 ByteArray key,
                                 Versioned<byte[]> versioned,
+                                byte[] transforms,
                                 RequestRoutingType routingType) throws IOException {
         StoreUtils.assertValidKey(key);
         this.writeMessageHeader(outputStream, VoldemortOpCode.PUT_OP_CODE, storeName, routingType);

@@ -20,6 +20,7 @@ import voldemort.client.protocol.pb.ProtoBuffClientRequestFormat;
 import voldemort.client.protocol.vold.VoldemortNativeClientRequestFormat;
 import voldemort.client.protocol.vold.VoldemortNativeClientRequestFormatV2;
 import voldemort.client.protocol.vold.VoldemortNativeClientRequestFormatV3;
+import voldemort.client.protocol.vold.VoldemortNativeClientRequestFormatV4;
 
 /**
  * A factory for producing the appropriate client request format given a
@@ -39,6 +40,8 @@ public class RequestFormatFactory {
                 return new VoldemortNativeClientRequestFormatV2();
             case VOLDEMORT_V3:
                 return new VoldemortNativeClientRequestFormatV3();
+            case VOLDEMORT_V4:
+                return new VoldemortNativeClientRequestFormatV4();
             case PROTOCOL_BUFFERS:
                 return new ProtoBuffClientRequestFormat();
             default:

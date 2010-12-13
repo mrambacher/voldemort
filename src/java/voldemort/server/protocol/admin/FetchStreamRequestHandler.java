@@ -39,11 +39,13 @@ public abstract class FetchStreamRequestHandler implements StreamRequestHandler 
 
     protected final VoldemortFilter filter;
 
-    protected final StorageEngine<ByteArray, byte[]> storageEngine;
+    protected final StorageEngine<ByteArray, byte[], byte[]> storageEngine;
 
     protected final ClosableIterator<ByteArray> keyIterator;
 
-    protected int counter;
+    protected long counter;
+
+    protected long skipRecords;
 
     protected int fetched;
 
@@ -77,10 +79,12 @@ public abstract class FetchStreamRequestHandler implements StreamRequestHandler 
         }
         keyIterator = storageEngine.keys();
         startTime = System.currentTimeMillis();
-    }
+        counter = 0;
 
-    public final StreamRequestDirection getDirection() {
-        return StreamRequestDirection.WRITING;
+        skipRecords = 1;
+        if(request.hasSkipRecords() && request.getSkipRecords() >= 0) {
+            skipRecords = request.getSkipRecords() + 1;
+        }
     }
 
     public StreamRequestHandlerState getRequestState(DataInputStream inputStream)
@@ -90,6 +94,10 @@ public abstract class FetchStreamRequestHandler implements StreamRequestHandler 
         } else {
             return StreamRequestHandlerState.COMPLETE;
         }
+    }
+
+    public final StreamRequestDirection getDirection() {
+        return StreamRequestDirection.WRITING;
     }
 
     public final void close(DataOutputStream outputStream) throws IOException {
@@ -112,15 +120,14 @@ public abstract class FetchStreamRequestHandler implements StreamRequestHandler 
     }
 
     protected boolean validPartition(byte[] key) {
-        //List<Integer> keyPartitions = routingStrategy.getPartitionList(key);
-//        for(int p: partitionList) {
-//            if(keyPartitions.contains(p))
-//                return true;
-//        }
-//
-//        return false;
+        // List<Integer> keyPartitions = routingStrategy.getPartitionList(key);
+        // for(int p: partitionList) {
+        // if(keyPartitions.contains(p))
+        // return true;
+        // }
+        //
+        // return false;
         int partition = routingStrategy.getPrimaryPartition(key);
         return partitionList.contains(partition);
     }
-
 }

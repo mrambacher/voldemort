@@ -25,20 +25,23 @@ public class PerformParallelGetRequests
 
     private final long timeoutMs;
 
-    private final DistributedStore<Node, ByteArray, byte[]> distributor;
+    private final byte[] transforms;
+    private final DistributedStore<Node, ByteArray, byte[], byte[]> distributor;
 
     public PerformParallelGetRequests(BasicPipelineData<List<Versioned<byte[]>>> pipelineData,
                                       Event completeEvent,
                                       ByteArray key,
+                                      byte[] transforms,
                                       int preferred,
                                       int required,
                                       long timeoutMs,
-                                      DistributedStore<Node, ByteArray, byte[]> distributor) {
+                                      DistributedStore<Node, ByteArray, byte[], byte[]> distributor) {
         super(pipelineData, completeEvent, key);
         this.preferred = preferred;
         this.required = required;
         this.timeoutMs = timeoutMs;
         this.distributor = distributor;
+        this.transforms = transforms;
     }
 
     public void execute(final Pipeline pipeline) {
@@ -51,6 +54,7 @@ public class PerformParallelGetRequests
 
         try {
             DistributedFuture<Node, List<Versioned<byte[]>>> future = distributor.submitGet(key,
+                                                                                            transforms,
                                                                                             nodes,
                                                                                             attempts,
                                                                                             this.required);

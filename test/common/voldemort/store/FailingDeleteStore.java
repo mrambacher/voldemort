@@ -3,9 +3,9 @@ package voldemort.store;
 import voldemort.VoldemortException;
 import voldemort.versioning.Version;
 
-public class FailingDeleteStore<K, V> extends DelegatingStore<K, V> {
+public class FailingDeleteStore<K, V, T> extends DelegatingStore<K, V, T> {
 
-    public FailingDeleteStore(Store<K, V> inner) {
+    public FailingDeleteStore(Store<K, V, T> inner) {
         super(inner);
     }
 

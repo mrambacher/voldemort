@@ -74,14 +74,15 @@ public class ServerSideRoutingTest extends TestCase {
         HashMap<ByteArray, byte[]> entryMap = ServerTestUtils.createRandomKeyValuePairs(TEST_VALUES_SIZE);
 
         // populate all entries in server1
-        Store<ByteArray, byte[]> store = server1.getStoreRepository()
-                                                .getStorageEngine(testStoreName);
+        Store<ByteArray, byte[], byte[]> store = server1.getStoreRepository()
+                                                        .getStorageEngine(testStoreName);
         for(Entry<ByteArray, byte[]> entry: entryMap.entrySet()) {
             store.put(entry.getKey(),
                       Versioned.value(entry.getValue(),
                                       VersionFactory.incremented(VersionFactory.newVersion(),
                                                                  0,
-                                                                 System.currentTimeMillis())));
+                                                                 System.currentTimeMillis())),
+                      null);
         }
 
         // try fetching them from server0
@@ -92,7 +93,7 @@ public class ServerSideRoutingTest extends TestCase {
             if(!routing.routeRequest(entry.getKey().get()).contains(0)) {
                 assertEquals("ServerSideRouting should return keys from other nodes.",
                              entry.getValue(),
-                             store.get(entry.getKey()).get(0).getValue());
+                             store.get(entry.getKey(), null).get(0).getValue());
             }
         }
     }

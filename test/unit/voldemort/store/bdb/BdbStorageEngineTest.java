@@ -47,7 +47,7 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
     }
 
     private File tempDir;
-    private StorageEngine<ByteArray, byte[]> store;
+    private StorageEngine<ByteArray, byte[], byte[]> store;
 
     @Override
     public void setUp() throws Exception {
@@ -79,14 +79,14 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
 
     @Test
     public void testPersistence() throws Exception {
-        StorageEngine<ByteArray, byte[]> store = this.getStorageEngine();
+        StorageEngine<ByteArray, byte[], byte[]> store = this.getStorageEngine();
 
-        store.put(new ByteArray("abc".getBytes()), new Versioned<byte[]>("cdef".getBytes()));
+        store.put(new ByteArray("abc".getBytes()), new Versioned<byte[]>("cdef".getBytes()), null);
         this.closeStore(store.getName());
         this.configuration.close();
         this.configuration = new BdbConfiguration(this.tempDir, "test");
         store = getStorageEngine();
-        List<Versioned<byte[]>> vals = store.get(new ByteArray("abc".getBytes()));
+        List<Versioned<byte[]>> vals = store.get(new ByteArray("abc".getBytes()), null);
         assertEquals(1, vals.size());
         TestUtils.bytesEqual("cdef".getBytes(), vals.get(0).getValue());
     }
@@ -122,7 +122,7 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
             public void run() {
                 while(!Thread.interrupted()) {
                     byte[] bytes = Integer.toString(count.getAndIncrement()).getBytes();
-                    store.put(new ByteArray(bytes), Versioned.value(bytes));
+                    store.put(new ByteArray(bytes), Versioned.value(bytes), null);
                     count.incrementAndGet();
                 }
             }

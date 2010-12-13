@@ -103,10 +103,10 @@ public abstract class AbstractSocketStoreTest extends AbstractAsynchronousStoreT
     }
 
     @Override
-    public AsynchronousStore<ByteArray, byte[]> createAsyncStore(String name) {
-        Store<ByteArray, byte[]> local = repository.getLocalStore(name);
+    public AsynchronousStore<ByteArray, byte[], byte[]> createAsyncStore(String name) {
+        Store<ByteArray, byte[], byte[]> local = repository.getLocalStore(name);
         if(local == null) {
-            local = new InMemoryStorageEngine<ByteArray, byte[]>(name);
+            local = new InMemoryStorageEngine<ByteArray, byte[], byte[]>(name);
             repository.addLocalStore(local);
             repository.addRoutedStore(local);
         }
@@ -117,16 +117,16 @@ public abstract class AbstractSocketStoreTest extends AbstractAsynchronousStoreT
     }
 
     @Override
-    public Store<ByteArray, byte[]> createStore(String name) {
+    public Store<ByteArray, byte[], byte[]> createStore(String name) {
         return AsyncUtils.asStore(createAsyncStore(name));
     }
 
     @Override
-    public AsynchronousStore<ByteArray, byte[]> createSlowStore(String name, long delay) {
-        Store<ByteArray, byte[]> local = repository.getLocalStore(name);
+    public AsynchronousStore<ByteArray, byte[], byte[]> createSlowStore(String name, long delay) {
+        Store<ByteArray, byte[], byte[]> local = repository.getLocalStore(name);
         if(local == null) {
-            local = new InMemoryStorageEngine<ByteArray, byte[]>(name);
-            local = new SleepyStore<ByteArray, byte[]>(delay, local);
+            local = new InMemoryStorageEngine<ByteArray, byte[], byte[]>(name);
+            local = new SleepyStore<ByteArray, byte[], byte[]>(delay, local);
             repository.addLocalStore(local);
             repository.addRoutedStore(local);
         }
@@ -137,9 +137,9 @@ public abstract class AbstractSocketStoreTest extends AbstractAsynchronousStoreT
     }
 
     @Override
-    public AsynchronousStore<ByteArray, byte[]> createFailingStore(String name,
-                                                                   VoldemortException ex) {
-        Store<ByteArray, byte[]> local = repository.getLocalStore(name);
+    public AsynchronousStore<ByteArray, byte[], byte[]> createFailingStore(String name,
+                                                                           VoldemortException ex) {
+        Store<ByteArray, byte[], byte[]> local = repository.getLocalStore(name);
         if(local == null) {
             local = FailingStore.asStore(name, ex);
             repository.addLocalStore(local);
@@ -158,22 +158,22 @@ public abstract class AbstractSocketStoreTest extends AbstractAsynchronousStoreT
 
     @Test
     public void testVeryLargeValues() throws Exception {
-        final AsynchronousStore<ByteArray, byte[]> store = this.getAsyncStore(storeName);
+        final AsynchronousStore<ByteArray, byte[], byte[]> store = this.getAsyncStore(storeName);
         byte[] biggie = new byte[1 * 1024 * 1024];
         ByteArray key = new ByteArray(biggie);
         Random rand = new Random();
         for(int i = 0; i < 10; i++) {
             rand.nextBytes(biggie);
             Versioned<byte[]> versioned = new Versioned<byte[]>(biggie);
-            this.waitForCompletion(store.submitPut(key, versioned));
-            assertNotNull(waitForCompletion(store.submitGet(key)));
+            this.waitForCompletion(store.submitPut(key, versioned, null));
+            assertNotNull(waitForCompletion(store.submitGet(key, null)));
             assertTrue(waitForCompletion(store.submitDelete(key, versioned.getVersion())));
         }
     }
 
     @Test
     public void testThreadOverload() throws Exception {
-        final AsynchronousStore<ByteArray, byte[]> store = getAsyncStore(storeName);
+        final AsynchronousStore<ByteArray, byte[], byte[]> store = getAsyncStore(storeName);
         int numOps = 100;
         final CountDownLatch latch = new CountDownLatch(numOps);
         Executor exec = Executors.newCachedThreadPool();
@@ -183,7 +183,8 @@ public abstract class AbstractSocketStoreTest extends AbstractAsynchronousStoreT
                 public void run() {
                     waitForCompletion(store.submitPut(TestUtils.toByteArray(TestUtils.randomString("abcdefghijklmnopqrs",
                                                                                                    10)),
-                                                      new Versioned<byte[]>(TestUtils.randomBytes(8))));
+                                                      new Versioned<byte[]>(TestUtils.randomBytes(8)),
+                                                      null));
                     latch.countDown();
                 }
             });

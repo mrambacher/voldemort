@@ -1,3 +1,19 @@
+/*
+ * Copyright 2008-2009 LinkedIn, Inc
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License. You may obtain a copy of
+ * the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations under
+ * the License.
+ */
+
 package voldemort.store;
 
 import java.util.HashMap;
@@ -5,7 +21,7 @@ import java.util.Properties;
 
 import voldemort.client.RoutingTier;
 import voldemort.serialization.SerializerDefinition;
-import voldemort.store.views.View;
+import voldemort.store.slop.strategy.HintedHandoffStrategyType;
 import voldemort.utils.Props;
 import voldemort.utils.Utils;
 
@@ -13,7 +29,6 @@ import voldemort.utils.Utils;
  * A simple builder class to avoid having 10k constructor parameters in store
  * definitions
  * 
- * @author jay
  * 
  */
 public class StoreDefinitionBuilder {
@@ -22,6 +37,7 @@ public class StoreDefinitionBuilder {
     private String type = null;
     private SerializerDefinition keySerializer = null;
     private SerializerDefinition valueSerializer = null;
+    private SerializerDefinition transformsSerializer = null;
     private RoutingTier routingPolicy = null;
     private int replicationFactor = -1;
     private Integer preferredWrites = null;
@@ -32,11 +48,15 @@ public class StoreDefinitionBuilder {
     private Integer retentionScanThrottleRate = null;
     private String routingStrategyType = null;
     private String viewOf = null;
-    private View<?, ?, ?> view = null;
-    private Props properties = new Props();
     private HashMap<Integer, Integer> zoneReplicationFactor = null;
     private Integer zoneCountReads;
     private Integer zoneCountWrites;
+    private String view = null;
+    private String serializerFactory = null;
+    private HintedHandoffStrategyType hintedHandoffStrategy = null;
+    private Integer hintPrefListSize = null;
+
+    private Props properties = new Props();
 
     public String getName() {
         return Utils.notNull(name);
@@ -71,6 +91,15 @@ public class StoreDefinitionBuilder {
 
     public StoreDefinitionBuilder setValueSerializer(SerializerDefinition valueSerializer) {
         this.valueSerializer = Utils.notNull(valueSerializer);
+        return this;
+    }
+
+    public SerializerDefinition getTransformsSerializer() {
+        return this.transformsSerializer;
+    }
+
+    public StoreDefinitionBuilder setTransformsSerializer(SerializerDefinition transformsSerializer) {
+        this.transformsSerializer = transformsSerializer;
         return this;
     }
 
@@ -131,20 +160,6 @@ public class StoreDefinitionBuilder {
         return requiredReads;
     }
 
-    public Props getProperties() {
-        return this.properties;
-    }
-
-    public StoreDefinitionBuilder setProperties(Props props) {
-        this.properties = props;
-        return this;
-    }
-
-    public StoreDefinitionBuilder setProperties(Properties properties) {
-        Props props = new Props(properties);
-        return setProperties(props);
-    }
-
     public StoreDefinitionBuilder setRequiredReads(int requiredReads) {
         this.requiredReads = Utils.inRange(requiredReads, 0, Integer.MAX_VALUE);
         return this;
@@ -181,6 +196,20 @@ public class StoreDefinitionBuilder {
         return this;
     }
 
+    public Props getProperties() {
+        return this.properties;
+    }
+
+    public StoreDefinitionBuilder setProperties(Props props) {
+        this.properties = props;
+        return this;
+    }
+
+    public StoreDefinitionBuilder setProperties(Properties properties) {
+        Props props = new Props(properties);
+        return setProperties(props);
+    }
+
     public boolean isView() {
         return viewOf != null;
     }
@@ -194,12 +223,21 @@ public class StoreDefinitionBuilder {
         return this;
     }
 
-    public View<?, ?, ?> getView() {
+    public String getView() {
         return view;
     }
 
-    public StoreDefinitionBuilder setView(View<?, ?, ?> valueTransformation) {
+    public StoreDefinitionBuilder setView(String valueTransformation) {
         this.view = valueTransformation;
+        return this;
+    }
+
+    public String getSerializerFactory() {
+        return this.serializerFactory;
+    }
+
+    public StoreDefinitionBuilder setSerializerFactory(String factory) {
+        this.serializerFactory = factory;
         return this;
     }
 
@@ -230,11 +268,30 @@ public class StoreDefinitionBuilder {
         return this;
     }
 
+    public HintedHandoffStrategyType getHintedHandoffStrategy() {
+        return hintedHandoffStrategy;
+    }
+
+    public StoreDefinitionBuilder setHintedHandoffStrategy(HintedHandoffStrategyType hintedHandoffStrategy) {
+        this.hintedHandoffStrategy = hintedHandoffStrategy;
+        return this;
+    }
+
+    public Integer getHintPrefListSize() {
+        return hintPrefListSize;
+    }
+
+    public StoreDefinitionBuilder setHintPrefListSize(Integer hintPrefListSize) {
+        this.hintPrefListSize = hintPrefListSize;
+        return this;
+    }
+
     public StoreDefinition build() {
         return new StoreDefinition(this.getName(),
                                    this.getType(),
                                    this.getKeySerializer(),
                                    this.getValueSerializer(),
+                                   this.getTransformsSerializer(),
                                    this.getRoutingPolicy(),
                                    this.getRoutingStrategyType(),
                                    this.getReplicationFactor(),
@@ -249,7 +306,9 @@ public class StoreDefinitionBuilder {
                                    this.getZoneCountWrites(),
                                    this.getRetentionPeriodDays(),
                                    this.getRetentionScanThrottleRate(),
+                                   this.getSerializerFactory(),
+                                   this.getHintedHandoffStrategy(),
+                                   this.getHintPrefListSize(),
                                    this.getProperties());
     }
-
 }

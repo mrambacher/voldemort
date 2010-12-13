@@ -29,7 +29,7 @@ import voldemort.versioning.Versioned;
  * The basic interface used for asynchronous storage operations. The methods
  * here are the asynchronous equivalents of those in @link Store}.
  */
-public interface AsynchronousStore<K, V> {
+public interface AsynchronousStore<K, V, T> {
 
     public enum Operations {
         GET("GET"),
@@ -59,7 +59,8 @@ public interface AsynchronousStore<K, V> {
      *         are found.
      * @throws VoldemortException
      */
-    public StoreFuture<List<Versioned<V>>> submitGet(final K key) throws VoldemortException;
+    public StoreFuture<List<Versioned<V>>> submitGet(final K key, final T transform)
+            throws VoldemortException;
 
     /**
      * Get the versions associated with the given key
@@ -81,7 +82,8 @@ public interface AsynchronousStore<K, V> {
      * @return A Map of keys to a list of versioned values.
      * @throws VoldemortException
      */
-    public StoreFuture<Map<K, List<Versioned<V>>>> submitGetAll(final Iterable<K> keys)
+    public StoreFuture<Map<K, List<Versioned<V>>>> submitGetAll(final Iterable<K> keys,
+                                                                final Map<K, T> transform)
             throws VoldemortException;
 
     /**
@@ -90,7 +92,8 @@ public interface AsynchronousStore<K, V> {
      * @param key The key to use
      * @param value The value to store and its version.
      */
-    public StoreFuture<Version> submitPut(K key, Versioned<V> value) throws VoldemortException;
+    public StoreFuture<Version> submitPut(K key, Versioned<V> value, final T transform)
+            throws VoldemortException;
 
     /**
      * Delete all entries prior to the given version

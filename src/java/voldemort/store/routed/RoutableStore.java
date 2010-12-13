@@ -13,21 +13,22 @@ import voldemort.routing.RoutingStrategy;
 import voldemort.routing.RoutingStrategyFactory;
 import voldemort.store.StoreCapabilityType;
 import voldemort.store.StoreDefinition;
-import voldemort.store.distributed.DelegatingDistributedStore;
+import voldemort.store.distributed.AsynchronousDistributedStore;
 import voldemort.store.distributed.DistributedStore;
 import voldemort.utils.ByteArray;
 
-public class RoutableStore<V> extends DelegatingDistributedStore<Node, ByteArray, V> {
+public class RoutableStore<V, T> extends AsynchronousDistributedStore<Node, ByteArray, V, T> {
 
     private final FailureDetector failureDetector;
     protected volatile RoutingStrategy routingStrategy;
     protected final Logger logger = Logger.getLogger(getClass());
 
-    public RoutableStore(DistributedStore<Node, ByteArray, V> inner,
+    public RoutableStore(DistributedStore<Node, ByteArray, V, T> inner,
                          Cluster cluster,
                          StoreDefinition storeDef,
-                         FailureDetector detector) {
-        super(inner);
+                         FailureDetector detector,
+                         int zoneId) {
+        super(storeDef, inner);
         this.routingStrategy = new RoutingStrategyFactory().updateRoutingStrategy(storeDef, cluster);
         this.failureDetector = detector;
     }
@@ -39,7 +40,8 @@ public class RoutableStore<V> extends DelegatingDistributedStore<Node, ByteArray
 
     @Override
     public Collection<Node> getNodesForKey(final ByteArray key) {
-        return availableNodes(routingStrategy.routeRequest(key.get()));
+        // return availableNodes(routingStrategy.routeRequest(key.get()));
+        return routingStrategy.routeRequest(key.get());
     }
 
     private List<Node> availableNodes(List<Node> list) {

@@ -63,15 +63,17 @@ public class PipelineRoutedStore extends RoutedStore {
      * 
      * @param name The name of the store
      * @param innerStores The mapping of node to client
-     * @param routingStrategy The strategy for choosing a node given a key
-     * @param requiredReads The minimum number of reads that must complete
-     *        before the operation will return
-     * @param requiredWrites The minimum number of writes that must complete
-     *        before the operation will return
-     * @param threadPool The threadpool to use
+     * @param nonblockingStores
+     * @param slopStores The stores for hints
+     * @param cluster Cluster definition
+     * @param storeDef Store definition
+     * @param repairReads Is read repair enabled?
+     * @param clientZoneId Zone the client is in
+     * @param timeoutMs Routing timeout
+     * @param failureDetector Failure detector object
      */
     public PipelineRoutedStore(String name,
-                               DistributedStore<Node, ByteArray, byte[]> distributor,
+                               DistributedStore<Node, ByteArray, byte[], byte[]> distributor,
                                Cluster cluster,
                                StoreDefinition storeDef,
                                int clientZoneId,
@@ -88,7 +90,7 @@ public class PipelineRoutedStore extends RoutedStore {
         }
     }
 
-    public List<Versioned<byte[]>> get(final ByteArray key) {
+    public List<Versioned<byte[]>> get(final ByteArray key, final byte[] transforms) {
         StoreUtils.assertValidKey(key);
 
         BasicPipelineData<List<Versioned<byte[]>>> pipelineData = new BasicPipelineData<List<Versioned<byte[]>>>();
@@ -111,6 +113,7 @@ public class PipelineRoutedStore extends RoutedStore {
                                 new PerformParallelGetRequests(pipelineData,
                                                                Event.COMPLETED,
                                                                key,
+                                                               transforms,
                                                                storeDef.getPreferredReads(),
                                                                storeDef.getRequiredReads(),
                                                                timeoutMs,
@@ -134,7 +137,8 @@ public class PipelineRoutedStore extends RoutedStore {
         return results;
     }
 
-    public Map<ByteArray, List<Versioned<byte[]>>> getAll(Iterable<ByteArray> keys)
+    public Map<ByteArray, List<Versioned<byte[]>>> getAll(Iterable<ByteArray> keys,
+                                                          Map<ByteArray, byte[]> transforms)
             throws VoldemortException {
         StoreUtils.assertValidKeys(keys);
 
@@ -153,6 +157,7 @@ public class PipelineRoutedStore extends RoutedStore {
                                                          storeDef.getRequiredReads(),
                                                          routingStrategy,
                                                          keys,
+                                                         transforms,
                                                          clientZone));
         pipeline.addEventAction(Event.CONFIGURED,
                                 new PerformParallelGetAllRequests(pipelineData,
@@ -179,9 +184,7 @@ public class PipelineRoutedStore extends RoutedStore {
             pipelineData.setZonesRequired(storeDef.getZoneCountReads());
         else
             pipelineData.setZonesRequired(null);
-        final Pipeline pipeline = new Pipeline(Operation.GET_VERSIONS,
-                                               timeoutMs,
-                                               TimeUnit.MILLISECONDS);
+        Pipeline pipeline = new Pipeline(Operation.GET_VERSIONS, timeoutMs, TimeUnit.MILLISECONDS);
 
         pipeline.addEventAction(Event.STARTED,
                                 new ConfigureNodes<List<Version>, BasicPipelineData<List<Version>>>(pipelineData,
@@ -222,7 +225,8 @@ public class PipelineRoutedStore extends RoutedStore {
             pipelineData.setZonesRequired(storeDef.getZoneCountWrites());
         else
             pipelineData.setZonesRequired(null);
-        final Pipeline pipeline = new Pipeline(Operation.DELETE, timeoutMs, TimeUnit.MILLISECONDS);
+        pipelineData.setStoreName(name);
+        Pipeline pipeline = new Pipeline(Operation.DELETE, timeoutMs, TimeUnit.MILLISECONDS);
 
         pipeline.addEventAction(Event.STARTED,
                                 new ConfigureNodes<Boolean, BasicPipelineData<Boolean>>(pipelineData,
@@ -255,15 +259,16 @@ public class PipelineRoutedStore extends RoutedStore {
         return false;
     }
 
-    public Version put(ByteArray key, Versioned<byte[]> versioned) throws VoldemortException {
+    public Version put(ByteArray key, Versioned<byte[]> versioned, byte[] transforms)
+            throws VoldemortException {
         StoreUtils.assertValidKey(key);
-
         PutPipelineData pipelineData = new PutPipelineData();
         if(zoneRoutingEnabled)
             pipelineData.setZonesRequired(storeDef.getZoneCountWrites());
         else
             pipelineData.setZonesRequired(null);
         pipelineData.setStartTimeNs(System.nanoTime());
+        pipelineData.setStoreName(name);
 
         Pipeline pipeline = new Pipeline(Operation.PUT, timeoutMs, TimeUnit.MILLISECONDS);
 
@@ -277,9 +282,10 @@ public class PipelineRoutedStore extends RoutedStore {
                                                                              clientZone));
         pipeline.addEventAction(Event.CONFIGURED,
                                 new PerformSerialPutRequests(pipelineData,
-                                                             Event.COMPLETED,
+                                                             Event.RESPONSES_RECEIVED,
                                                              key,
                                                              versioned,
+                                                             transforms,
                                                              timeoutMs,
                                                              distributor,
                                                              storeDef.getRequiredWrites(),
@@ -289,6 +295,7 @@ public class PipelineRoutedStore extends RoutedStore {
                                 new PerformParallelPutRequests(pipelineData,
                                                                Event.RESPONSES_RECEIVED,
                                                                key,
+                                                               transforms,
                                                                storeDef.getPreferredWrites(),
                                                                storeDef.getRequiredWrites(),
                                                                timeoutMs,
@@ -297,7 +304,6 @@ public class PipelineRoutedStore extends RoutedStore {
                                                                              Event.COMPLETED,
                                                                              versioned,
                                                                              time));
-
         pipeline.addEvent(Event.STARTED);
         pipeline.execute();
 

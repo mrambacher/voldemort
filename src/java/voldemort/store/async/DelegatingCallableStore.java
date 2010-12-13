@@ -33,13 +33,13 @@ import voldemort.versioning.Versioned;
  * Wrapper class to allow extenders to add functionality to a callable store.
  * This class is-a/has-a callable store.
  */
-public class DelegatingCallableStore<K, V> implements CallableStore<K, V> {
+public class DelegatingCallableStore<K, V, T> implements CallableStore<K, V, T> {
 
     protected final Logger logger = LogManager.getLogger(getClass());
 
-    private CallableStore<K, V> inner;
+    private CallableStore<K, V, T> inner;
 
-    protected DelegatingCallableStore(CallableStore<K, V> inner) {
+    protected DelegatingCallableStore(CallableStore<K, V, T> inner) {
         this.inner = inner;
     }
 
@@ -62,8 +62,9 @@ public class DelegatingCallableStore<K, V> implements CallableStore<K, V> {
      *         are found.
      * @throws VoldemortException
      */
-    public Callable<List<Versioned<V>>> callGet(final K key) throws VoldemortException {
-        return wrap(inner.callGet(key));
+    public Callable<List<Versioned<V>>> callGet(final K key, final T transform)
+            throws VoldemortException {
+        return wrap(inner.callGet(key, transform));
     }
 
     /**
@@ -76,9 +77,10 @@ public class DelegatingCallableStore<K, V> implements CallableStore<K, V> {
      * @return A Map of keys to a list of versioned values.
      * @throws VoldemortException
      */
-    public Callable<Map<K, List<Versioned<V>>>> callGetAll(final Iterable<K> keys)
+    public Callable<Map<K, List<Versioned<V>>>> callGetAll(final Iterable<K> keys,
+                                                           Map<K, T> transforms)
             throws VoldemortException {
-        return wrap(inner.callGetAll(keys));
+        return wrap(inner.callGetAll(keys, transforms));
     }
 
     /**
@@ -87,9 +89,9 @@ public class DelegatingCallableStore<K, V> implements CallableStore<K, V> {
      * @param key The key to use
      * @param value The value to store and its version.
      */
-    public Callable<Version> callPut(final K key, final Versioned<V> value)
+    public Callable<Version> callPut(final K key, final Versioned<V> value, final T transform)
             throws VoldemortException {
-        return wrap(inner.callPut(key, value));
+        return wrap(inner.callPut(key, value, transform));
     }
 
     /**

@@ -30,6 +30,12 @@ import voldemort.store.async.StoreFuture;
  */
 public interface DistributedFuture<N, V> extends StoreFuture<V> {
 
+    public int getAvailable();
+
+    public int getRequired();
+
+    public int getPreferred();
+
     /**
      * Returns the number of futures that have successfully completed (without
      * error)
@@ -72,6 +78,14 @@ public interface DistributedFuture<N, V> extends StoreFuture<V> {
     public Map<N, V> getResults();
 
     /**
+     * Returns the collection of exceptions (unsuccessful results) for this
+     * future.
+     * 
+     * @return
+     */
+    public Map<N, VoldemortException> getExceptions();
+
+    /**
      * Returns how long the specific wrapped future took to complete or has been
      * running
      * 
@@ -85,4 +99,9 @@ public interface DistributedFuture<N, V> extends StoreFuture<V> {
      * Returns the set of nodes for the wrapped futures.
      */
     public Collection<N> getNodes();
+
+    /**
+     * Returns the future associated with the given node.
+     */
+    public StoreFuture<V> getFuture(N node);
 }

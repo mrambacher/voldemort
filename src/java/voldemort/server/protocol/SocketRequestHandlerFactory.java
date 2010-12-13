@@ -4,13 +4,13 @@ import voldemort.VoldemortException;
 import voldemort.client.protocol.RequestFormatType;
 import voldemort.server.StoreRepository;
 import voldemort.server.VoldemortConfig;
-import voldemort.server.protocol.admin.AsyncOperationService;
 import voldemort.server.protocol.admin.AdminServiceRequestHandler;
 import voldemort.server.protocol.admin.AsyncOperationService;
 import voldemort.server.protocol.pb.ProtoBuffRequestHandler;
 import voldemort.server.protocol.vold.VoldemortNativeRequestHandler;
 import voldemort.server.protocol.vold.VoldemortNativeRequestHandlerV2;
 import voldemort.server.protocol.vold.VoldemortNativeRequestHandlerV3;
+import voldemort.server.protocol.vold.VoldemortNativeRequestHandlerV4;
 import voldemort.server.rebalance.Rebalancer;
 import voldemort.server.storage.StorageService;
 import voldemort.store.ErrorCodeMapper;
@@ -54,6 +54,8 @@ public class SocketRequestHandlerFactory implements RequestHandlerFactory {
                 return new VoldemortNativeRequestHandlerV2(new ErrorCodeMapper(), repository);
             case VOLDEMORT_V3:
                 return new VoldemortNativeRequestHandlerV3(new ErrorCodeMapper(), repository);
+            case VOLDEMORT_V4:
+                return new VoldemortNativeRequestHandlerV4(new ErrorCodeMapper(), repository);
             case PROTOCOL_BUFFERS:
                 return new ProtoBuffRequestHandler(new ErrorCodeMapper(), repository);
             case ADMIN_PROTOCOL_BUFFERS:

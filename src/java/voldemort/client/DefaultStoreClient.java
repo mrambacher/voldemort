@@ -20,11 +20,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
-import org.apache.log4j.Logger;
-
 import voldemort.annotations.concurrency.Threadsafe;
 import voldemort.annotations.jmx.JmxManaged;
-import voldemort.annotations.jmx.JmxOperation;
 import voldemort.cluster.Node;
 import voldemort.routing.RoutingStrategy;
 import voldemort.serialization.Serializer;
@@ -33,6 +30,7 @@ import voldemort.store.StoreCapabilityType;
 import voldemort.versioning.InconsistencyResolver;
 import voldemort.versioning.InconsistentDataException;
 import voldemort.versioning.ObsoleteVersionException;
+import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
 import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
@@ -52,11 +50,9 @@ import com.google.common.collect.Maps;
 @JmxManaged(description = "A voldemort client")
 public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
 
-    private final Logger logger = Logger.getLogger(MetadataRefreshingStore.class);
+    private volatile Store<K, V, Object> store;
 
-    private volatile Store<K, V> store;
-
-    public DefaultStoreClient(Store<K, V> store) {
+    public DefaultStoreClient(Store<K, V, Object> store) {
         this.store = store;
     }
 
@@ -64,23 +60,10 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
                               InconsistencyResolver<Versioned<V>> resolver,
                               StoreClientFactory storeFactory,
                               int maxMetadataRefreshAttempts) {
-        this(new MetadataRefreshingStore<K, V>(storeName,
-                                               resolver,
-                                               storeFactory,
-                                               maxMetadataRefreshAttempts));
-    }
-
-    @JmxOperation(description = "bootstrap metadata from the cluster.")
-    @SuppressWarnings("unchecked")
-    public void bootStrap() {
-        try {
-            logger.info("bootstrapping metadata.");
-            MetadataRefreshingStore<K, V> metadata = (MetadataRefreshingStore<K, V>) store.getCapability(StoreCapabilityType.BOOT_STRAP);
-            metadata.bootStrap();
-        } catch(Exception e) {
-            logger.error("Caught exception while bootstrapping metadata. - " + e.getMessage(), e);
-
-        }
+        this(new MetadataRefreshingStore<K, V, Object>(storeName,
+                                                       resolver,
+                                                       storeFactory,
+                                                       maxMetadataRefreshAttempts));
     }
 
     public boolean delete(K key) {
@@ -111,11 +94,15 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
     }
 
     public Versioned<V> get(K key, Versioned<V> defaultValue) {
-        List<Versioned<V>> items = store.get(key);
+        return get(key, defaultValue, null);
+    }
+
+    public Versioned<V> get(K key, Versioned<V> defaultValue, Object transform) {
+        List<Versioned<V>> items = store.get(key, transform);
         return getItemOrThrow(key, defaultValue, items);
     }
 
-    public List<Version> getVersions(K key) {
+    private List<Version> getVersions(K key) {
         return store.getVersions(key);
     }
 
@@ -134,31 +121,17 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
     }
 
     public Map<K, Versioned<V>> getAll(Iterable<K> keys) {
-        Map<K, List<Versioned<V>>> items = store.getAll(keys);
-        Map<K, Versioned<V>> result = Maps.newHashMapWithExpectedSize(items.size());
-
-        for(Entry<K, List<Versioned<V>>> mapEntry: items.entrySet()) {
-            Versioned<V> value = getItemOrThrow(mapEntry.getKey(), null, mapEntry.getValue());
-            result.put(mapEntry.getKey(), value);
-        }
-        return result;
+        return getAll(keys, null);
     }
 
     public Versioned<V> put(K key, V value) {
-        List<Version> versions = getVersions(key);
-        Versioned<V> versioned;
-        if(versions.isEmpty())
-            versioned = Versioned.value(value, VersionFactory.newVersion());
-        else if(versions.size() == 1)
-            versioned = Versioned.value(value, versions.get(0));
-        else {
-            versioned = get(key, null);
-            if(versioned == null)
-                versioned = Versioned.value(value, VersionFactory.newVersion());
-            else
-                versioned.setObject(value);
-        }
-        return put(key, versioned);
+        return put(key, value, null);
+    }
+
+    public Versioned<V> put(K key, Versioned<V> versioned, Object transform)
+            throws ObsoleteVersionException {
+        Version version = store.put(key, versioned, transform);
+        return new Versioned<V>(versioned.getValue(), version, versioned.getMetadata());
     }
 
     public boolean putIfNotObsolete(K key, Versioned<V> versioned) {
@@ -171,8 +144,7 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
     }
 
     public Versioned<V> put(K key, Versioned<V> versioned) throws ObsoleteVersionException {
-        Version version = store.put(key, versioned);
-        return new Versioned<V>(versioned.getValue(), version);
+        return put(key, versioned, null);
     }
 
     public boolean applyUpdate(UpdateAction<K, V> action) {
@@ -218,5 +190,38 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
         else
             throw new InconsistentDataException("Unresolved versions returned from get(" + key
                                                 + ") = " + versions, versions);
+    }
+
+    public Versioned<V> get(K key, Object transforms) {
+        return get(key, null, transforms);
+    }
+
+    public Map<K, Versioned<V>> getAll(Iterable<K> keys, Map<K, Object> transforms) {
+        Map<K, List<Versioned<V>>> items = store.getAll(keys, transforms);
+        Map<K, Versioned<V>> result = Maps.newHashMapWithExpectedSize(items.size());
+
+        for(Entry<K, List<Versioned<V>>> mapEntry: items.entrySet()) {
+            Versioned<V> value = getItemOrThrow(mapEntry.getKey(), null, mapEntry.getValue());
+            result.put(mapEntry.getKey(), value);
+        }
+        return result;
+    }
+
+    public Versioned<V> put(K key, V value, Object transforms) {
+        List<Version> versions = getVersions(key);
+        Versioned<V> versioned;
+        if(versions.isEmpty())
+            versioned = Versioned.value(value, VersionFactory.newVersion());
+        else if(versions.size() == 1)
+            versioned = Versioned.value(value, versions.get(0));
+        else {
+            versioned = get(key, null);
+            if(versioned == null)
+                versioned = Versioned.value(value, new VectorClock());
+            else
+                versioned.setObject(value);
+        }
+        return put(key, versioned, transforms);
+
     }
 }

@@ -38,15 +38,15 @@ import voldemort.versioning.Version;
 import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
 
-public abstract class AbstractStoreTest<K, V> extends AbstractVoldemortTest<V> {
+public abstract class AbstractStoreTest<K, V, T> extends AbstractVoldemortTest<V> {
 
-    protected Map<String, Store<K, V>> stores;
+    protected Map<String, Store<K, V, T>> stores;
 
     protected String storeName;
 
     protected AbstractStoreTest(String name) {
         this.storeName = name;
-        stores = new HashMap<String, Store<K, V>>();
+        stores = new HashMap<String, Store<K, V, T>>();
     }
 
     @Before
@@ -67,7 +67,7 @@ public abstract class AbstractStoreTest<K, V> extends AbstractVoldemortTest<V> {
 
     protected void closeStore(String name) {
         try {
-            Store<K, V> store = stores.get(name);
+            Store<K, V, T> store = stores.get(name);
             if(store != null) {
                 stores.remove(name);
                 store.close();
@@ -75,12 +75,12 @@ public abstract class AbstractStoreTest<K, V> extends AbstractVoldemortTest<V> {
         } catch(Exception e) {}
     }
 
-    protected Store<K, V> getStore() {
+    protected Store<K, V, T> getStore() {
         return getStore(storeName);
     }
 
-    public Store<K, V> getStore(String name) {
-        Store<K, V> store = stores.get(name);
+    public Store<K, V, T> getStore(String name) {
+        Store<K, V, T> store = stores.get(name);
         if(store == null) {
             store = createStore(name);
             stores.put(name, store);
@@ -97,8 +97,12 @@ public abstract class AbstractStoreTest<K, V> extends AbstractVoldemortTest<V> {
     }
 
     protected Version doPut(String name, K key, Versioned<V> value) {
-        Store<K, V> store = getStore(name);
-        return store.put(key, value);
+        return doPut(name, key, value, null);
+    }
+
+    protected Version doPut(String name, K key, Versioned<V> value, T transform) {
+        Store<K, V, T> store = getStore(name);
+        return store.put(key, value, transform);
     }
 
     protected List<Versioned<V>> doGet(K key) {
@@ -106,8 +110,12 @@ public abstract class AbstractStoreTest<K, V> extends AbstractVoldemortTest<V> {
     }
 
     protected List<Versioned<V>> doGet(String name, K key) {
-        Store<K, V> store = getStore(name);
-        return store.get(key);
+        return doGet(name, key, null);
+    }
+
+    protected List<Versioned<V>> doGet(String name, K key, T transform) {
+        Store<K, V, T> store = getStore(name);
+        return store.get(key, transform);
     }
 
     protected List<Version> doGetVersions(K key) {
@@ -115,7 +123,7 @@ public abstract class AbstractStoreTest<K, V> extends AbstractVoldemortTest<V> {
     }
 
     protected List<Version> doGetVersions(String name, K key) {
-        Store<K, V> store = getStore(name);
+        Store<K, V, T> store = getStore(name);
         return store.getVersions(key);
     }
 
@@ -124,8 +132,12 @@ public abstract class AbstractStoreTest<K, V> extends AbstractVoldemortTest<V> {
     }
 
     protected Map<K, List<Versioned<V>>> doGetAll(String name, Iterable<K> key) {
-        Store<K, V> store = getStore(name);
-        return store.getAll(key);
+        return doGetAll(name, key, null);
+    }
+
+    protected Map<K, List<Versioned<V>>> doGetAll(String name, Iterable<K> key, Map<K, T> transforms) {
+        Store<K, V, T> store = getStore(name);
+        return store.getAll(key, transforms);
     }
 
     protected boolean doDelete(K key) {
@@ -137,7 +149,7 @@ public abstract class AbstractStoreTest<K, V> extends AbstractVoldemortTest<V> {
     }
 
     protected boolean doDelete(String name, K key, Version version) {
-        Store<K, V> store = getStore(name);
+        Store<K, V, T> store = getStore(name);
         return store.delete(key, version);
     }
 
@@ -146,11 +158,11 @@ public abstract class AbstractStoreTest<K, V> extends AbstractVoldemortTest<V> {
     }
 
     protected void doClose(String name) {
-        Store<K, V> store = getStore(name);
+        Store<K, V, T> store = getStore(name);
         store.close();
     }
 
-    public abstract Store<K, V> createStore(String name);
+    public abstract Store<K, V, T> createStore(String name);
 
     public abstract List<V> getValues(int numValues);
 
@@ -284,7 +296,10 @@ public abstract class AbstractStoreTest<K, V> extends AbstractVoldemortTest<V> {
         return testFetchedEqualsPut(storeName, key, put);
     }
 
-    protected List<Versioned<V>> assertFetchedEqualsPut(Version version,
+    @SuppressWarnings("unused")
+    protected List<Versioned<V>> assertFetchedEqualsPut(String storeName,
+                                                        K key,
+                                                        Version version,
                                                         Versioned<V> put,
                                                         List<Versioned<V>> results) {
         boolean found = false;
@@ -306,7 +321,8 @@ public abstract class AbstractStoreTest<K, V> extends AbstractVoldemortTest<V> {
 
     protected int testFetchedEqualsPut(String name, K key, Versioned<V> put) {
         Version version = doPut(name, key, put);
-        List<Versioned<V>> results = assertFetchedEqualsPut(version, put, doGet(name, key));
+        List<Versioned<V>> results = assertFetchedEqualsPut(name, key, version, put, doGet(name,
+                                                                                           key));
         return results.size();
 
     }

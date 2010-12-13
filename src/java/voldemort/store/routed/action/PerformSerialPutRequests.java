@@ -38,10 +38,9 @@ public class PerformSerialPutRequests extends
         AbstractKeyBasedAction<ByteArray, Version, PutPipelineData> {
 
     private final int required;
-
     private final long timeoutMs;
 
-    private final DistributedStore<Node, ByteArray, byte[]> distributor;
+    private final DistributedStore<Node, ByteArray, byte[], byte[]> distributor;
 
     private final Versioned<byte[]> versioned;
 
@@ -49,12 +48,15 @@ public class PerformSerialPutRequests extends
 
     private final Event masterDeterminedEvent;
 
+    private byte[] transforms;
+
     public PerformSerialPutRequests(PutPipelineData pipelineData,
                                     Event completeEvent,
                                     ByteArray key,
                                     Versioned<byte[]> versioned,
+                                    byte[] transforms,
                                     long timeoutMs,
-                                    DistributedStore<Node, ByteArray, byte[]> distributor,
+                                    DistributedStore<Node, ByteArray, byte[], byte[]> distributor,
                                     int required,
                                     Time time,
                                     Event masterDeterminedEvent) {
@@ -64,6 +66,7 @@ public class PerformSerialPutRequests extends
         this.required = required;
         this.versioned = versioned;
         this.time = time;
+        this.transforms = transforms;
         this.masterDeterminedEvent = masterDeterminedEvent;
     }
 
@@ -111,8 +114,8 @@ public class PerformSerialPutRequests extends
                              + node.getId() + ")");
 
             try {
-                AsynchronousStore<ByteArray, byte[]> async = distributor.getNodeStore(node);
-                StoreFuture<Version> future = async.submitPut(key, versionedCopy);
+                AsynchronousStore<ByteArray, byte[], byte[]> async = distributor.getNodeStore(node);
+                StoreFuture<Version> future = async.submitPut(key, versionedCopy, this.transforms);
                 future.get(this.timeoutMs, TimeUnit.MILLISECONDS);
                 pipelineData.incrementSuccesses();
 
@@ -135,7 +138,7 @@ public class PerformSerialPutRequests extends
                                                                                                     : null,
                                                                                  0,
                                                                                  required));
-            pipeline.addEvent(Event.ERROR);
+            pipeline.abort();
             return;
         }
 
@@ -154,7 +157,7 @@ public class PerformSerialPutRequests extends
                                                                                      pipelineData.getFailures(),
                                                                                      0,
                                                                                      required));
-                pipeline.addEvent(Event.ERROR);
+                pipeline.abort();
             } else {
                 if(pipelineData.getZonesRequired() != null) {
 
@@ -169,8 +172,7 @@ public class PerformSerialPutRequests extends
                                                                                           + "s required zone, but only "
                                                                                           + zonesSatisfied
                                                                                           + " succeeded"));
-
-                        pipeline.addEvent(Event.ERROR);
+                        pipeline.abort();
                     }
 
                 } else {

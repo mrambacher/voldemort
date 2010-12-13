@@ -38,32 +38,34 @@ public class ThreadedStoreTest extends AbstractAsynchronousStoreTest {
     }
 
     @Override
-    public AsynchronousStore<ByteArray, byte[]> createAsyncStore(String name) {
+    public AsynchronousStore<ByteArray, byte[], byte[]> createAsyncStore(String name) {
         Maps.newHashMap();
-        Store<ByteArray, byte[]> memory = new InMemoryStorageEngine<ByteArray, byte[]>(name);
-        CallableStore<ByteArray, byte[]> callable = new WrappedCallableStore<ByteArray, byte[]>(memory);
-        AsynchronousStore<ByteArray, byte[]> threaded = new ThreadedStore<ByteArray, byte[]>(callable,
-                                                                                             threadPool);
+        Store<ByteArray, byte[], byte[]> memory = new InMemoryStorageEngine<ByteArray, byte[], byte[]>(name);
+        CallableStore<ByteArray, byte[], byte[]> callable = new WrappedCallableStore<ByteArray, byte[], byte[]>(memory);
+        AsynchronousStore<ByteArray, byte[], byte[]> threaded = new ThreadedStore<ByteArray, byte[], byte[]>(callable,
+                                                                                                             threadPool);
         return threaded;
     }
 
     @Override
-    protected AsynchronousStore<ByteArray, byte[]> createSlowStore(String name, long delay) {
-        Store<ByteArray, byte[]> memory = new InMemoryStorageEngine<ByteArray, byte[]>(name);
-        Store<ByteArray, byte[]> sleepy = new SleepyStore<ByteArray, byte[]>(delay, memory);
+    protected AsynchronousStore<ByteArray, byte[], byte[]> createSlowStore(String name, long delay) {
+        Store<ByteArray, byte[], byte[]> memory = new InMemoryStorageEngine<ByteArray, byte[], byte[]>(name);
+        Store<ByteArray, byte[], byte[]> sleepy = new SleepyStore<ByteArray, byte[], byte[]>(delay,
+                                                                                             memory);
 
-        AsynchronousStore<ByteArray, byte[]> threaded = new ThreadedStore<ByteArray, byte[]>(AsyncUtils.asCallable(sleepy),
-                                                                                             threadPool);
+        AsynchronousStore<ByteArray, byte[], byte[]> threaded = new ThreadedStore<ByteArray, byte[], byte[]>(AsyncUtils.asCallable(sleepy),
+                                                                                                             threadPool);
         return threaded;
 
     }
 
     @Override
-    protected AsynchronousStore<ByteArray, byte[]> createFailingStore(String name,
-                                                                      VoldemortException ex) {
-        FailingStore<ByteArray, byte[]> failing = new FailingStore<ByteArray, byte[]>(name, ex);
-        AsynchronousStore<ByteArray, byte[]> threaded = new ThreadedStore<ByteArray, byte[]>(failing,
-                                                                                             threadPool);
+    protected AsynchronousStore<ByteArray, byte[], byte[]> createFailingStore(String name,
+                                                                              VoldemortException ex) {
+        FailingStore<ByteArray, byte[], byte[]> failing = new FailingStore<ByteArray, byte[], byte[]>(name,
+                                                                                                      ex);
+        AsynchronousStore<ByteArray, byte[], byte[]> threaded = new ThreadedStore<ByteArray, byte[], byte[]>(failing,
+                                                                                                             threadPool);
         return threaded;
     }
 }

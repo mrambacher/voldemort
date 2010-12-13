@@ -22,7 +22,7 @@ import voldemort.store.invalidmetadata.MetadataCheckingStore;
 import voldemort.versioning.InconsistencyResolver;
 import voldemort.versioning.Versioned;
 
-public class MetadataRefreshingStore<K, V> extends MetadataCheckingStore<K, V> {
+public class MetadataRefreshingStore<K, V, T> extends MetadataCheckingStore<K, V, T> {
 
     private final StoreClientFactory storeFactory;
     private final InconsistencyResolver<Versioned<V>> resolver;
