@@ -36,9 +36,9 @@ import voldemort.versioning.Versioned;
 
 import com.google.common.collect.Lists;
 
-public abstract class AbstractStorageEngine implements StorageEngine<ByteArray, byte[]> {
+public abstract class AbstractStorageEngine implements StorageEngine<ByteArray, byte[], byte[]> {
 
-    private static final Logger logger = Logger.getLogger(AbstractStorageEngine.class);
+    protected final Logger logger = Logger.getLogger(getClass());
     private static final Hex hexCodec = new Hex();
     private final String name;
 
@@ -83,7 +83,8 @@ public abstract class AbstractStorageEngine implements StorageEngine<ByteArray, 
         return results;
     }
 
-    public List<Versioned<byte[]>> get(ByteArray key) throws PersistenceFailureException {
+    public List<Versioned<byte[]>> get(ByteArray key, byte[] transforms)
+            throws PersistenceFailureException {
         StoreUtils.assertValidKey(key);
 
         ClosableIterator<Versioned<byte[]>> iter = null;
@@ -99,12 +100,19 @@ public abstract class AbstractStorageEngine implements StorageEngine<ByteArray, 
         }
     }
 
-    public Map<ByteArray, List<Versioned<byte[]>>> getAll(Iterable<ByteArray> keys)
+    public Map<ByteArray, List<Versioned<byte[]>>> getAll(Iterable<ByteArray> keys,
+                                                          Map<ByteArray, byte[]> transforms)
             throws VoldemortException {
         StoreUtils.assertValidKeys(keys);
         Map<ByteArray, List<Versioned<byte[]>>> result = StoreUtils.newEmptyHashMap(keys);
         for(ByteArray key: keys) {
-            List<Versioned<byte[]>> values = get(key);
+
+            List<Versioned<byte[]>> values;
+            if(transforms != null) {
+                values = get(key, transforms.get(key));
+            } else {
+                values = get(key, null);
+            }
             if(!values.isEmpty()) {
                 result.put(key, values);
             }
@@ -112,7 +120,8 @@ public abstract class AbstractStorageEngine implements StorageEngine<ByteArray, 
         return result;
     }
 
-    public Version put(ByteArray key, Versioned<byte[]> value) throws PersistenceFailureException {
+    public Version put(ByteArray key, Versioned<byte[]> value, byte[] transforms)
+            throws PersistenceFailureException {
         StoreUtils.assertValidKey(key);
 
         boolean succeeded = false;
@@ -231,7 +240,7 @@ public abstract class AbstractStorageEngine implements StorageEngine<ByteArray, 
     public boolean equals(Object o) {
         if(o == null || !Store.class.isAssignableFrom(o.getClass()))
             return false;
-        Store<?, ?> s = (Store<?, ?>) o;
+        Store<?, ?, ?> s = (Store<?, ?, ?>) o;
         return s.getName().equals(s.getName());
     }
 }

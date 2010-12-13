@@ -32,7 +32,8 @@ import com.google.common.collect.Lists;
 /**
  * 
  */
-public abstract class AbstractByteArrayStoreTest extends AbstractStoreTest<ByteArray, byte[]> {
+public abstract class AbstractByteArrayStoreTest extends
+        AbstractStoreTest<ByteArray, byte[], byte[]> {
 
     public AbstractByteArrayStoreTest(String name) {
         super(name);

@@ -57,15 +57,14 @@ import voldemort.utils.ByteUtils;
 import voldemort.utils.RebalanceUtils;
 import voldemort.versioning.ObsoleteVersionException;
 import voldemort.versioning.VectorClock;
-import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
 
 @RunWith(Parameterized.class)
 public class RedirectingStoreTest extends TestCase {
 
     private static int TEST_VALUES_SIZE = 1000;
-    private static String testStoreName = "test-replication-memory";
-    private static String storesXmlfile = "test/common/voldemort/config/stores.xml";
+    private static String testStoreName = "test";
+    private static String storesXmlfile = "test/common/voldemort/config/single-store.xml";
 
     VoldemortServer server0;
     VoldemortServer server1;
@@ -149,12 +148,13 @@ public class RedirectingStoreTest extends TestCase {
     public void testProxyGetAll() {
         Map<ByteArray, byte[]> entryMap = ServerTestUtils.createRandomKeyValuePairs(TEST_VALUES_SIZE);
 
-        Store<ByteArray, byte[]> store = server1.getStoreRepository()
-                                                .getStorageEngine(testStoreName);
+        Store<ByteArray, byte[], byte[]> store = server1.getStoreRepository()
+                                                        .getStorageEngine(testStoreName);
         for(Entry<ByteArray, byte[]> entry: entryMap.entrySet()) {
             store.put(entry.getKey(),
                       Versioned.value(entry.getValue(),
-                                      new VectorClock().incremented(0, System.currentTimeMillis())));
+                                      new VectorClock().incremented(0, System.currentTimeMillis())),
+                      null);
         }
 
         server0.getMetadataStore().put(MetadataStore.CLUSTER_KEY, targetCluster);
@@ -169,7 +169,10 @@ public class RedirectingStoreTest extends TestCase {
                                                                                              1,
                                                                                              Arrays.asList(1),
                                                                                              new ArrayList<Integer>(0),
+                                                                                             new ArrayList<Integer>(0),
                                                                                              Arrays.asList(testStoreName),
+                                                                                             new HashMap<String, String>(),
+                                                                                             new HashMap<String, String>(),
                                                                                              0))));
         checkGetAllEntries(entryMap, server0, getRedirectingStore(server0.getMetadataStore(),
                                                                   testStoreName), Arrays.asList(1));
@@ -181,14 +184,13 @@ public class RedirectingStoreTest extends TestCase {
         HashMap<ByteArray, byte[]> entryMap = ServerTestUtils.createRandomKeyValuePairs(TEST_VALUES_SIZE);
 
         // populate all entries in server1
-        Store<ByteArray, byte[]> store = server1.getStoreRepository()
-                                                .getStorageEngine(testStoreName);
+        Store<ByteArray, byte[], byte[]> store = server1.getStoreRepository()
+                                                        .getStorageEngine(testStoreName);
         for(Entry<ByteArray, byte[]> entry: entryMap.entrySet()) {
             store.put(entry.getKey(),
                       Versioned.value(entry.getValue(),
-                                      VersionFactory.incremented(VersionFactory.newVersion(),
-                                                                 0,
-                                                                 System.currentTimeMillis())));
+                                      new VectorClock().incremented(0, System.currentTimeMillis())),
+                      null);
         }
 
         // set cluster.xml for invalidMetadata sake
@@ -205,7 +207,10 @@ public class RedirectingStoreTest extends TestCase {
                                                                                              1,
                                                                                              Arrays.asList(1),
                                                                                              new ArrayList<Integer>(0),
+                                                                                             new ArrayList<Integer>(0),
                                                                                              Arrays.asList(testStoreName),
+                                                                                             new HashMap<String, String>(),
+                                                                                             new HashMap<String, String>(),
                                                                                              0))));
 
         // for Rebalancing State we should see proxyGet()
@@ -219,14 +224,13 @@ public class RedirectingStoreTest extends TestCase {
         HashMap<ByteArray, byte[]> entryMap = ServerTestUtils.createRandomKeyValuePairs(TEST_VALUES_SIZE);
 
         // populate all entries in server1
-        Store<ByteArray, byte[]> store = server1.getStoreRepository()
-                                                .getStorageEngine(testStoreName);
+        Store<ByteArray, byte[], byte[]> store = server1.getStoreRepository()
+                                                        .getStorageEngine(testStoreName);
         for(Entry<ByteArray, byte[]> entry: entryMap.entrySet()) {
             store.put(entry.getKey(),
                       Versioned.value(entry.getValue(),
-                                      VersionFactory.incremented(VersionFactory.newVersion(),
-                                                                 0,
-                                                                 System.currentTimeMillis())));
+                                      new VectorClock().incremented(0, System.currentTimeMillis())),
+                      null);
         }
 
         // set cluster.xml for invalidMetadata sake
@@ -243,7 +247,10 @@ public class RedirectingStoreTest extends TestCase {
                                                                                              1,
                                                                                              Arrays.asList(1),
                                                                                              new ArrayList<Integer>(0),
+                                                                                             new ArrayList<Integer>(0),
                                                                                              Arrays.asList(testStoreName),
+                                                                                             new HashMap<String, String>(),
+                                                                                             new HashMap<String, String>(),
                                                                                              0))));
 
         // for Rebalancing State we should see proxyPut()
@@ -252,7 +259,7 @@ public class RedirectingStoreTest extends TestCase {
 
     private void checkGetAllEntries(Map<ByteArray, byte[]> entryMap,
                                     VoldemortServer server,
-                                    Store<ByteArray, byte[]> store,
+                                    Store<ByteArray, byte[], byte[]> store,
                                     List<Integer> availablePartition) {
         RoutingStrategy routing = server.getMetadataStore().getRoutingStrategy(store.getName());
         List<ByteArray> keysInPartitions = new ArrayList<ByteArray>();
@@ -262,7 +269,7 @@ public class RedirectingStoreTest extends TestCase {
                 keysInPartitions.add(key);
             }
         }
-        Map<ByteArray, List<Versioned<byte[]>>> results = store.getAll(keysInPartitions);
+        Map<ByteArray, List<Versioned<byte[]>>> results = store.getAll(keysInPartitions, null);
         for(Entry<ByteArray, List<Versioned<byte[]>>> entry: results.entrySet()) {
             assertEquals("Values should match",
                          new String(entry.getValue().get(0).getValue()),
@@ -272,7 +279,7 @@ public class RedirectingStoreTest extends TestCase {
 
     private void checkGetEntries(HashMap<ByteArray, byte[]> entryMap,
                                  VoldemortServer server,
-                                 Store<ByteArray, byte[]> store,
+                                 Store<ByteArray, byte[], byte[]> store,
                                  List<Integer> availablePartitions) {
         RoutingStrategy routing = server.getMetadataStore().getRoutingStrategy(store.getName());
 
@@ -281,10 +288,10 @@ public class RedirectingStoreTest extends TestCase {
             if(availablePartitions.containsAll(partitions)) {
                 assertEquals("Keys for partition:" + partitions + " should be present.",
                              1,
-                             store.get(entry.getKey()).size());
+                             store.get(entry.getKey(), null).size());
                 assertEquals("Values should match.",
                              new String(entry.getValue()),
-                             new String(store.get(entry.getKey()).get(0).getValue()));
+                             new String(store.get(entry.getKey(), null).get(0).getValue()));
             }
         }
     }
@@ -304,9 +311,9 @@ public class RedirectingStoreTest extends TestCase {
                     // should see obsoleteVersionException for same vectorClock
                     redirectingStore.put(entry.getKey(),
                                          Versioned.value(entry.getValue(),
-                                                         VersionFactory.incremented(VersionFactory.newVersion(),
-                                                                                    0,
-                                                                                    System.currentTimeMillis())));
+                                                         new VectorClock().incremented(0,
+                                                                                       System.currentTimeMillis())),
+                                         null);
                     fail("Should see obsoleteVersionException here.");
                 } catch(ObsoleteVersionException e) {
                     // ignore
@@ -327,8 +334,6 @@ public class RedirectingStoreTest extends TestCase {
 
         metadataStore.put(keyString,
                           new Versioned<Object>(value,
-                                                VersionFactory.incremented(current,
-                                                                           0,
-                                                                           System.currentTimeMillis())));
+                                                current.incremented(0, System.currentTimeMillis())));
     }
 }

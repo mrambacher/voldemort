@@ -34,20 +34,22 @@ import voldemort.utils.Time;
 /**
  * A Store which monitors requests and changes the state of the nodes.
  */
-public class FailureDetectingStore<K, V> extends DelegatingAsynchronousStore<K, V> {
+public class FailureDetectingStore<K, V, T> extends DelegatingAsynchronousStore<K, V, T> {
 
     private final Node node;
     private final FailureDetector failureDetector;
 
-    public static <K, V> Store<K, V> create(Node node, FailureDetector detector, Store<K, V> store) {
-        AsynchronousStore<K, V> async = AsyncUtils.asAsync(store);
+    public static <K, V, T> Store<K, V, T> create(Node node,
+                                                  FailureDetector detector,
+                                                  Store<K, V, T> store) {
+        AsynchronousStore<K, V, T> async = AsyncUtils.asAsync(store);
         return AsyncUtils.asSync(create(node, detector, async));
     }
 
-    public static <K, V> AsynchronousStore<K, V> create(Node node,
-                                                        FailureDetector detector,
-                                                        AsynchronousStore<K, V> async) {
-        return new FailureDetectingStore<K, V>(node, detector, async);
+    public static <K, V, T> AsynchronousStore<K, V, T> create(Node node,
+                                                              FailureDetector detector,
+                                                              AsynchronousStore<K, V, T> async) {
+        return new FailureDetectingStore<K, V, T>(node, detector, async);
     }
 
     /**
@@ -57,7 +59,9 @@ public class FailureDetectingStore<K, V> extends DelegatingAsynchronousStore<K, 
      * @param detector The failure detector for this node
      * @param inner The underlying store.
      */
-    public FailureDetectingStore(Node node, FailureDetector detector, AsynchronousStore<K, V> inner) {
+    public FailureDetectingStore(Node node,
+                                 FailureDetector detector,
+                                 AsynchronousStore<K, V, T> inner) {
         super(inner);
         this.node = node;
         this.failureDetector = detector;

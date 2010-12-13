@@ -37,6 +37,7 @@ import voldemort.server.storage.StorageService;
 import voldemort.store.StorageEngine;
 import voldemort.store.readonly.FileFetcher;
 import voldemort.store.readonly.ReadOnlyStorageEngine;
+import voldemort.store.readonly.ReadOnlyUtils;
 import voldemort.utils.ByteArray;
 import voldemort.utils.Props;
 import voldemort.utils.ReflectUtils;
@@ -122,8 +123,8 @@ public class ReadOnlyStoreManagementServlet extends HttpServlet {
         StorageService storage = (StorageService) Utils.notNull(server)
                                                        .getService(ServiceType.STORAGE);
         List<ReadOnlyStorageEngine> l = Lists.newArrayList();
-        for(StorageEngine<ByteArray, byte[]> engine: storage.getStoreRepository()
-                                                            .getStorageEnginesByClass(ReadOnlyStorageEngine.class)) {
+        for(StorageEngine<ByteArray, byte[], byte[]> engine: storage.getStoreRepository()
+                                                                    .getStorageEnginesByClass(ReadOnlyStorageEngine.class)) {
             l.add((ReadOnlyStorageEngine) engine);
         }
         return l;
@@ -132,6 +133,7 @@ public class ReadOnlyStoreManagementServlet extends HttpServlet {
     @Override
     public void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException,
             IOException {
+        initStores((VoldemortServer) getServletContext().getAttribute(VoldemortServletContextListener.SERVER_KEY));
         Map<String, Object> params = Maps.newHashMap();
         params.put("stores", stores);
         velocityEngine.render("read-only-mgmt.vm", params, resp.getOutputStream());
@@ -186,7 +188,17 @@ public class ReadOnlyStoreManagementServlet extends HttpServlet {
 
         long pushVersion;
         if(pushVersionString == null) {
-            pushVersion = store.getCurrentVersionId() + 1;
+            // Find the max version
+            long maxVersion;
+            File[] storeDirList = ReadOnlyUtils.getVersionDirs(new File(store.getStoreDirPath()));
+            if(storeDirList == null || storeDirList.length == 0) {
+                throw new ServletException("Push version required since no version folders exist");
+            } else {
+                maxVersion = ReadOnlyUtils.getVersionId(ReadOnlyUtils.findKthVersionedDir(storeDirList,
+                                                                                          storeDirList.length - 1,
+                                                                                          storeDirList.length - 1)[0]);
+            }
+            pushVersion = maxVersion + 1;
         } else {
             pushVersion = Long.parseLong(pushVersionString);
             if(pushVersion <= store.getCurrentVersionId())
@@ -199,15 +211,21 @@ public class ReadOnlyStoreManagementServlet extends HttpServlet {
         File fetchDir = null;
         if(fileFetcher == null) {
 
-            logger.warn("File fetcher class has not instantiated correctly");
-            fetchDir = new File(fetchUrl);
+            logger.warn("File fetcher class has not instantiated correctly. Assuming local file");
+
+            if(!Utils.isReadableDir(fetchUrl)) {
+                throw new VoldemortException("Fetch url " + fetchUrl + " is not readable");
+            }
+
+            fetchDir = new File(store.getStoreDirPath(), "version-" + Long.toString(pushVersion));
+            Utils.move(new File(fetchUrl), fetchDir);
 
         } else {
             logger.info("Executing fetch of " + fetchUrl);
 
             try {
                 fetchDir = fileFetcher.fetch(fetchUrl, store.getStoreDirPath() + File.separator
-                                                       + "version-" + pushVersion);
+                                                       + "version-" + Long.toString(pushVersion));
 
                 if(fetchDir == null) {
                     throw new ServletException("File fetcher failed for " + fetchUrl
@@ -254,6 +272,7 @@ public class ReadOnlyStoreManagementServlet extends HttpServlet {
     }
 
     private ReadOnlyStorageEngine getStore(String storeName) throws ServletException {
+        initStores((VoldemortServer) getServletContext().getAttribute(VoldemortServletContextListener.SERVER_KEY));
         for(ReadOnlyStorageEngine store: this.stores)
             if(store.getName().equals(storeName))
                 return store;

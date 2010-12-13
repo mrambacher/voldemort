@@ -32,18 +32,18 @@ import voldemort.versioning.Versioned;
  * Wrapper class to allow extenders to add functionality to a distributed store.
  * This class is-a/has-a DistributedStore.
  */
-public class DelegatingDistributedStore<N, K, V> implements DistributedStore<N, K, V> {
+public class DelegatingDistributedStore<N, K, V, T> implements DistributedStore<N, K, V, T> {
 
     protected final Logger logger = Logger.getLogger(getClass());
 
-    private final DistributedStore<N, K, V> inner;
+    private final DistributedStore<N, K, V, T> inner;
 
     /**
      * Create a new delegating distributed store
      * 
      * @param inner The wrapped distributed store.
      */
-    public DelegatingDistributedStore(DistributedStore<N, K, V> inner) {
+    public DelegatingDistributedStore(DistributedStore<N, K, V, T> inner) {
         this.inner = inner;
     }
 
@@ -76,7 +76,7 @@ public class DelegatingDistributedStore<N, K, V> implements DistributedStore<N, 
      * @param node The node being queried
      * @return The asynchronous store for the input node.
      */
-    public AsynchronousStore<K, V> getNodeStore(N node) {
+    public AsynchronousStore<K, V, T> getNodeStore(N node) {
         return inner.getNodeStore(node);
     }
 
@@ -86,7 +86,7 @@ public class DelegatingDistributedStore<N, K, V> implements DistributedStore<N, 
      * 
      * @return The asynchronous stores for this distributor.
      */
-    public Map<N, AsynchronousStore<K, V>> getNodeStores() {
+    public Map<N, AsynchronousStore<K, V, T>> getNodeStores() {
         return inner.getNodeStores();
     }
 
@@ -104,11 +104,12 @@ public class DelegatingDistributedStore<N, K, V> implements DistributedStore<N, 
      * @throws VoldemortException
      */
     public DistributedFuture<N, List<Versioned<V>>> submitGet(final K key,
+                                                              final T transform,
                                                               Collection<N> nodes,
                                                               int preferred,
                                                               int required)
             throws VoldemortException {
-        return buildFuture(inner.submitGet(key, nodes, preferred, required));
+        return buildFuture(inner.submitGet(key, transform, nodes, preferred, required));
     }
 
     /**
@@ -130,10 +131,11 @@ public class DelegatingDistributedStore<N, K, V> implements DistributedStore<N, 
      * @throws VoldemortException
      */
     public DistributedFuture<N, Map<K, List<Versioned<V>>>> submitGetAll(final Map<N, List<K>> nodesToKeys,
+                                                                         final Map<K, T> transforms,
                                                                          int preferred,
                                                                          int required)
             throws VoldemortException {
-        return buildFuture(inner.submitGetAll(nodesToKeys, preferred, required));
+        return buildFuture(inner.submitGetAll(nodesToKeys, transforms, preferred, required));
 
     }
 
@@ -151,10 +153,11 @@ public class DelegatingDistributedStore<N, K, V> implements DistributedStore<N, 
      */
     public DistributedFuture<N, Version> submitPut(K key,
                                                    Versioned<V> value,
+                                                   final T transform,
                                                    Collection<N> nodes,
                                                    int preferred,
                                                    int required) throws VoldemortException {
-        return buildFuture(inner.submitPut(key, value, nodes, preferred, required));
+        return buildFuture(inner.submitPut(key, value, transform, nodes, preferred, required));
     }
 
     /**

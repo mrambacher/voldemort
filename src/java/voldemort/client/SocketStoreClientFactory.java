@@ -72,22 +72,23 @@ public class SocketStoreClientFactory extends AbstractStoreClientFactory {
     }
 
     @Override
-    public AsynchronousStore<ByteArray, byte[]> getAsyncStore(StoreDefinition storeDef, Node node) {
+    public AsynchronousStore<ByteArray, byte[], byte[]> getAsyncStore(StoreDefinition storeDef,
+                                                                      Node node) {
         return getAsyncStore(storeDef.getName(), node.getHost(), getPort(node), requestFormatType);
     }
 
-    private AsynchronousStore<ByteArray, byte[]> getAsyncStore(String storeName,
-                                                               String host,
-                                                               int port,
-                                                               RequestFormatType type) {
+    private AsynchronousStore<ByteArray, byte[], byte[]> getAsyncStore(String storeName,
+                                                                       String host,
+                                                                       int port,
+                                                                       RequestFormatType type) {
         return storeFactory.create(storeName, host, port, type, requestRoutingType);
     }
 
     @Override
-    protected Store<ByteArray, byte[]> getStore(String storeName,
-                                                String host,
-                                                int port,
-                                                RequestFormatType type) {
+    protected Store<ByteArray, byte[], byte[]> getStore(String storeName,
+                                                        String host,
+                                                        int port,
+                                                        RequestFormatType type) {
         return AsyncUtils.asStore(getAsyncStore(storeName, host, port, type));
     }
 
@@ -116,7 +117,7 @@ public class SocketStoreClientFactory extends AbstractStoreClientFactory {
         ClientStoreVerifier storeVerifier = new ClientStoreVerifier() {
 
             @Override
-            protected Store<ByteArray, byte[]> getStoreInternal(Node node) {
+            protected Store<ByteArray, byte[], byte[]> getStoreInternal(Node node) {
                 return SocketStoreClientFactory.this.getStore(MetadataStore.METADATA_STORE_NAME,
                                                               node.getHost(),
                                                               node.getSocketPort(),

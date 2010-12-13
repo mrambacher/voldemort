@@ -1,3 +1,20 @@
+/*
+ * Copyright 2008-2010 LinkedIn, Inc
+ * 
+ * Portion Copyright 2010 Nokia Corporation. All rights reserved.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License. You may obtain a copy of
+ * the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations under
+ * the License.
+ */
 package voldemort.server.protocol.vold;
 
 import java.io.DataInputStream;
@@ -57,13 +74,13 @@ public class VoldemortNativeRequestHandlerV3 extends VoldemortNativeRequestHandl
     }
 
     @Override
-    protected void handlePut(DataInputStream inputStream,
-                             DataOutputStream outputStream,
-                             Store<ByteArray, byte[]> store) throws IOException {
-        ByteArray key = VoldemortNativeProtocol.readKey(inputStream);
-        Versioned<byte[]> versioned = VoldemortNativeProtocol.readVersioned(inputStream);
+    protected void handlePut(Store<ByteArray, byte[], byte[]> store,
+                             ByteArray key,
+                             Versioned<byte[]> versioned,
+                             byte[] transforms,
+                             DataOutputStream outputStream) throws IOException {
         try {
-            Version version = store.put(key, versioned);
+            Version version = store.put(key, versioned, null);
             outputStream.writeShort(0);
             writeVersion(outputStream, version);
         } catch(VoldemortException e) {
@@ -109,15 +126,9 @@ public class VoldemortNativeRequestHandlerV3 extends VoldemortNativeRequestHandl
     @Override
     protected void handleDelete(DataInputStream inputStream,
                                 DataOutputStream outputStream,
-                                Store<ByteArray, byte[]> store) throws IOException {
+                                Store<ByteArray, byte[], byte[]> store) throws IOException {
         ByteArray key = VoldemortNativeProtocol.readKey(inputStream);
         Version version = readVersion(inputStream);
-        try {
-            boolean succeeded = store.delete(key, version);
-            outputStream.writeShort(0);
-            outputStream.writeBoolean(succeeded);
-        } catch(VoldemortException e) {
-            writeException(outputStream, e);
-        }
+        handleDelete(store, key, version, outputStream);
     }
 }

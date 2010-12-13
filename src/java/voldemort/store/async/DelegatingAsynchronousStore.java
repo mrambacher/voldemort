@@ -19,6 +19,9 @@ package voldemort.store.async;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.log4j.LogManager;
+import org.apache.log4j.Logger;
+
 import voldemort.VoldemortException;
 import voldemort.store.NoSuchCapabilityException;
 import voldemort.store.StoreCapabilityType;
@@ -29,11 +32,13 @@ import voldemort.versioning.Versioned;
  * Wrapper class to allow extenders to add functionality to an asynchronous
  * store. This class is-a/has-a AsynchronousStore.
  */
-public class DelegatingAsynchronousStore<K, V> implements AsynchronousStore<K, V> {
+public class DelegatingAsynchronousStore<K, V, T> implements AsynchronousStore<K, V, T> {
 
-    private final AsynchronousStore<K, V> inner;
+    protected final Logger logger = LogManager.getLogger(getClass());
 
-    public DelegatingAsynchronousStore(AsynchronousStore<K, V> async) {
+    private final AsynchronousStore<K, V, T> inner;
+
+    public DelegatingAsynchronousStore(AsynchronousStore<K, V, T> async) {
         this.inner = async;
     }
 
@@ -55,23 +60,9 @@ public class DelegatingAsynchronousStore<K, V> implements AsynchronousStore<K, V
      *         are found.
      * @throws VoldemortException
      */
-    public StoreFuture<List<Versioned<V>>> submitGet(final K key) throws VoldemortException {
-        return buildFuture(inner.submitGet(key));
-    }
-
-    /**
-     * Get the values associated with the given keys and returns them in a Map
-     * of keys to a list of versioned values. Note that the returned map will
-     * only contain entries for the keys which have a value associated with
-     * them.
-     * 
-     * @param keys The keys to check for.
-     * @return A Map of keys to a list of versioned values.
-     * @throws VoldemortException
-     */
-    public StoreFuture<Map<K, List<Versioned<V>>>> submitGetAll(final Iterable<K> keys)
+    public StoreFuture<List<Versioned<V>>> submitGet(final K key, final T transform)
             throws VoldemortException {
-        return buildFuture(inner.submitGetAll(keys));
+        return buildFuture(inner.submitGet(key, transform));
     }
 
     /**
@@ -84,8 +75,25 @@ public class DelegatingAsynchronousStore<K, V> implements AsynchronousStore<K, V
      * @return A Map of keys to a list of versioned values.
      * @throws VoldemortException
      */
-    public StoreFuture<Version> submitPut(K key, Versioned<V> value) throws VoldemortException {
-        return buildFuture(inner.submitPut(key, value));
+    public StoreFuture<Map<K, List<Versioned<V>>>> submitGetAll(final Iterable<K> keys,
+                                                                Map<K, T> transforms)
+            throws VoldemortException {
+        return buildFuture(inner.submitGetAll(keys, transforms));
+    }
+
+    /**
+     * Get the values associated with the given keys and returns them in a Map
+     * of keys to a list of versioned values. Note that the returned map will
+     * only contain entries for the keys which have a value associated with
+     * them.
+     * 
+     * @param keys The keys to check for.
+     * @return A Map of keys to a list of versioned values.
+     * @throws VoldemortException
+     */
+    public StoreFuture<Version> submitPut(K key, Versioned<V> value, T transform)
+            throws VoldemortException {
+        return buildFuture(inner.submitPut(key, value, transform));
     }
 
     /**

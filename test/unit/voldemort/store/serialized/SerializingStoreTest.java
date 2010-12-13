@@ -27,7 +27,7 @@ import voldemort.utils.ByteArray;
 /**
  * 
  */
-public class SerializingStoreTest extends AbstractStoreTest<String, String> {
+public class SerializingStoreTest extends AbstractStoreTest<String, String, String> {
 
     public SerializingStoreTest() {
         super("test");
@@ -39,8 +39,9 @@ public class SerializingStoreTest extends AbstractStoreTest<String, String> {
     }
 
     @Override
-    public Store<String, String> createStore(String name) {
-        return SerializingStore.wrap(new InMemoryStorageEngine<ByteArray, byte[]>(name),
+    public Store<String, String, String> createStore(String name) {
+        return SerializingStore.wrap(new InMemoryStorageEngine<ByteArray, byte[], byte[]>(name),
+                                     new StringSerializer(),
                                      new StringSerializer(),
                                      new StringSerializer());
     }

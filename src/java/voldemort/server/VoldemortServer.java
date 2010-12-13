@@ -96,8 +96,10 @@ public class VoldemortServer extends AbstractService {
         // update cluster details in metaDataStore
         ConfigurationStorageEngine metadataInnerEngine = new ConfigurationStorageEngine("metadata-config-store",
                                                                                         voldemortConfig.getMetadataDirectory());
+        // transforms are not required here
         metadataInnerEngine.put(MetadataStore.CLUSTER_KEY,
-                                new Versioned<String>(new ClusterMapper().writeCluster(cluster)));
+                                new Versioned<String>(new ClusterMapper().writeCluster(cluster)),
+                                null);
         this.metadata = new MetadataStore(metadataInnerEngine, voldemortConfig.getNodeId());
 
         this.services = createServices();
@@ -235,8 +237,9 @@ public class VoldemortServer extends AbstractService {
     protected void startInner() throws VoldemortException {
         logger.info("Starting " + services.size() + " services.");
         long start = System.currentTimeMillis();
-        for(VoldemortService service: services)
+        for(VoldemortService service: services) {
             service.start();
+        }
         long end = System.currentTimeMillis();
         logger.info("Startup completed in " + (end - start) + " ms.");
     }
@@ -258,7 +261,7 @@ public class VoldemortServer extends AbstractService {
                 service.stop();
             } catch(VoldemortException e) {
                 exceptions.add(e);
-                logger.error(e.getMessage(), e);
+                logger.error(e);
             }
         }
         logger.info("All services stopped for Node:" + getIdentityNode().getId());
@@ -277,13 +280,8 @@ public class VoldemortServer extends AbstractService {
             else
                 croak("USAGE: java " + VoldemortServer.class.getName() + " [voldemort_home_dir]");
         } catch(Exception e) {
-            logger.error(e.getMessage(), e);
+            logger.error(e);
             Utils.croak("Error while loading configuration: " + e.getMessage());
-        }
-
-        if(logger.isDebugEnabled()) {
-            logger.debug("Voldemort Server configuration:" + System.getProperty("line.separator")
-                         + config.getAllProps().toString());
         }
 
         final VoldemortServer server = new VoldemortServer(config);

@@ -25,12 +25,12 @@ public class KratiStorageEngineTest extends AbstractStorageEngineTest {
     }
 
     @Override
-    public StorageEngine<ByteArray, byte[]> createStorageEngine(String name) {
+    public StorageEngine<ByteArray, byte[], byte[]> createStorageEngine(String name) {
         return new KratiStorageEngine(name, new MappedSegmentFactory(), 10, 10, 0.75, 0, storeDir);
     }
 
     @Override
-    protected void closeStorageEngine(StorageEngine<ByteArray, byte[]> engine) {
+    protected void closeStorageEngine(StorageEngine<ByteArray, byte[], byte[]> engine) {
         engine.truncate();
         super.closeStorageEngine(engine);
     }

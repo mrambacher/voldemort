@@ -22,9 +22,9 @@ import java.util.concurrent.Callable;
  * Nonblocking stores allow a Callable store to treated as an asynchronous
  * store.
  */
-public class NonblockingStore<K, V> extends AsynchronousCallableStore<K, V> {
+public class NonblockingStore<K, V, T> extends AsynchronousCallableStore<K, V, T> {
 
-    public NonblockingStore(CallableStore<K, V> store) {
+    public NonblockingStore(CallableStore<K, V, T> store) {
         super(store);
     }
 

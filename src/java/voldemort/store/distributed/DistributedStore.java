@@ -34,7 +34,7 @@ import voldemort.versioning.Versioned;
  * successfully, the operation will return successfully. If fewer nodes respond
  * successfully, an exception will be thrown.
  */
-public interface DistributedStore<N, K, V> {
+public interface DistributedStore<N, K, V, T> {
 
     /**
      * Returns the asynchronous store associated with the input node.
@@ -42,14 +42,14 @@ public interface DistributedStore<N, K, V> {
      * @param node The node to return the store for.
      * @return The asynchronous store for the node.
      */
-    public AsynchronousStore<K, V> getNodeStore(N node);
+    public AsynchronousStore<K, V, T> getNodeStore(N node);
 
     /**
      * Returns the asynchronous stores and their associated node.
      * 
      * @return The map of node to asynchronous store.
      */
-    public Map<N, AsynchronousStore<K, V>> getNodeStores();
+    public Map<N, AsynchronousStore<K, V, T>> getNodeStores();
 
     /**
      * Returns the set of nodes that a given key should be stored on.
@@ -72,6 +72,7 @@ public interface DistributedStore<N, K, V> {
      * @throws VoldemortException
      */
     public DistributedFuture<N, List<Versioned<V>>> submitGet(final K key,
+                                                              final T transform,
                                                               Collection<N> nodes,
                                                               int preferred,
                                                               int required)
@@ -93,6 +94,7 @@ public interface DistributedStore<N, K, V> {
      * @throws VoldemortException
      */
     public DistributedFuture<N, Map<K, List<Versioned<V>>>> submitGetAll(final Map<N, List<K>> nodesToKeys,
+                                                                         Map<K, T> transforms,
                                                                          int preferred,
                                                                          int required)
             throws VoldemortException;
@@ -109,6 +111,7 @@ public interface DistributedStore<N, K, V> {
      */
     public DistributedFuture<N, Version> submitPut(K key,
                                                    Versioned<V> value,
+                                                   final T transform,
                                                    Collection<N> nodes,
                                                    int preferred,
                                                    int required) throws VoldemortException;

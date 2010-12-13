@@ -24,7 +24,7 @@ public class PerformParallelGetVersionsRequest extends
 
     private final long timeoutMs;
 
-    private final DistributedStore<Node, ByteArray, byte[]> distributor;
+    private final DistributedStore<Node, ByteArray, byte[], byte[]> distributor;
 
     public PerformParallelGetVersionsRequest(BasicPipelineData<List<Version>> pipelineData,
                                              Event completeEvent,
@@ -32,7 +32,7 @@ public class PerformParallelGetVersionsRequest extends
                                              int preferred,
                                              int required,
                                              long timeoutMs,
-                                             DistributedStore<Node, ByteArray, byte[]> distributor) {
+                                             DistributedStore<Node, ByteArray, byte[], byte[]> distributor) {
         super(pipelineData, completeEvent, key);
         this.preferred = preferred;
         this.required = required;

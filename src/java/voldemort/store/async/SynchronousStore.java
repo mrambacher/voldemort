@@ -30,8 +30,8 @@ import voldemort.versioning.Versioned;
  * Converts an asynchronous store into a Synchronous (@link Store) one. A
  * synchronous store submits store futures and waits for them to complete.
  */
-public class SynchronousStore<K, V> extends DelegatingAsynchronousStore<K, V> implements
-        Store<K, V> {
+public class SynchronousStore<K, V, T> extends DelegatingAsynchronousStore<K, V, T> implements
+        Store<K, V, T> {
 
     private final long timeout;
     private final TimeUnit units;
@@ -41,7 +41,7 @@ public class SynchronousStore<K, V> extends DelegatingAsynchronousStore<K, V> im
      * 
      * @param async The wrapped asynchronous store
      */
-    public SynchronousStore(AsynchronousStore<K, V> async) {
+    public SynchronousStore(AsynchronousStore<K, V, T> async) {
         this(async, 0, TimeUnit.MILLISECONDS);
     }
 
@@ -53,7 +53,7 @@ public class SynchronousStore<K, V> extends DelegatingAsynchronousStore<K, V> im
      *        = forever)
      * @param units What units the timeout is expressed in.
      */
-    public SynchronousStore(AsynchronousStore<K, V> async, long timeout, TimeUnit units) {
+    public SynchronousStore(AsynchronousStore<K, V, T> async, long timeout, TimeUnit units) {
         super(async);
         this.timeout = timeout;
         this.units = units;
@@ -83,8 +83,8 @@ public class SynchronousStore<K, V> extends DelegatingAsynchronousStore<K, V> im
      *         are found.
      * @throws VoldemortException
      */
-    public List<Versioned<V>> get(K key) throws VoldemortException {
-        StoreFuture<List<Versioned<V>>> future = submitGet(key);
+    public List<Versioned<V>> get(K key, T transform) throws VoldemortException {
+        StoreFuture<List<Versioned<V>>> future = submitGet(key, transform);
         return awaitCompletion(Operation.GET, future);
     }
 
@@ -98,8 +98,9 @@ public class SynchronousStore<K, V> extends DelegatingAsynchronousStore<K, V> im
      * @return A Map of keys to a list of versioned values.
      * @throws VoldemortException
      */
-    public Map<K, List<Versioned<V>>> getAll(Iterable<K> keys) throws VoldemortException {
-        StoreFuture<Map<K, List<Versioned<V>>>> future = submitGetAll(keys);
+    public Map<K, List<Versioned<V>>> getAll(Iterable<K> keys, Map<K, T> transforms)
+            throws VoldemortException {
+        StoreFuture<Map<K, List<Versioned<V>>>> future = submitGetAll(keys, transforms);
         return awaitCompletion(Operation.GET_ALL, future);
     }
 
@@ -109,8 +110,8 @@ public class SynchronousStore<K, V> extends DelegatingAsynchronousStore<K, V> im
      * @param key The key to use
      * @param value The value to store and its version.
      */
-    public Version put(K key, Versioned<V> value) throws VoldemortException {
-        StoreFuture<Version> future = submitPut(key, value);
+    public Version put(K key, Versioned<V> value, T transform) throws VoldemortException {
+        StoreFuture<Version> future = submitPut(key, value, transform);
         return awaitCompletion(Operation.PUT, future);
     }
 

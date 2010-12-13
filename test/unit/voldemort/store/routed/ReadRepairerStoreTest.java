@@ -16,77 +16,38 @@
 
 package voldemort.store.routed;
 
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.Test;
 
-import voldemort.ServerTestUtils;
 import voldemort.TestUtils;
 import voldemort.VoldemortException;
-import voldemort.routing.RoutingStrategyType;
-import voldemort.store.AbstractVoldemortTest;
-import voldemort.store.FailingStore;
-import voldemort.store.SleepyStore;
-import voldemort.store.Store;
+import voldemort.cluster.Cluster;
+import voldemort.cluster.Node;
 import voldemort.store.StoreDefinition;
-import voldemort.store.async.AsyncUtils;
 import voldemort.store.async.AsynchronousStore;
 import voldemort.store.async.StoreFuture;
+import voldemort.store.distributed.AbstractDistributedStoreTest;
 import voldemort.store.distributed.DistributedFuture;
+import voldemort.store.distributed.DistributedParallelStore;
 import voldemort.store.distributed.DistributedStore;
 import voldemort.store.distributed.DistributedStoreFactory;
-import voldemort.store.distributed.DistributedStoreTest;
-import voldemort.store.memory.InMemoryStorageEngine;
+import voldemort.utils.ByteArray;
 import voldemort.versioning.Versioned;
 
-import com.google.common.collect.Maps;
-
-public class ReadRepairerStoreTest extends AbstractVoldemortTest<String> {
-
-    ExecutorService threadPool;
+public class ReadRepairerStoreTest extends AbstractDistributedStoreTest {
 
     public ReadRepairerStoreTest() {
-        threadPool = Executors.newFixedThreadPool(5);
+        super("read-repair");
     }
 
-    private Map<Integer, Store<String, String>> buildMemoryStores(String name, int count) {
-        Map<Integer, Store<String, String>> stores = Maps.newHashMap();
-        for(int i = 0; i < count; i++) {
-            stores.put(i, new InMemoryStorageEngine<String, String>(name + "_" + i));
-        }
-        return stores;
-    }
-
-    private Map<Integer, Store<String, String>> buildSleepyStores(Map<Integer, Store<String, String>> stores,
-                                                                  int count,
-                                                                  long delay) {
-        Map<Integer, Store<String, String>> sleepies = Maps.newHashMap();
-        sleepies.putAll(stores);
-        for(int i = 0; i < count; i++) {
-            sleepies.put(i, new SleepyStore<String, String>(delay, stores.get(i)));
-        }
-        return sleepies;
-    }
-
-    private Map<Integer, AsynchronousStore<String, String>> toAsyncStores(Map<Integer, Store<String, String>> stores) {
-        Map<Integer, AsynchronousStore<String, String>> async = Maps.newHashMap();
-        for(Map.Entry<Integer, Store<String, String>> entry: stores.entrySet()) {
-            async.put(entry.getKey(),
-                      DistributedStoreTest.toThreadedStore(entry.getValue(), threadPool));
-        }
-        return async;
-    }
-
-    private void awaitCompletion(DistributedStore<?, ?, ?> store) {
+    private void awaitCompletion(DistributedStore<?, ?, ?, ?> store) {
         try {
-            ReadRepairStore<?, ?, ?> readRepair = (ReadRepairStore<?, ?, ?>) store;
+            ReadRepairStore<?, ?, ?, ?> readRepair = (ReadRepairStore<?, ?, ?, ?>) store;
             while((readRepair.pendingRepairs.intValue()) > 0) {
                 Thread.sleep(100);
             }
@@ -96,7 +57,7 @@ public class ReadRepairerStoreTest extends AbstractVoldemortTest<String> {
         }
     }
 
-    private void awaitCompletion(DistributedStore<?, ?, ?> store, StoreFuture<?> future) {
+    private void awaitCompletion(DistributedStore<?, ?, ?, ?> store, StoreFuture<?> future) {
         try {
             DistributedFuture<?, ?> distributed = (DistributedFuture<?, ?>) future;
             distributed.complete();
@@ -106,43 +67,44 @@ public class ReadRepairerStoreTest extends AbstractVoldemortTest<String> {
         }
     }
 
-    private StoreDefinition getStoreDef(String name, int replicas) {
-        return getStoreDef(name, replicas, (replicas + 1) / 2, 1);
-    }
-
-    private StoreDefinition getStoreDef(String name, int replicas, int preferred, int required) {
-        return ServerTestUtils.getStoreDef(name,
-                                           replicas,
-                                           preferred,
-                                           required,
-                                           preferred,
-                                           required,
-                                           RoutingStrategyType.CONSISTENT_STRATEGY);
-    }
-
-    private DistributedStore<Integer, String, String> getRepairStore(Map<Integer, Store<String, String>> stores,
-                                                                     StoreDefinition storeDef) {
-        Map<Integer, AsynchronousStore<String, String>> asyncStores = toAsyncStores(stores);
-        return DistributedStoreFactory.create(storeDef, asyncStores, true);
+    @Override
+    protected DistributedStore<Node, ByteArray, byte[], byte[]> buildDistributedStore(Map<Node, AsynchronousStore<ByteArray, byte[], byte[]>> stores,
+                                                                                      Cluster cluster,
+                                                                                      StoreDefinition storeDef,
+                                                                                      boolean makeUnique) {
+        DistributedStore<Node, ByteArray, byte[], byte[]> distributor = DistributedParallelStore.create(stores,
+                                                                                                        storeDef,
+                                                                                                        makeUnique);
+        return ReadRepairStore.create(distributor);
 
     }
 
-    private void assertReadRepair(Map<String, List<Versioned<String>>> values,
-                                  Map<Integer, Store<String, String>> stores) {
-        for(String key: values.keySet()) {
-            for(Store<String, String> store: stores.values()) {
+    private void assertReadRepair(Map<ByteArray, List<Versioned<byte[]>>> values,
+                                  Map<Node, AsynchronousStore<ByteArray, byte[], byte[]>> stores) {
+        assertReadRepair(values, stores, 0);
+
+    }
+
+    private void assertReadRepair(Map<ByteArray, List<Versioned<byte[]>>> values,
+                                  Map<Node, AsynchronousStore<ByteArray, byte[], byte[]>> stores,
+                                  int expectedFailures) {
+        for(ByteArray key: values.keySet()) {
+            int failures = 0;
+            for(AsynchronousStore<ByteArray, byte[], byte[]> store: stores.values()) {
                 try {
-                    List<Versioned<String>> expected = values.get(key);
-                    List<Versioned<String>> results = store.get(key);
+                    List<Versioned<byte[]>> expected = values.get(key);
+                    List<Versioned<byte[]>> results = store.submitGet(key, null).get();
                     assertEquals("Sizes match for store " + store.getName() + " for key " + key,
                                  expected.size(),
                                  results.size());
-                    for(Versioned<String> result: results) {
+                    for(Versioned<byte[]> result: results) {
                         this.assertContains(expected, result);
                     }
                 } catch(VoldemortException e) {
-                    fail("Unexpected exception in store " + store.getName() + " for key " + key
-                         + ":" + e.getMessage());
+                    if(++failures > expectedFailures) {
+                        fail("Unexpected exception in store " + store.getName() + " for key " + key
+                             + ":" + e.getMessage());
+                    }
                 }
             }
         }
@@ -154,153 +116,199 @@ public class ReadRepairerStoreTest extends AbstractVoldemortTest<String> {
      */
     @Test
     public void testMissingKeysAreAddedToNodeWhenDoingReadRepair() throws Exception {
-        Map<Integer, Store<String, String>> stores = buildMemoryStores("repair", 5);
-        StoreDefinition storeDef = getStoreDef("repair",
-                                               stores.size(),
-                                               stores.size(),
-                                               stores.size());
-        DistributedStore<Integer, String, String> repair = getRepairStore(stores, storeDef);
-        AsynchronousStore<String, String> async = DistributedStoreFactory.asAsync(storeDef, repair);
+        this.createFailureDetector();
+        Map<Node, AsynchronousStore<ByteArray, byte[], byte[]>> stores = createClusterStores(cluster,
+                                                                                             "read-repair",
+                                                                                             cluster.getNumberOfNodes(),
+                                                                                             this.failureDetector,
+                                                                                             0,
+                                                                                             0,
+                                                                                             0,
+                                                                                             null);
 
-        Collection<String> keys = Arrays.asList("1", "2");
-        Versioned<String> one = new Versioned<String>("one", TestUtils.getClock(1));
-        Versioned<String> two = new Versioned<String>("two", TestUtils.getClock(2));
-        Versioned<String> value = new Versioned<String>("value", TestUtils.getClock(3, 3));
+        StoreDefinition storeDef = getStoreDef("read-repair",
+                                               cluster.getNumberOfNodes(),
+                                               cluster.getNumberOfNodes(),
+                                               cluster.getNumberOfNodes());
+        DistributedStore<Node, ByteArray, byte[], byte[]> repair = buildDistributedStore(stores,
+                                                                                         cluster,
+                                                                                         storeDef);
+        AsynchronousStore<ByteArray, byte[], byte[]> async = DistributedStoreFactory.asAsync(storeDef,
+                                                                                             repair);
 
-        stores.get(2).put("key", value);
-        stores.get(3).put("key", value);
-        stores.get(4).put("key", value);
-        stores.get(2).put("1", one);
-        stores.get(3).put("1", one);
-        stores.get(4).put("1", one);
-        stores.get(0).put("2", two);
-        stores.get(1).put("2", two);
-        stores.get(2).put("2", two);
+        List<ByteArray> keys = getKeys(3);
+        Versioned<byte[]> zero = new Versioned<byte[]>(keys.get(0).get(), TestUtils.getClock(3, 3));
+        Versioned<byte[]> one = new Versioned<byte[]>(keys.get(1).get(), TestUtils.getClock(1));
+        Versioned<byte[]> two = new Versioned<byte[]>(keys.get(2).get(), TestUtils.getClock(2));
 
-        Map<String, List<Versioned<String>>> expected = stores.get(2)
-                                                              .getAll(Collections.singletonList("key"));
+        stores.get(cluster.getNodeById(2)).submitPut(keys.get(0), zero, null).get();
+        stores.get(cluster.getNodeById(3)).submitPut(keys.get(0), zero, null).get();
+        stores.get(cluster.getNodeById(4)).submitPut(keys.get(0), zero, null).get();
+        stores.get(cluster.getNodeById(2)).submitPut(keys.get(1), one, null).get();
+        stores.get(cluster.getNodeById(3)).submitPut(keys.get(1), one, null).get();
+        stores.get(cluster.getNodeById(4)).submitPut(keys.get(1), one, null).get();
+        stores.get(cluster.getNodeById(0)).submitPut(keys.get(2), two, null).get();
+        stores.get(cluster.getNodeById(1)).submitPut(keys.get(2), two, null).get();
+        stores.get(cluster.getNodeById(2)).submitPut(keys.get(2), two, null).get();
 
-        awaitCompletion(repair, async.submitGet("key"));
+        Map<ByteArray, List<Versioned<byte[]>>> expected = stores.get(cluster.getNodeById(2))
+                                                                 .submitGetAll(Collections.singletonList(keys.get(0)),
+                                                                               null)
+                                                                 .get();
+
+        awaitCompletion(repair, async.submitGet(keys.get(0), null));
         assertReadRepair(expected, stores);
 
-        expected = stores.get(2).getAll(keys);
-        awaitCompletion(repair, async.submitGetAll(keys));
+        keys.remove(0);
+        expected = stores.get(cluster.getNodeById(2)).submitGetAll(keys, null).get();
+        awaitCompletion(repair, async.submitGetAll(keys, null));
         assertReadRepair(expected, stores);
     }
 
     @Test
     public void testSlowStoreDuringReadRepair() {
-        Map<Integer, Store<String, String>> stores = buildMemoryStores("repair", 5);
-        Map<Integer, Store<String, String>> sleepies = buildSleepyStores(stores, 2, 100);
-        StoreDefinition storeDef = getStoreDef("repair", sleepies.size(), sleepies.size(), 1);
-        DistributedStore<Integer, String, String> repair = getRepairStore(sleepies, storeDef);
-        AsynchronousStore<String, String> async = DistributedStoreFactory.asAsync(storeDef, repair);
-        Collection<String> keys = Arrays.asList("1", "2");
-        Versioned<String> one = new Versioned<String>("one", TestUtils.getClock(1));
-        Versioned<String> two = new Versioned<String>("two", TestUtils.getClock(2));
-        Versioned<String> value = new Versioned<String>("value", TestUtils.getClock(3, 3));
+        this.createFailureDetector();
+        Map<Node, AsynchronousStore<ByteArray, byte[], byte[]>> stores = createClusterStores(cluster,
+                                                                                             "read-repair",
+                                                                                             cluster.getNumberOfNodes(),
+                                                                                             this.failureDetector,
+                                                                                             2,
+                                                                                             100,
+                                                                                             0,
+                                                                                             null);
 
-        stores.get(2).put("key", value);
-        stores.get(3).put("key", value);
-        stores.get(4).put("key", value);
-        stores.get(2).put("1", one);
-        stores.get(3).put("1", one);
-        stores.get(4).put("1", one);
-        stores.get(0).put("2", two);
-        stores.get(1).put("2", two);
-        stores.get(2).put("2", two);
+        StoreDefinition storeDef = getStoreDef("read-repair",
+                                               cluster.getNumberOfNodes(),
+                                               cluster.getNumberOfNodes(),
+                                               cluster.getNumberOfNodes());
+        DistributedStore<Node, ByteArray, byte[], byte[]> repair = buildDistributedStore(stores,
+                                                                                         cluster,
+                                                                                         storeDef);
+        AsynchronousStore<ByteArray, byte[], byte[]> async = DistributedStoreFactory.asAsync(storeDef,
+                                                                                             repair);
 
-        Map<String, List<Versioned<String>>> expected = stores.get(2)
-                                                              .getAll(Collections.singletonList("key"));
+        List<ByteArray> keys = getKeys(3);
+        Versioned<byte[]> zero = new Versioned<byte[]>(keys.get(0).get(), TestUtils.getClock(3, 3));
+        Versioned<byte[]> one = new Versioned<byte[]>(keys.get(1).get(), TestUtils.getClock(1));
+        Versioned<byte[]> two = new Versioned<byte[]>(keys.get(2).get(), TestUtils.getClock(2));
 
-        awaitCompletion(repair, async.submitGet("key"));
-        assertReadRepair(expected, sleepies);
+        stores.get(cluster.getNodeById(2)).submitPut(keys.get(0), zero, null).get();
+        stores.get(cluster.getNodeById(3)).submitPut(keys.get(0), zero, null).get();
+        stores.get(cluster.getNodeById(4)).submitPut(keys.get(0), zero, null).get();
+        stores.get(cluster.getNodeById(2)).submitPut(keys.get(1), one, null).get();
+        stores.get(cluster.getNodeById(3)).submitPut(keys.get(1), one, null).get();
+        stores.get(cluster.getNodeById(4)).submitPut(keys.get(1), one, null).get();
+        stores.get(cluster.getNodeById(0)).submitPut(keys.get(2), two, null).get();
+        stores.get(cluster.getNodeById(1)).submitPut(keys.get(2), two, null).get();
+        stores.get(cluster.getNodeById(2)).submitPut(keys.get(2), two, null).get();
 
-        expected = stores.get(2).getAll(keys);
-        awaitCompletion(repair, async.submitGetAll(keys));
-        assertReadRepair(expected, sleepies);
+        Map<ByteArray, List<Versioned<byte[]>>> expected = stores.get(cluster.getNodeById(2))
+                                                                 .submitGetAll(Collections.singletonList(keys.get(0)),
+                                                                               null)
+                                                                 .get();
 
+        awaitCompletion(repair, async.submitGet(keys.get(0), null));
+        assertReadRepair(expected, stores);
+
+        keys.remove(0);
+        expected = stores.get(cluster.getNodeById(2)).submitGetAll(keys, null).get();
+        awaitCompletion(repair, async.submitGetAll(keys, null));
+        assertReadRepair(expected, stores);
     }
 
     @Test
     public void testReadRepairWithFailures() {
-        Map<Integer, Store<String, String>> stores = buildMemoryStores("repair", 5);
+        this.createFailureDetector();
+        Map<Node, AsynchronousStore<ByteArray, byte[], byte[]>> stores = createClusterStores(cluster,
+                                                                                             "read-repair",
+                                                                                             cluster.getNumberOfNodes(),
+                                                                                             this.failureDetector,
+                                                                                             2,
+                                                                                             100,
+                                                                                             2,
+                                                                                             new VoldemortException("no go"));
+        StoreDefinition storeDef = getStoreDef("read-repair",
+                                               cluster.getNumberOfNodes(),
+                                               cluster.getNumberOfNodes() - 2,
+                                               cluster.getNumberOfNodes());
+        DistributedStore<Node, ByteArray, byte[], byte[]> repair = buildDistributedStore(stores,
+                                                                                         cluster,
+                                                                                         storeDef);
+        AsynchronousStore<ByteArray, byte[], byte[]> async = DistributedStoreFactory.asAsync(storeDef,
+                                                                                             repair);
 
-        stores = buildSleepyStores(stores, 2, 100);
-        Map<Integer, Store<String, String>> failures = Maps.newHashMap(stores);
-        failures.put(5,
-                     AsyncUtils.asStore(new FailingStore<String, String>("failure",
-                                                                         new VoldemortException("oops"))));
-        failures.put(6,
-                     AsyncUtils.asStore(new FailingStore<String, String>("failure",
-                                                                         new VoldemortException("oops"))));
-        StoreDefinition storeDef = getStoreDef("failure", failures.size(), failures.size(), 2);
-        DistributedStore<Integer, String, String> repair = getRepairStore(failures, storeDef);
-        AsynchronousStore<String, String> async = DistributedStoreFactory.asAsync(storeDef, repair);
-        Collection<String> keys = Arrays.asList("1", "2");
-        Versioned<String> one = new Versioned<String>("one", TestUtils.getClock(1));
-        Versioned<String> two = new Versioned<String>("two", TestUtils.getClock(2));
-        Versioned<String> value = new Versioned<String>("value", TestUtils.getClock(3, 3));
+        List<ByteArray> keys = getKeys(3);
+        Versioned<byte[]> zero = new Versioned<byte[]>(keys.get(0).get(), TestUtils.getClock(3, 3));
+        Versioned<byte[]> one = new Versioned<byte[]>(keys.get(1).get(), TestUtils.getClock(1));
+        Versioned<byte[]> two = new Versioned<byte[]>(keys.get(2).get(), TestUtils.getClock(2));
 
-        stores.get(2).put("key", value);
-        stores.get(3).put("key", value);
-        stores.get(4).put("key", value);
-        stores.get(2).put("1", one);
-        stores.get(3).put("1", one);
-        stores.get(4).put("1", one);
-        stores.get(0).put("2", two);
-        stores.get(1).put("2", two);
-        stores.get(2).put("2", two);
+        // 0 + 1 are failed, 2 and 3 are sleepy
+        stores.get(cluster.getNodeById(3)).submitPut(keys.get(0), zero, null).get();
+        stores.get(cluster.getNodeById(4)).submitPut(keys.get(0), zero, null).get();
+        stores.get(cluster.getNodeById(5)).submitPut(keys.get(0), zero, null).get();
+        stores.get(cluster.getNodeById(4)).submitPut(keys.get(1), one, null).get();
+        stores.get(cluster.getNodeById(5)).submitPut(keys.get(1), one, null).get();
+        stores.get(cluster.getNodeById(6)).submitPut(keys.get(1), one, null).get();
+        stores.get(cluster.getNodeById(5)).submitPut(keys.get(2), two, null).get();
+        stores.get(cluster.getNodeById(6)).submitPut(keys.get(2), two, null).get();
+        stores.get(cluster.getNodeById(7)).submitPut(keys.get(2), two, null).get();
 
-        Map<String, List<Versioned<String>>> expected = stores.get(2)
-                                                              .getAll(Collections.singletonList("key"));
+        // 5 has all of the keys
+        Map<ByteArray, List<Versioned<byte[]>>> expected = stores.get(cluster.getNodeById(5))
+                                                                 .submitGetAll(Collections.singletonList(keys.get(0)),
+                                                                               null)
+                                                                 .get();
 
-        awaitCompletion(repair, async.submitGet("key"));
-        assertReadRepair(expected, stores);
+        awaitCompletion(repair, async.submitGet(keys.get(0), null));
+        assertReadRepair(expected, stores, 2);
 
-        expected = stores.get(2).getAll(keys);
-        awaitCompletion(repair, async.submitGetAll(keys));
-        assertReadRepair(expected, stores);
-
+        keys.remove(0);
+        expected = stores.get(cluster.getNodeById(5)).submitGetAll(keys, null).get();
+        awaitCompletion(repair, async.submitGetAll(keys, null));
+        assertReadRepair(expected, stores, 2);
     }
 
     @Test
     public void testReadRepairWithOnlyRequiredResponses() throws Exception {
-        Map<Integer, Store<String, String>> stores = buildMemoryStores("required", 5); // 3
-        // good
-        // stores
-        stores = buildSleepyStores(stores, 2, 1000); // 2 sleepy ones
+        this.createFailureDetector();
+        Map<Node, AsynchronousStore<ByteArray, byte[], byte[]>> stores = createClusterStores(cluster,
+                                                                                             "read-repair",
+                                                                                             cluster.getNumberOfNodes(),
+                                                                                             this.failureDetector,
+                                                                                             2,
+                                                                                             100,
+                                                                                             0,
+                                                                                             new VoldemortException("oops"));
 
-        StoreDefinition storeDef = getStoreDef("repair", stores.size(), 5, 1);
-        DistributedStore<Integer, String, String> repair = getRepairStore(stores, storeDef);
+        StoreDefinition storeDef = getStoreDef("read-repair",
+                                               cluster.getNumberOfNodes(),
+                                               cluster.getNumberOfNodes() - 2,
+                                               cluster.getNumberOfNodes());
+        DistributedStore<Node, ByteArray, byte[], byte[]> repair = buildDistributedStore(stores,
+                                                                                         cluster,
+                                                                                         storeDef);
 
-        Collection<String> keys = Arrays.asList("1", "2");
-        Versioned<String> one = new Versioned<String>("one", TestUtils.getClock(1));
-        Versioned<String> two = new Versioned<String>("two", TestUtils.getClock(2));
-        Versioned<String> value = new Versioned<String>("value", TestUtils.getClock(3, 3));
+        ByteArray key = getKey();
+        Versioned<byte[]> value = new Versioned<byte[]>(key.get(), TestUtils.getClock(1, 2));
 
-        stores.get(2).put("key", value);
-        stores.get(3).put("key", value);
-        stores.get(4).put("key", value);
-        stores.get(2).put("1", one);
-        stores.get(3).put("1", one);
-        stores.get(4).put("1", one);
-        stores.get(0).put("2", two);
-        stores.get(1).put("2", two);
-        stores.get(2).put("2", two);
+        stores.get(cluster.getNodeById(2)).submitPut(key, value, null).get();
+        stores.get(cluster.getNodeById(3)).submitPut(key, value, null).get();
+        stores.get(cluster.getNodeById(4)).submitPut(key, value, null).get();
 
-        DistributedFuture<Integer, List<Versioned<String>>> f = repair.submitGet("key",
-                                                                                 stores.keySet(),
-                                                                                 5,
-                                                                                 3);
+        DistributedFuture<Node, List<Versioned<byte[]>>> f = repair.submitGet(key,
+                                                                              null,
+                                                                              stores.keySet(),
+                                                                              5,
+                                                                              3);
         try {
-            List<Versioned<String>> expected = f.get(500, TimeUnit.MILLISECONDS);
-            Collection<Integer> responders = f.getResults().keySet();
+            List<Versioned<byte[]>> expected = f.get(500, TimeUnit.MILLISECONDS);
+            Collection<Node> responders = f.getResults().keySet();
             awaitCompletion(repair);
-            for(Integer r: responders) {
-                List<Versioned<String>> result = stores.get(r).get("key");
-                assertEquals("Same number of results", expected.size(), result.size());
-                for(Versioned<String> v: expected) {
+            for(Node node: responders) {
+                AsynchronousStore<ByteArray, byte[], byte[]> store = repair.getNodeStore(node);
+                List<Versioned<byte[]>> result = store.submitGet(key, null).get();
+                assertEquals("Same number of results for " + node, expected.size(), result.size());
+                for(Versioned<byte[]> v: expected) {
                     assertContains(result, v);
                 }
             }

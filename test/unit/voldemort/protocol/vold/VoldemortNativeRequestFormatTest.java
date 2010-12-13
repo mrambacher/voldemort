@@ -19,7 +19,8 @@ public class VoldemortNativeRequestFormatTest extends AbstractRequestFormatTest 
 
     @Parameters
     public static Collection<Object[]> configs() {
-        return Arrays.asList(new Object[][] { { RequestFormatType.VOLDEMORT_V3 },
-                { RequestFormatType.VOLDEMORT_V2 }, { RequestFormatType.VOLDEMORT_V1 }, });
+        return Arrays.asList(new Object[][] { { RequestFormatType.VOLDEMORT_V4 },
+                { RequestFormatType.VOLDEMORT_V3 }, { RequestFormatType.VOLDEMORT_V2 },
+                { RequestFormatType.VOLDEMORT_V1 }, });
     }
 }

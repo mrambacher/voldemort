@@ -20,8 +20,9 @@ import java.io.Serializable;
 import java.util.HashMap;
 
 import voldemort.client.RoutingTier;
+import voldemort.routing.RoutingStrategyType;
 import voldemort.serialization.SerializerDefinition;
-import voldemort.store.views.View;
+import voldemort.store.slop.strategy.HintedHandoffStrategyType;
 import voldemort.utils.Props;
 import voldemort.utils.Utils;
 
@@ -30,7 +31,6 @@ import com.google.common.base.Objects;
 /**
  * The configuration information for a store.
  * 
- * @author jay
  * 
  */
 public class StoreDefinition implements Serializable {
@@ -41,6 +41,7 @@ public class StoreDefinition implements Serializable {
     private final String type;
     private final SerializerDefinition keySerializer;
     private final SerializerDefinition valueSerializer;
+    private final SerializerDefinition transformsSerializer;
     private final RoutingTier routingPolicy;
     private final int replicationFactor;
     private final Integer preferredWrites;
@@ -52,15 +53,19 @@ public class StoreDefinition implements Serializable {
     private final String routingStrategyType;
     private final String viewOf;
     private final Props properties;
-    private final View<?, ?, ?> valueTransformation;
     private final HashMap<Integer, Integer> zoneReplicationFactor;
     private final Integer zoneCountReads;
     private final Integer zoneCountWrites;
+    private final String valueTransformation;
+    private final String serializerFactory;
+    private final HintedHandoffStrategyType hintedHandoffStrategyType;
+    private final Integer hintPrefListSize;
 
     public StoreDefinition(String name,
                            String type,
                            SerializerDefinition keySerializer,
                            SerializerDefinition valueSerializer,
+                           SerializerDefinition transformsSerializer,
                            RoutingTier routingPolicy,
                            String routingStrategyType,
                            int replicationFactor,
@@ -69,12 +74,15 @@ public class StoreDefinition implements Serializable {
                            Integer preferredWrites,
                            int requiredWrites,
                            String viewOfStore,
-                           View<?, ?, ?> valTrans,
+                           String valTrans,
                            HashMap<Integer, Integer> zoneReplicationFactor,
                            Integer zoneCountReads,
                            Integer zoneCountWrites,
                            Integer retentionDays,
                            Integer retentionThrottleRate,
+                           String factory,
+                           HintedHandoffStrategyType hintedHandoffStrategyType,
+                           Integer hintPrefListSize,
                            Props props) {
         this.name = Utils.notNull(name);
         this.type = Utils.notNull(type);
@@ -86,15 +94,19 @@ public class StoreDefinition implements Serializable {
         this.routingPolicy = Utils.notNull(routingPolicy);
         this.keySerializer = Utils.notNull(keySerializer);
         this.valueSerializer = Utils.notNull(valueSerializer);
+        this.transformsSerializer = transformsSerializer;
         this.retentionPeriodDays = retentionDays;
         this.retentionScanThrottleRate = retentionThrottleRate;
         this.routingStrategyType = routingStrategyType;
         this.viewOf = viewOfStore;
-        this.valueTransformation = valTrans;
         this.properties = props;
+        this.valueTransformation = valTrans;
         this.zoneReplicationFactor = zoneReplicationFactor;
         this.zoneCountReads = zoneCountReads;
         this.zoneCountWrites = zoneCountWrites;
+        this.serializerFactory = factory;
+        this.hintedHandoffStrategyType = hintedHandoffStrategyType;
+        this.hintPrefListSize = hintPrefListSize;
         checkParameterLegality();
     }
 
@@ -142,6 +154,14 @@ public class StoreDefinition implements Serializable {
         }
     }
 
+    public String getSerializerFactory() {
+        return this.serializerFactory;
+    }
+
+    public boolean hasTransformsSerializer() {
+        return transformsSerializer != null;
+    }
+
     public String getName() {
         return name;
     }
@@ -156,6 +176,10 @@ public class StoreDefinition implements Serializable {
 
     public SerializerDefinition getValueSerializer() {
         return valueSerializer;
+    }
+
+    public SerializerDefinition getTransformsSerializer() {
+        return transformsSerializer;
     }
 
     public RoutingTier getRoutingPolicy() {
@@ -222,7 +246,7 @@ public class StoreDefinition implements Serializable {
         return this.valueTransformation != null;
     }
 
-    public View<?, ?, ?> getValueTransformation() {
+    public String getValueTransformation() {
         return valueTransformation;
     }
 
@@ -232,6 +256,10 @@ public class StoreDefinition implements Serializable {
 
     public int getIntProperty(String name, int dflt) {
         return properties.getInt(name, dflt);
+    }
+
+    public boolean isZoneRoutingEnabled() {
+        return getRoutingStrategyType().compareTo(RoutingStrategyType.ZONE_STRATEGY) == 0;
     }
 
     public HashMap<Integer, Integer> getZoneReplicationFactor() {
@@ -254,6 +282,22 @@ public class StoreDefinition implements Serializable {
         return zoneCountWrites != null;
     }
 
+    public HintedHandoffStrategyType getHintedHandoffStrategyType() {
+        return hintedHandoffStrategyType;
+    }
+
+    public boolean hasHintedHandoffStrategyType() {
+        return hintedHandoffStrategyType != null;
+    }
+
+    public Integer getHintPrefListSize() {
+        return hintPrefListSize;
+    }
+
+    public boolean hasHintPreflistSize() {
+        return hintPrefListSize != null;
+    }
+
     @Override
     public boolean equals(Object o) {
         if(this == o)
@@ -273,6 +317,10 @@ public class StoreDefinition implements Serializable {
                && Objects.equal(getPreferredWrites(), def.getPreferredWrites())
                && getKeySerializer().equals(def.getKeySerializer())
                && getValueSerializer().equals(def.getValueSerializer())
+               && Objects.equal(getTransformsSerializer() != null ? getTransformsSerializer()
+                                                                 : null,
+                                def.getTransformsSerializer() != null ? def.getTransformsSerializer()
+                                                                     : null)
                && getRoutingPolicy() == def.getRoutingPolicy()
                && Objects.equal(getViewTargetStoreName(), def.getViewTargetStoreName())
                && Objects.equal(getValueTransformation() != null ? getValueTransformation().getClass()
@@ -284,10 +332,15 @@ public class StoreDefinition implements Serializable {
                                 def.getZoneReplicationFactor() != null ? def.getZoneReplicationFactor()
                                                                             .getClass()
                                                                       : null)
-               && getZoneCountReads() == def.getZoneCountReads()
-               && getZoneCountWrites() == def.getZoneCountWrites()
+               && Objects.equal(getZoneCountReads(), def.getZoneCountReads())
+               && Objects.equal(getZoneCountWrites(), def.getZoneCountWrites())
                && Objects.equal(getRetentionDays(), def.getRetentionDays())
-               && Objects.equal(getRetentionScanThrottleRate(), def.getRetentionScanThrottleRate());
+               && Objects.equal(getRetentionScanThrottleRate(), def.getRetentionScanThrottleRate())
+               && Objects.equal(getSerializerFactory() != null ? getSerializerFactory() : null,
+                                def.getSerializerFactory() != null ? def.getSerializerFactory()
+                                                                  : null)
+               && Objects.equal(getHintedHandoffStrategyType(), def.getHintedHandoffStrategyType())
+               && Objects.equal(getHintPrefListSize(), def.getHintPrefListSize());
     }
 
     @Override
@@ -296,6 +349,7 @@ public class StoreDefinition implements Serializable {
                                 getType(),
                                 getKeySerializer(),
                                 getValueSerializer(),
+                                getTransformsSerializer(),
                                 getRoutingPolicy(),
                                 getRoutingStrategyType(),
                                 getReplicationFactor(),
@@ -311,7 +365,11 @@ public class StoreDefinition implements Serializable {
                                 getZoneCountReads(),
                                 getZoneCountWrites(),
                                 getRetentionDays(),
-                                getRetentionScanThrottleRate());
+                                getRetentionScanThrottleRate(),
+                                getSerializerFactory(),
+                                hasHintedHandoffStrategyType() ? getHintedHandoffStrategyType()
+                                                              : null,
+                                hasHintPreflistSize() ? getHintPrefListSize() : null);
     }
 
     @Override
@@ -326,6 +384,9 @@ public class StoreDefinition implements Serializable {
                + ", view-target = " + getViewTargetStoreName() + ", value-transformation = "
                + getValueTransformation() + ", retention-days = " + getRetentionDays()
                + ", throttle-rate = " + getRetentionScanThrottleRate() + ", zone-count-reads = "
-               + getZoneCountReads() + ", zone-count-writes = " + getZoneCountWrites() + ")";
+               + getZoneCountReads() + ", zone-count-writes = " + getZoneCountWrites()
+               + ", serializer factory = " + getSerializerFactory() + ")"
+               + ", hinted-handoff-strategy = " + getHintedHandoffStrategyType()
+               + ", hint-preflist-size = " + getHintPrefListSize() + ")";
     }
 }

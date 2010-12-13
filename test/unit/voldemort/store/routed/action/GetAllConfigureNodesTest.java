@@ -57,6 +57,7 @@ public class GetAllConfigureNodesTest extends AbstractActionTest {
                                                                preferred - 1,
                                                                routingStrategy,
                                                                keys,
+                                                               null,
                                                                null);
 
         Pipeline pipeline = new Pipeline(Operation.GET, 10000, TimeUnit.MILLISECONDS);
@@ -94,6 +95,7 @@ public class GetAllConfigureNodesTest extends AbstractActionTest {
                                                                1,
                                                                routingStrategy,
                                                                Arrays.asList(aKey),
+                                                               null,
                                                                null);
 
         Pipeline pipeline = new Pipeline(Operation.GET, 10000, TimeUnit.MILLISECONDS);

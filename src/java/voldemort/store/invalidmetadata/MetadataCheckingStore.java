@@ -12,20 +12,20 @@ import voldemort.store.StoreCapabilityType;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
-abstract public class MetadataCheckingStore<K, V> implements Store<K, V> {
+abstract public class MetadataCheckingStore<K, V, T> implements Store<K, V, T> {
 
     private final Logger logger = Logger.getLogger(MetadataCheckingStore.class);
 
     private final int metadataRefreshAttempts;
     private final String storeName;
-    protected volatile Store<K, V> innerStore;
+    protected volatile Store<K, V, T> innerStore;
 
     public MetadataCheckingStore(String name, int retries) {
         this.storeName = name;
         this.metadataRefreshAttempts = retries;
     }
 
-    public MetadataCheckingStore(String name, int retries, Store<K, V> inner) {
+    public MetadataCheckingStore(String name, int retries, Store<K, V, T> inner) {
         this.storeName = name;
         this.metadataRefreshAttempts = retries;
         innerStore = inner;
@@ -54,10 +54,10 @@ abstract public class MetadataCheckingStore<K, V> implements Store<K, V> {
         }
     }
 
-    public List<Versioned<V>> get(K key) {
+    public List<Versioned<V>> get(K key, T transforms) {
         for(int attempts = 0; attempts < this.metadataRefreshAttempts; attempts++) {
             try {
-                return innerStore.get(key);
+                return innerStore.get(key, transforms);
             } catch(InvalidMetadataException e) {
                 bootStrap();
             }
@@ -66,10 +66,10 @@ abstract public class MetadataCheckingStore<K, V> implements Store<K, V> {
                                      + " metadata refresh attempts failed.");
     }
 
-    public Map<K, List<Versioned<V>>> getAll(Iterable<K> keys) {
+    public Map<K, List<Versioned<V>>> getAll(Iterable<K> keys, Map<K, T> transforms) {
         for(int attempts = 0; attempts < this.metadataRefreshAttempts; attempts++) {
             try {
-                return innerStore.getAll(keys);
+                return innerStore.getAll(keys, transforms);
             } catch(InvalidMetadataException e) {
                 bootStrap();
             }
@@ -90,10 +90,10 @@ abstract public class MetadataCheckingStore<K, V> implements Store<K, V> {
                                      + " metadata refresh attempts failed.");
     }
 
-    public Version put(K key, Versioned<V> versioned) {
+    public Version put(K key, Versioned<V> versioned, T transforms) {
         for(int attempts = 0; attempts < this.metadataRefreshAttempts; attempts++) {
             try {
-                return innerStore.put(key, versioned);
+                return innerStore.put(key, versioned, transforms);
             } catch(InvalidMetadataException e) {
                 bootStrap();
             }

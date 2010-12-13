@@ -23,11 +23,11 @@ import voldemort.utils.ByteArray;
 
 public class DoNothingStorageConfiguration implements StorageConfiguration {
 
-    private Map<String, StorageEngine<ByteArray, byte[]>> stores;
+    private Map<String, StorageEngine<ByteArray, byte[], byte[]>> stores;
 
     @SuppressWarnings("unused")
     public DoNothingStorageConfiguration(VoldemortConfig config) {
-        stores = new HashMap<String, StorageEngine<ByteArray, byte[]>>();
+        stores = new HashMap<String, StorageEngine<ByteArray, byte[], byte[]>>();
     }
 
     public String getType() {
@@ -35,16 +35,16 @@ public class DoNothingStorageConfiguration implements StorageConfiguration {
     }
 
     public void close() {
-        for(StorageEngine<ByteArray, byte[]> store: stores.values()) {
+        for(StorageEngine<ByteArray, byte[], byte[]> store: stores.values()) {
             store.close();
         }
         stores.clear();
     }
 
-    public StorageEngine<ByteArray, byte[]> getStore(String name) {
-        StorageEngine<ByteArray, byte[]> store = stores.get(name);
+    public StorageEngine<ByteArray, byte[], byte[]> getStore(String name) {
+        StorageEngine<ByteArray, byte[], byte[]> store = stores.get(name);
         if(store == null) {
-            store = new DoNothingStore<ByteArray, byte[]>(name);
+            store = new DoNothingStore<ByteArray, byte[], byte[]>(name);
             stores.put(name, store);
         }
         return store;

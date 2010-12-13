@@ -17,7 +17,6 @@
 package voldemort.store.stats;
 
 import java.lang.management.ManagementFactory;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -46,13 +45,13 @@ import voldemort.versioning.Versioned;
  * 
  * 
  */
-public class StatTrackingStore<K, V> extends DelegatingStore<K, V> {
+public class StatTrackingStore<K, V, T> extends DelegatingStore<K, V, T> {
 
     private static final Logger logger = LogManager.getLogger(StatTrackingStore.class);
 
     private StoreStats stats;
 
-    public StatTrackingStore(Store<K, V> innerStore, StoreStats parentStats) {
+    public StatTrackingStore(Store<K, V, T> innerStore, StoreStats parentStats) {
         super(innerStore);
         this.stats = new StoreStats(parentStats);
         initNotification();
@@ -72,14 +71,10 @@ public class StatTrackingStore<K, V> extends DelegatingStore<K, V> {
     }
 
     @Override
-    public List<Versioned<V>> get(K key) throws VoldemortException {
+    public List<Versioned<V>> get(K key, T transforms) throws VoldemortException {
         long start = System.nanoTime();
         try {
-            List<Versioned<V>> list = super.get(key);
-            if(list.size() > 1) {
-                stats.recordTime(Tracked.INCONSISTENT_GET, System.nanoTime() - start);
-            }
-            return list;
+            return super.get(key, transforms);
         } catch(VoldemortException e) {
             stats.recordTime(Tracked.EXCEPTION, System.nanoTime() - start);
             throw e;
@@ -89,19 +84,11 @@ public class StatTrackingStore<K, V> extends DelegatingStore<K, V> {
     }
 
     @Override
-    public Map<K, List<Versioned<V>>> getAll(Iterable<K> keys) throws VoldemortException {
+    public Map<K, List<Versioned<V>>> getAll(Iterable<K> keys, Map<K, T> transforms)
+            throws VoldemortException {
         long start = System.nanoTime();
         try {
-            Map<K, List<Versioned<V>>> map = super.getAll(keys);
-            Collection<List<Versioned<V>>> values;
-            if(((values = map.values()) != null)) {
-                for(List<Versioned<V>> list: values) {
-                    if(list != null && list.size() > 1) {
-                        stats.recordTime(Tracked.INCONSISTENT_GET, System.nanoTime() - start);
-                    }
-                }
-            }
-            return map;
+            return super.getAll(keys, transforms);
         } catch(VoldemortException e) {
             stats.recordTime(Tracked.EXCEPTION, System.nanoTime() - start);
             throw e;
@@ -111,10 +98,10 @@ public class StatTrackingStore<K, V> extends DelegatingStore<K, V> {
     }
 
     @Override
-    public Version put(K key, Versioned<V> value) throws VoldemortException {
+    public Version put(K key, Versioned<V> value, T transforms) throws VoldemortException {
         long start = System.nanoTime();
         try {
-            return super.put(key, value);
+            return super.put(key, value, transforms);
         } catch(ObsoleteVersionException e) {
             stats.recordTime(Tracked.OBSOLETE, System.nanoTime() - start);
             throw e;

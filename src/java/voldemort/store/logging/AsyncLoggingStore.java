@@ -32,7 +32,7 @@ import voldemort.store.async.StoreFutureListener;
  * 
  * 
  */
-public class AsyncLoggingStore<K, V> extends DelegatingAsynchronousStore<K, V> {
+public class AsyncLoggingStore<K, V, T> extends DelegatingAsynchronousStore<K, V, T> {
 
     private final Logger logger;
     private final String instanceName;
@@ -42,7 +42,7 @@ public class AsyncLoggingStore<K, V> extends DelegatingAsynchronousStore<K, V> {
      * 
      * @param store The store to wrap
      */
-    public AsyncLoggingStore(AsynchronousStore<K, V> store) {
+    public AsyncLoggingStore(AsynchronousStore<K, V, T> store) {
         this(store, null);
     }
 
@@ -53,7 +53,7 @@ public class AsyncLoggingStore<K, V> extends DelegatingAsynchronousStore<K, V> {
      * @param instance The instance name to display in logging messages
      * @param time The time implementation to use for computing elapsed time
      */
-    public AsyncLoggingStore(AsynchronousStore<K, V> store, String instance) {
+    public AsyncLoggingStore(AsynchronousStore<K, V, T> store, String instance) {
         super(store);
         this.logger = Logger.getLogger(store.getClass());
         this.instanceName = instance == null ? ": " : instance + ": ";

@@ -47,7 +47,7 @@ public class CompressingStoreTest extends AbstractByteArrayStoreTest {
 
     @Override
     public CompressingStore createStore(String name) {
-        CompressingStore store = new CompressingStore(new InMemoryStorageEngine<ByteArray, byte[]>(name),
+        CompressingStore store = new CompressingStore(new InMemoryStorageEngine<ByteArray, byte[], byte[]>(name),
                                                       compressionFactory.get(compression),
                                                       compressionFactory.get(compression));
         return store;

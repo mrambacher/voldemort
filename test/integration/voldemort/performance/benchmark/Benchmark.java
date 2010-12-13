@@ -41,11 +41,15 @@ import voldemort.serialization.SerializerDefinition;
 import voldemort.serialization.StringSerializer;
 import voldemort.serialization.json.JsonTypeSerializer;
 import voldemort.store.StorageConfiguration;
+import voldemort.store.StorageEngine;
 import voldemort.store.Store;
 import voldemort.store.StoreDefinition;
 import voldemort.store.bdb.BdbStorageConfiguration;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.store.serialized.SerializingStore;
+import voldemort.store.views.ViewStorageConfiguration;
+import voldemort.store.views.ViewStorageEngine;
+import voldemort.utils.ByteArray;
 import voldemort.utils.CmdUtils;
 import voldemort.utils.Props;
 import voldemort.utils.ReflectUtils;
@@ -99,7 +103,12 @@ public class Benchmark {
     public static final String VERIFY = "verify";
     public static final String PIPELINE_ROUTED_STORE = "enable-pipeline-routed";
     public static final String CLIENT_ZONE_ID = "client-zoneid";
+    public static final String SELECTORS = "selectors";
+    public static final String SOCKET_BUFFER_SIZE = "socket-buffer-size";
     private static final String DUMMY_DB = "benchmark_db";
+    public static final String STORE_TYPE = "view";
+    public static final String VIEW_CLASS = "voldemort.store.views.UpperCaseView";
+    public static final String HAS_TRANSFORMS = "true";
 
     private StoreClient<Object, Object> storeClient;
     private StoreClientFactory factory;
@@ -321,6 +330,8 @@ public class Benchmark {
         this.ignoreNulls = benchmarkProps.getBoolean(IGNORE_NULLS, false);
         boolean enablePipelineRouted = benchmarkProps.getBoolean(PIPELINE_ROUTED_STORE, false);
         int clientZoneId = benchmarkProps.getInt(CLIENT_ZONE_ID, -1);
+        int numSelectors = benchmarkProps.getInt(SELECTORS, 4);
+        int socketBufferSize = benchmarkProps.getInt(SOCKET_BUFFER_SIZE, 4 * 1024);
 
         if(benchmarkProps.containsKey(URL)) {
 
@@ -340,7 +351,8 @@ public class Benchmark {
                                                                                 TimeUnit.SECONDS)
                                                           .setSocketTimeout(60, TimeUnit.SECONDS)
                                                           .setFailureDetectorRequestLengthThreshold(TimeUnit.SECONDS.toMillis(60))
-                                                          .setSocketBufferSize(4 * 1024)
+                                                          .setSocketBufferSize(socketBufferSize)
+                                                          .setSelectors(numSelectors)
                                                           .setEnablePipelineRoutedStore(enablePipelineRouted);
 
             if(clientZoneId >= 0) {
@@ -367,13 +379,27 @@ public class Benchmark {
             String storageEngineClass = benchmarkProps.getString(STORAGE_CONFIGURATION_CLASS);
             this.keyType = benchmarkProps.getString(KEY_TYPE, STRING_KEY_TYPE);
             Serializer serializer = findKeyType(this.keyType);
-            Store<Object, Object> store = null;
+            Store<Object, Object, Object> store = null;
 
             StorageConfiguration conf = (StorageConfiguration) ReflectUtils.callConstructor(ReflectUtils.loadClass(storageEngineClass),
                                                                                             new Object[] { ServerTestUtils.getVoldemortConfig() });
-            store = SerializingStore.wrap(conf.getStore(DUMMY_DB),
+
+            StorageEngine<ByteArray, byte[], byte[]> engine = conf.getStore(DUMMY_DB);
+            if(conf.getType().compareTo(ViewStorageConfiguration.TYPE_NAME) == 0) {
+                engine = new ViewStorageEngine(STORE_NAME,
+                                               engine,
+                                               new StringSerializer(),
+                                               new StringSerializer(),
+                                               serializer,
+                                               new StringSerializer(),
+                                               null,
+                                               BenchmarkViews.loadTransformation(benchmarkProps.getString(VIEW_CLASS)
+                                                                                               .trim()));
+            }
+            store = SerializingStore.wrap(engine,
                                           serializer,
-                                          new StringSerializer());
+                                          new StringSerializer(),
+                                          new IdentitySerializer());
 
             this.factory = new StaticStoreClientFactory(store);
             this.storeClient = factory.getStoreClient(store.getName());
@@ -586,6 +612,14 @@ public class Benchmark {
               .withRequiredArg()
               .describedAs("zone-id")
               .ofType(Integer.class);
+        parser.accepts(SELECTORS, "number of selectors for NIO client")
+              .withRequiredArg()
+              .describedAs("selectors")
+              .ofType(Integer.class);
+        parser.accepts(SOCKET_BUFFER_SIZE, "socket buffer size")
+              .withRequiredArg()
+              .describedAs("socket-buffer-size")
+              .ofType(Integer.class);
         parser.accepts(HELP);
 
         OptionSet options = parser.parse(args);
@@ -652,6 +686,10 @@ public class Benchmark {
             mainProps.put(IGNORE_NULLS, getCmdBoolean(options, IGNORE_NULLS));
             mainProps.put(PIPELINE_ROUTED_STORE, getCmdBoolean(options, PIPELINE_ROUTED_STORE));
             mainProps.put(CLIENT_ZONE_ID, CmdUtils.valueOf(options, CLIENT_ZONE_ID, -1));
+            mainProps.put(SELECTORS, CmdUtils.valueOf(options, SELECTORS, 4));
+            mainProps.put(SOCKET_BUFFER_SIZE, CmdUtils.valueOf(options,
+                                                               SOCKET_BUFFER_SIZE,
+                                                               4 * 1024));
             mainProps.put(START_KEY_INDEX, CmdUtils.valueOf(options, START_KEY_INDEX, 0));
             mainProps.put(VALUE_SIZE, CmdUtils.valueOf(options, VALUE_SIZE, 1024));
             mainProps.put(ITERATIONS, CmdUtils.valueOf(options, ITERATIONS, 1));

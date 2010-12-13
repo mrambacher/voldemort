@@ -43,7 +43,7 @@ import voldemort.utils.Utils;
  * {@link ClientRequest request} to be processed by the NIO thread.
  */
 
-public class SocketStore extends AsynchronousCallableStore<ByteArray, byte[]> {
+public class SocketStore extends AsynchronousCallableStore<ByteArray, byte[], byte[]> {
 
     private final ClientRequestExecutorPool pool;
     private final SocketDestination destination;

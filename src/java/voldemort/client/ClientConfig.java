@@ -56,11 +56,11 @@ public class ClientConfig {
     private volatile int socketBufferSize = 64 * 1024;
     private volatile SerializerFactory serializerFactory = new DefaultSerializerFactory();
     private volatile List<String> bootstrapUrls = null;
-    private volatile RequestFormatType requestFormatType = RequestFormatType.VOLDEMORT_V3;
+    private volatile RequestFormatType requestFormatType = RequestFormatType.VOLDEMORT_V4;
     private volatile RoutingTier routingTier = RoutingTier.CLIENT;
     private volatile boolean enableJmx = true;
 
-    private volatile boolean enablePipelineRoutedStore = false;
+    private volatile boolean enablePipelineRoutedStore = true;
     private volatile int clientZoneId = Zone.DEFAULT_ZONE_ID;
 
     private volatile String failureDetectorImplementation = FailureDetectorConfig.DEFAULT_IMPLEMENTATION_CLASS_NAME;
@@ -95,6 +95,7 @@ public class ClientConfig {
     public static final String REQUEST_FORMAT_PROPERTY = "request_format";
     public static final String ENABLE_JMX_PROPERTY = "enable_jmx";
     public static final String ENABLE_PIPELINE_ROUTED_STORE_PROPERTY = "enable_pipeline_routed_store";
+    public static final String ENABLE_HINTED_HANDOFF_PROPERTY = "enable_hinted_handoff";
     public static final String CLIENT_ZONE_ID = "client_zone_id";
     public static final String FAILUREDETECTOR_IMPLEMENTATION_PROPERTY = "failuredetector_implementation";
     public static final String FAILUREDETECTOR_BANNAGE_PERIOD_PROPERTY = "failuredetector_bannage_period";

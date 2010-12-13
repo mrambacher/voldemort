@@ -61,7 +61,7 @@ public class RequestFormatTypeTest extends TestCase {
                      RequestFormatType.VOLDEMORT_V0,
                      RequestFormatType.fromCode("vp", -1));
         assertEquals("Returned highest matching version",
-                     RequestFormatType.VOLDEMORT_V3,
+                     RequestFormatType.VOLDEMORT_V4,
                      RequestFormatType.fromCode("vp", 10));
         assertEquals("Returned lowest matching version",
                      RequestFormatType.PROTOCOL_BUFFERS,

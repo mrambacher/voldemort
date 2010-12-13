@@ -31,11 +31,11 @@ import voldemort.versioning.Versioned;
 /**
  * Class to convert a Store into a Callable store.
  */
-public class WrappedCallableStore<K, V> implements CallableStore<K, V> {
+public class WrappedCallableStore<K, V, T> implements CallableStore<K, V, T> {
 
-    protected Store<K, V> inner;
+    protected Store<K, V, T> inner;
 
-    public WrappedCallableStore(Store<K, V> inner) {
+    public WrappedCallableStore(Store<K, V, T> inner) {
         this.inner = inner;
     }
 
@@ -72,12 +72,13 @@ public class WrappedCallableStore<K, V> implements CallableStore<K, V> {
      *         are found.
      * @throws VoldemortException
      */
-    public Callable<List<Versioned<V>>> callGet(final K key) throws VoldemortException {
+    public Callable<List<Versioned<V>>> callGet(final K key, final T transform)
+            throws VoldemortException {
         StoreUtils.assertValidKey(key);
         Callable<List<Versioned<V>>> task = new Callable<List<Versioned<V>>>() {
 
             public List<Versioned<V>> call() {
-                return inner.get(key);
+                return inner.get(key, transform);
             }
         };
         return wrap(task);
@@ -93,13 +94,14 @@ public class WrappedCallableStore<K, V> implements CallableStore<K, V> {
      * @return A Map of keys to a list of versioned values.
      * @throws VoldemortException
      */
-    public Callable<Map<K, List<Versioned<V>>>> callGetAll(final Iterable<K> keys)
+    public Callable<Map<K, List<Versioned<V>>>> callGetAll(final Iterable<K> keys,
+                                                           final Map<K, T> transforms)
             throws VoldemortException {
         StoreUtils.assertValidKeys(keys);
         Callable<Map<K, List<Versioned<V>>>> task = new Callable<Map<K, List<Versioned<V>>>>() {
 
             public Map<K, List<Versioned<V>>> call() {
-                return inner.getAll(keys);
+                return inner.getAll(keys, transforms);
             }
         };
         return wrap(task);
@@ -111,13 +113,13 @@ public class WrappedCallableStore<K, V> implements CallableStore<K, V> {
      * @param key The key to use
      * @param value The value to store and its version.
      */
-    public Callable<Version> callPut(final K key, final Versioned<V> value)
+    public Callable<Version> callPut(final K key, final Versioned<V> value, final T transform)
             throws VoldemortException {
         StoreUtils.assertValidKey(key);
         Callable<Version> task = new Callable<Version>() {
 
             public Version call() {
-                return inner.put(key, value);
+                return inner.put(key, value, transform);
             }
         };
         return wrap(task);

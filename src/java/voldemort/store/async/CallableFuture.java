@@ -24,10 +24,7 @@ import voldemort.VoldemortException;
  * Callable Futures are store futures that run on the current thread at the time
  * of creation (not asynchronous).
  */
-public class CallableFuture<V> extends StoreFutureTask<V> {
-
-    private V result;
-    private VoldemortException exception;
+public class CallableFuture<V> extends InlineStoreFuture<V> {
 
     /**
      * Creates a new Callable Future
@@ -59,14 +56,5 @@ public class CallableFuture<V> extends StoreFutureTask<V> {
 
     public boolean cancel(boolean interrupt) {
         return false;
-    }
-
-    @Override
-    protected V getResult() throws VoldemortException {
-        if(exception != null) {
-            throw exception;
-        } else {
-            return result;
-        }
     }
 }

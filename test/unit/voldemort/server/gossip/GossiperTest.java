@@ -26,11 +26,11 @@ import voldemort.client.protocol.admin.AdminClient;
 import voldemort.client.protocol.admin.AdminClientConfig;
 import voldemort.cluster.Cluster;
 import voldemort.cluster.Node;
-import voldemort.server.VoldemortConfig;
 import voldemort.server.VoldemortServer;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.store.socket.SocketStoreFactory;
 import voldemort.store.socket.clientrequest.ClientRequestExecutorPool;
+import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
@@ -47,7 +47,7 @@ public class GossiperTest extends TestCase {
                                                                                   10000,
                                                                                   100000,
                                                                                   32 * 1024);
-    private static String storesXmlfile = "test/common/voldemort/config/stores.xml";
+    private static String storesXmlfile = "test/common/voldemort/config/single-store.xml";
     private final boolean useNio;
 
     public GossiperTest(boolean useNio) {
@@ -108,7 +108,7 @@ public class GossiperTest extends TestCase {
         socketStoreFactory.close();
     }
 
-    private AdminClient getAdminClient(Cluster newCluster, VoldemortConfig newServerConfig) {
+    private AdminClient getAdminClient(Cluster newCluster) {
         return new AdminClient(newCluster, new AdminClientConfig());
     }
 
@@ -156,7 +156,7 @@ public class GossiperTest extends TestCase {
         }
 
         // Get the new cluster.xml
-        AdminClient localAdminClient = getAdminClient(newCluster, newServer.getVoldemortConfig());
+        AdminClient localAdminClient = getAdminClient(newCluster);
 
         Versioned<String> versionedClusterXML = localAdminClient.getRemoteMetadata(3,
                                                                                    MetadataStore.CLUSTER_KEY);
@@ -165,8 +165,8 @@ public class GossiperTest extends TestCase {
         // it
         // to seed the Gossip.
         Version version = versionedClusterXML.getVersion();
-        version.incrementClock(3, version.getTimestamp() + 1);
-        version.incrementClock(0, version.getTimestamp() + 1);
+        version.incrementClock(3, ((VectorClock) version).getTimestamp() + 1);
+        version.incrementClock(0, ((VectorClock) version).getTimestamp() + 1);
 
         localAdminClient.updateRemoteMetadata(0, MetadataStore.CLUSTER_KEY, versionedClusterXML);
         localAdminClient.updateRemoteMetadata(3, MetadataStore.CLUSTER_KEY, versionedClusterXML);

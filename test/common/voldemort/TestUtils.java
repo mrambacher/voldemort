@@ -46,6 +46,7 @@ import voldemort.store.StoreDefinition;
 import voldemort.store.StoreDefinitionBuilder;
 import voldemort.store.readonly.JsonStoreBuilder;
 import voldemort.store.readonly.ReadOnlyStorageConfiguration;
+import voldemort.store.readonly.ReadOnlyStorageFormat;
 import voldemort.utils.ByteArray;
 import voldemort.utils.Utils;
 import voldemort.versioning.Metadata;
@@ -153,11 +154,11 @@ public class TestUtils {
         return bytes;
     }
 
-    public static <K, V> void assertContains(Store<K, V> store,
-                                             K key,
-                                             Version version,
-                                             Versioned<V> value) {
-        List<Versioned<V>> values = store.get(key);
+    public static <K, V, T> void assertContains(Store<K, V, T> store,
+                                                K key,
+                                                Version version,
+                                                Versioned<V> value) {
+        List<Versioned<V>> values = store.get(key, null);
         for(Versioned<V> v: values) {
             if(v.getVersion().equals(version)) {
                 if(!Utils.deepEquals(v.getValue(), value.getValue())) {
@@ -176,8 +177,8 @@ public class TestUtils {
         throw new AssertionFailedError("Could not find version " + version + " in store");
     }
 
-    public static <K, V> void assertContains(Store<K, V> store, K key, V... values) {
-        List<Versioned<V>> found = store.get(key);
+    public static <K, V, T> void assertContains(Store<K, V, T> store, K key, V... values) {
+        List<Versioned<V>> found = store.get(key, null);
         if(found.size() != values.length)
             throw new AssertionFailedError("Expected to find " + values.length
                                            + " values in store, but found only " + found.size()
@@ -345,7 +346,7 @@ public class TestUtils {
                                                              2,
                                                              10000,
                                                              false);
-        storeBuilder.build();
+        storeBuilder.build(ReadOnlyStorageFormat.READONLY_V1);
 
         return dataDir.getAbsolutePath();
     }
@@ -441,5 +442,4 @@ public class TestUtils {
         eventDataQueueField.setAccessible(true);
         return (T) eventDataQueueField.get(instance);
     }
-
 }

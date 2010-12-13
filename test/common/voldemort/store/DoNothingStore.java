@@ -31,7 +31,7 @@ import voldemort.versioning.Versioned;
  * 
  * 
  */
-public class DoNothingStore<K, V> implements StorageEngine<K, V> {
+public class DoNothingStore<K, V, T> implements StorageEngine<K, V, T> {
 
     private final String name;
 
@@ -43,7 +43,7 @@ public class DoNothingStore<K, V> implements StorageEngine<K, V> {
     // Do nothing;
     }
 
-    public List<Versioned<V>> get(K key) throws VoldemortException {
+    public List<Versioned<V>> get(K key, T transforms) throws VoldemortException {
         // do nothing
         return null;
     }
@@ -57,11 +57,12 @@ public class DoNothingStore<K, V> implements StorageEngine<K, V> {
         return true;
     }
 
-    public Version put(K key, Versioned<V> value) throws VoldemortException {
+    public Version put(K key, Versioned<V> value, T transforms) throws VoldemortException {
         return value.getVersion();
     }
 
-    public Map<K, List<Versioned<V>>> getAll(Iterable<K> keys) throws VoldemortException {
+    public Map<K, List<Versioned<V>>> getAll(Iterable<K> keys, Map<K, T> transforms)
+            throws VoldemortException {
         return null;
     }
 

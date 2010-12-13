@@ -3,7 +3,7 @@ package voldemort.client.protocol.vold;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.util.List;
+import java.util.Map;
 
 import voldemort.VoldemortException;
 import voldemort.client.protocol.RequestFormatType;
@@ -47,6 +47,14 @@ public class VoldemortNativeClientRequestFormatV3 extends VoldemortNativeClientR
         super.writeGetVersionRequest(outputStream, storeName, key, routingType);
     }
 
+    protected int deleteRequestSize(String storeName,
+                                    ByteArray key,
+                                    Version version,
+                                    RequestRoutingType routingType) throws IOException {
+        return getHeaderSize(VoldemortOpCode.DELETE_OP_CODE, storeName, routingType)
+               + VoldemortNativeProtocol.getKeyRequestSize(key) + this.getVersionSize(version);
+    }
+
     @Override
     public void writeDeleteRequest(DataOutputStream outputStream,
                                    String storeName,
@@ -54,9 +62,7 @@ public class VoldemortNativeClientRequestFormatV3 extends VoldemortNativeClientR
                                    Version version,
                                    RequestRoutingType routingType) throws IOException {
         StoreUtils.assertValidKey(key);
-        int requestSize = getHeaderSize(VoldemortOpCode.GET_OP_CODE, storeName, routingType)
-                          + VoldemortNativeProtocol.getKeyRequestSize(key)
-                          + this.getVersionSize(version);
+        int requestSize = deleteRequestSize(storeName, key, version, routingType);
 
         outputStream.writeInt(requestSize);
 
@@ -66,12 +72,11 @@ public class VoldemortNativeClientRequestFormatV3 extends VoldemortNativeClientR
         writeVersion(outputStream, version);
     }
 
-    @Override
-    protected void writeGetAllRequest(DataOutputStream output,
-                                      String storeName,
-                                      List<ByteArray> keys,
-                                      RequestRoutingType routingType) throws IOException {
-        StoreUtils.assertValidKeys(keys);
+    @SuppressWarnings("unused")
+    protected int getAllRequestSize(String storeName,
+                                    Iterable<ByteArray> keys,
+                                    Map<ByteArray, byte[]> transforms,
+                                    RequestRoutingType routingType) throws IOException {
         int requestSize = getHeaderSize(VoldemortOpCode.GET_ALL_OP_CODE, storeName, routingType) + 4; // Header
         // +
         // list
@@ -79,21 +84,51 @@ public class VoldemortNativeClientRequestFormatV3 extends VoldemortNativeClientR
         for(ByteArray key: keys) {
             requestSize += VoldemortNativeProtocol.getKeyRequestSize(key);
         }
-        System.out.println("GETALL SIZE: " + requestSize);
+        return requestSize;
+    }
+
+    @Override
+    public void writeGetAllRequest(DataOutputStream output,
+                                   String storeName,
+                                   Iterable<ByteArray> keys,
+                                   Map<ByteArray, byte[]> transforms,
+                                   RequestRoutingType routingType) throws IOException {
+        StoreUtils.assertValidKeys(keys);
+        int requestSize = getAllRequestSize(storeName, keys, transforms, routingType);
         output.writeInt(requestSize);
-        super.writeGetAllRequest(output, storeName, keys, routingType);
+        super.writeGetAllRequest(output, storeName, keys, transforms, routingType);
+    }
+
+    @SuppressWarnings("unused")
+    protected int getRequestSize(String storeName,
+                                 ByteArray key,
+                                 byte[] transforms,
+                                 RequestRoutingType routingType) throws IOException {
+        int requestSize = getHeaderSize(VoldemortOpCode.GET_OP_CODE, storeName, routingType)
+                          + VoldemortNativeProtocol.getKeyRequestSize(key);
+        return requestSize;
     }
 
     @Override
     public void writeGetRequest(DataOutputStream outputStream,
                                 String storeName,
                                 ByteArray key,
+                                byte[] transforms,
                                 RequestRoutingType routingType) throws IOException {
         StoreUtils.assertValidKey(key);
-        int requestSize = getHeaderSize(VoldemortOpCode.GET_OP_CODE, storeName, routingType)
-                          + VoldemortNativeProtocol.getKeyRequestSize(key);
+        int requestSize = getRequestSize(storeName, key, transforms, routingType);
         outputStream.writeInt(requestSize);
-        super.writeGetRequest(outputStream, storeName, key, routingType);
+        super.writeGetRequest(outputStream, storeName, key, transforms, routingType);
+    }
+
+    @SuppressWarnings("unused")
+    protected int putRequestSize(String storeName,
+                                 ByteArray key,
+                                 Versioned<byte[]> versioned,
+                                 byte[] transforms,
+                                 RequestRoutingType routingType) throws IOException {
+        return getHeaderSize(VoldemortOpCode.PUT_OP_CODE, storeName, routingType)
+               + VoldemortNativeProtocol.getKeyRequestSize(key) + getVersionedSize(versioned);
     }
 
     @Override
@@ -101,14 +136,12 @@ public class VoldemortNativeClientRequestFormatV3 extends VoldemortNativeClientR
                                 String storeName,
                                 ByteArray key,
                                 Versioned<byte[]> versioned,
+                                byte[] transforms,
                                 RequestRoutingType routingType) throws IOException {
         StoreUtils.assertValidKey(key);
-        int requestSize = getHeaderSize(VoldemortOpCode.PUT_OP_CODE, storeName, routingType)
-                          + VoldemortNativeProtocol.getKeyRequestSize(key)
-                          + getVersionedSize(versioned);
-
+        int requestSize = putRequestSize(storeName, key, versioned, transforms, routingType);
         outputStream.writeInt(requestSize);
-        super.writePutRequest(outputStream, storeName, key, versioned, routingType);
+        super.writePutRequest(outputStream, storeName, key, versioned, transforms, routingType);
     }
 
     @Override

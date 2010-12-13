@@ -31,8 +31,8 @@ public class LimitingStoreTest extends AbstractByteArrayStoreTest {
     }
 
     @Override
-    public Store<ByteArray, byte[]> createStore(String name) {
-        Store<ByteArray, byte[]> store = new InMemoryStorageEngine<ByteArray, byte[]>(name);
+    public Store<ByteArray, byte[], byte[]> createStore(String name) {
+        Store<ByteArray, byte[], byte[]> store = new InMemoryStorageEngine<ByteArray, byte[], byte[]>(name);
         return new LimitingStore(store, 300, 30 * 1024 * 1024, 200);
     }
 
@@ -63,8 +63,8 @@ public class LimitingStoreTest extends AbstractByteArrayStoreTest {
                 String name = Integer.toString(i);
                 value.getMetadata().setProperty(name, name);
             }
-            Store<ByteArray, byte[]> store = getStore();
-            store.put(new ByteArray(data), value);
+            Store<ByteArray, byte[], byte[]> store = getStore();
+            store.put(new ByteArray(data), value, null);
             fail("Expected metadata size limit exceeded");
         } catch(Exception e) {
             assertEquals("Unexpected exception", LimitExceededException.class, e.getClass());

@@ -16,9 +16,14 @@
 
 package voldemort.server.rebalance;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.log4j.Logger;
@@ -53,12 +58,34 @@ public class Rebalancer implements Runnable {
 
     public void stop() {}
 
-    private boolean acquireRebalancingPermit(int donorNodeId) {
-        return rebalancePermits.add(donorNodeId);
+    /**
+     * Has rebalancing permit
+     * 
+     * @param nodeId The node id for which we want to check if we have a permit
+     * @return Returns true if permit has been taken
+     */
+    public boolean hasRebalancingPermit(int nodeId) {
+        return rebalancePermits.contains(nodeId);
     }
 
-    protected void releaseRebalancingPermit(int donorNodeId) {
-        if(!rebalancePermits.remove(donorNodeId))
+    /**
+     * Acquire a permit for a particular node id so as to allow rebalancing
+     * 
+     * @param nodeId The id of the node for which we are acquiring a permit
+     * @return Returns true if permit acquired, false if the permit is already
+     *         held by someone
+     */
+    public boolean acquireRebalancingPermit(int nodeId) {
+        return rebalancePermits.add(nodeId);
+    }
+
+    /**
+     * Release the rebalancing permit for a particular node id
+     * 
+     * @param nodeId The node id whose permit we want to release
+     */
+    public void releaseRebalancingPermit(int nodeId) {
+        if(!rebalancePermits.remove(nodeId))
             throw new VoldemortException(new IllegalStateException("Invalid state, must hold a "
                                                                    + "permit to release"));
     }
@@ -79,7 +106,13 @@ public class Rebalancer implements Runnable {
             metadataStore.readLock.unlock();
         }
 
-        if(VoldemortState.REBALANCING_MASTER_SERVER.equals(voldemortState)) {
+        final ConcurrentHashMap<Integer, Map<String, String>> nodeIdsToStoreDirs = new ConcurrentHashMap<Integer, Map<String, String>>();
+        final List<Exception> failures = new ArrayList<Exception>();
+
+        if(VoldemortState.REBALANCING_MASTER_SERVER.equals(voldemortState)
+           && acquireRebalancingPermit(metadataStore.getNodeId())) {
+            // free permit for RebalanceAsyncOperation to acquire
+            releaseRebalancingPermit(metadataStore.getNodeId());
             for(RebalancePartitionsInfo stealInfo: rebalancerState.getAll()) {
                 // free permit here for rebalanceLocalNode to acquire.
                 if(acquireRebalancingPermit(stealInfo.getDonorId())) {
@@ -88,9 +121,12 @@ public class Rebalancer implements Runnable {
                     try {
                         logger.warn("Rebalance server found incomplete rebalancing attempt, restarting rebalancing task "
                                     + stealInfo);
-
                         if(stealInfo.getAttempt() < voldemortConfig.getMaxRebalancingAttempt()) {
                             attemptRebalance(stealInfo);
+                            nodeIdsToStoreDirs.put(stealInfo.getDonorId(),
+                                                   stealInfo.getDonorNodeROStoreToDir());
+                            nodeIdsToStoreDirs.put(stealInfo.getStealerId(),
+                                                   stealInfo.getStealerNodeROStoreToDir());
                         } else {
                             logger.warn("Rebalancing for rebalancing task " + stealInfo
                                         + " failed multiple times, Aborting more trials.");
@@ -99,7 +135,43 @@ public class Rebalancer implements Runnable {
                     } catch(Exception e) {
                         logger.error("RebalanceService rebalancing attempt " + stealInfo
                                      + " failed with exception", e);
+                        failures.add(e);
                     }
+                }
+            }
+
+            if(failures.size() == 0 && nodeIdsToStoreDirs.size() > 0) {
+                ExecutorService swapExecutors = RebalanceUtils.createExecutors(nodeIdsToStoreDirs.size());
+                for(final Integer nodeId: nodeIdsToStoreDirs.keySet()) {
+                    swapExecutors.submit(new Runnable() {
+
+                        public void run() {
+                            Map<String, String> storeDirs = nodeIdsToStoreDirs.get(nodeId);
+
+                            AdminClient adminClient = RebalanceUtils.createTempAdminClient(voldemortConfig,
+                                                                                           metadataStore.getCluster(),
+                                                                                           4,
+                                                                                           2);
+                            try {
+                                logger.info("Swapping read-only stores on node " + nodeId);
+                                adminClient.swapStoresAndCleanState(nodeId, storeDirs);
+                                logger.info("Successfully swapped on node " + nodeId);
+                            } catch(Exception e) {
+                                logger.error("Failed swapping on node " + nodeId, e);
+                            } finally {
+                                adminClient.stop();
+                            }
+
+                        }
+                    });
+                }
+
+                try {
+                    RebalanceUtils.executorShutDown(swapExecutors,
+                                                    voldemortConfig.getRebalancingTimeout());
+                } catch(Exception e) {
+                    logger.error("Interrupted swapping executor ", e);
+                    return;
                 }
             }
         }

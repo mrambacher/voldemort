@@ -68,12 +68,13 @@ abstract public class StoreFutureTask<V> implements StoreFuture<V> {
     protected StoreFutureTask(String operation, int count) {
         this.operation = operation;
         this.duration = 0;
+        this.submitted = System.nanoTime();
         listeners = new LinkedHashMap<StoreFutureListener<V>, Object>();
         remaining = new CountDownLatch(count);
     }
 
     /**
-     * Returns the name of the oepration.
+     * Returns the name of the operation.
      */
     public String getOperation() {
         return this.operation;
@@ -288,6 +289,14 @@ abstract public class StoreFutureTask<V> implements StoreFuture<V> {
             return units.convert(System.nanoTime() - started, TimeUnit.NANOSECONDS);
         } else {
             return units.convert(System.nanoTime() - submitted, TimeUnit.NANOSECONDS);
+        }
+    }
+
+    public long getRemaining(long timeout, TimeUnit units) {
+        if(isDone() || isCancelled()) {
+            return 0;
+        } else {
+            return Math.max(0, timeout - getDuration(units));
         }
     }
 }

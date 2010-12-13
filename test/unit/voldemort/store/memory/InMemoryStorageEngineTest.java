@@ -31,8 +31,8 @@ public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
     }
 
     @Override
-    public StorageEngine<ByteArray, byte[]> createStorageEngine(String name) {
-        return new InMemoryStorageEngine<ByteArray, byte[]>(name);
+    public StorageEngine<ByteArray, byte[], byte[]> createStorageEngine(String name) {
+        return new InMemoryStorageEngine<ByteArray, byte[], byte[]>(name);
     }
 
     @Override

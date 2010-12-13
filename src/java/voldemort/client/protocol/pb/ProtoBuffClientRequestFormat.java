@@ -87,16 +87,23 @@ public class ProtoBuffClientRequestFormat implements RequestFormat {
     public void writeGetRequest(DataOutputStream output,
                                 String storeName,
                                 ByteArray key,
+                                byte[] transforms,
                                 RequestRoutingType routingType) throws IOException {
         StoreUtils.assertValidKey(key);
+        VProto.GetRequest.Builder get = VProto.GetRequest.newBuilder();
+        get.setKey(ByteString.copyFrom(key.get()));
+
+        if(transforms != null) {
+            get.setTransforms(ByteString.copyFrom(transforms));
+        }
+
         ProtoUtils.writeMessage(output,
                                 VProto.VoldemortRequest.newBuilder()
                                                        .setType(RequestType.GET)
                                                        .setStore(storeName)
                                                        .setShouldRoute(routingType.equals(RequestRoutingType.ROUTED))
                                                        .setRequestRouteType(routingType.getRoutingTypeCode())
-                                                       .setGet(VProto.GetRequest.newBuilder()
-                                                                                .setKey(ByteString.copyFrom(key.get())))
+                                                       .setGet(get)
                                                        .build());
     }
 
@@ -114,12 +121,21 @@ public class ProtoBuffClientRequestFormat implements RequestFormat {
     public void writeGetAllRequest(DataOutputStream output,
                                    String storeName,
                                    Iterable<ByteArray> keys,
+                                   Map<ByteArray, byte[]> transforms,
                                    RequestRoutingType routingType) throws IOException {
         StoreUtils.assertValidKeys(keys);
         VProto.GetAllRequest.Builder req = VProto.GetAllRequest.newBuilder();
         for(ByteArray key: keys)
             req.addKeys(ByteString.copyFrom(key.get()));
 
+        if(transforms != null) {
+            for(Map.Entry<ByteArray, byte[]> transform: transforms.entrySet()) {
+                req.addTransforms(VProto.GetAllRequest.GetAllTransform.newBuilder()
+                                                                      .setKey(ByteString.copyFrom(transform.getKey()
+                                                                                                           .get()))
+                                                                      .setTransform(ByteString.copyFrom(transform.getValue())));
+            }
+        }
         ProtoUtils.writeMessage(output,
                                 VProto.VoldemortRequest.newBuilder()
                                                        .setType(RequestType.GET_ALL)
@@ -151,11 +167,14 @@ public class ProtoBuffClientRequestFormat implements RequestFormat {
                                 String storeName,
                                 ByteArray key,
                                 Versioned<byte[]> versioned,
+                                byte[] transforms,
                                 RequestRoutingType routingType) throws IOException {
         StoreUtils.assertValidKey(key);
         VProto.PutRequest.Builder req = VProto.PutRequest.newBuilder()
                                                          .setKey(ByteString.copyFrom(key.get()))
                                                          .setVersioned(ProtoUtils.encodeVersioned(versioned));
+        if(transforms != null)
+            req = req.setTransforms(ByteString.copyFrom(transforms));
         ProtoUtils.writeMessage(output,
                                 VProto.VoldemortRequest.newBuilder()
                                                        .setType(RequestType.PUT)
@@ -217,5 +236,4 @@ public class ProtoBuffClientRequestFormat implements RequestFormat {
         int size = buffer.getInt();
         return buffer.remaining() == size;
     }
-
 }

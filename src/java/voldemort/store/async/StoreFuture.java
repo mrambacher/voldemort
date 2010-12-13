@@ -33,6 +33,8 @@ public interface StoreFuture<V> extends Future<V> {
      */
     public long getDuration(TimeUnit units);
 
+    public long getRemaining(long timeout, TimeUnit units);
+
     /**
      * Registers a completion listener with the future. The listener will be
      * invoked when the future completes. If the future has already completed,

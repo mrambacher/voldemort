@@ -36,8 +36,8 @@ public class AsyncUtils {
      * @param async The store to be converted
      * @return The synchronous equivalent
      */
-    public static <K, V> Store<K, V> asSync(AsynchronousStore<K, V> async) {
-        return new SynchronousStore<K, V>(async);
+    public static <K, V, T> Store<K, V, T> asSync(AsynchronousStore<K, V, T> async) {
+        return new SynchronousStore<K, V, T>(async);
     }
 
     /**
@@ -46,8 +46,8 @@ public class AsyncUtils {
      * @param callable The store to be converted
      * @return The asynchronous equivalent
      */
-    public static <K, V> AsynchronousStore<K, V> asAsync(CallableStore<K, V> callable) {
-        return new NonblockingStore<K, V>(callable);
+    public static <K, V, T> AsynchronousStore<K, V, T> asAsync(CallableStore<K, V, T> callable) {
+        return new NonblockingStore<K, V, T>(callable);
     }
 
     /**
@@ -58,11 +58,11 @@ public class AsyncUtils {
      * @return The synchronous equivalent
      */
     @SuppressWarnings("unchecked")
-    public static <K, V> AsynchronousStore<K, V> asAsync(Store<K, V> sync) {
+    public static <K, V, T> AsynchronousStore<K, V, T> asAsync(Store<K, V, T> sync) {
         try {
-            return (AsynchronousStore<K, V>) sync.getCapability(StoreCapabilityType.ASYNCHRONOUS);
+            return (AsynchronousStore<K, V, T>) sync.getCapability(StoreCapabilityType.ASYNCHRONOUS);
         } catch(NoSuchCapabilityException e) {
-            return new NonblockingStore<K, V>(asCallable(sync));
+            return new NonblockingStore<K, V, T>(asCallable(sync));
         }
     }
 
@@ -72,7 +72,7 @@ public class AsyncUtils {
      * @param callable The callable store to be converted
      * @return The synchronous equivalent
      */
-    public static <K, V> Store<K, V> asStore(CallableStore<K, V> callable) {
+    public static <K, V, T> Store<K, V, T> asStore(CallableStore<K, V, T> callable) {
         return asStore(asAsync(callable));
     }
 
@@ -82,8 +82,22 @@ public class AsyncUtils {
      * @param async The asynchronous store to be converted
      * @return The synchronous equivalent
      */
-    public static <K, V> Store<K, V> asStore(AsynchronousStore<K, V> async) {
-        return new SynchronousStore<K, V>(async);
+    public static <K, V, T> Store<K, V, T> asStore(AsynchronousStore<K, V, T> async) {
+        return new SynchronousStore<K, V, T>(async);
+    }
+
+    /**
+     * Converts a synchronous store from its asynchronous equivalent.
+     * 
+     * @param async The asynchronous store to be converted
+     * @return The synchronous equivalent
+     */
+    public static <N, K, V, T> Map<N, Store<K, V, T>> asStores(Map<N, AsynchronousStore<K, V, T>> asyncs) {
+        Map<N, Store<K, V, T>> stores = Maps.newHashMap();
+        for(Map.Entry<N, AsynchronousStore<K, V, T>> entry: asyncs.entrySet()) {
+            stores.put(entry.getKey(), AsyncUtils.asStore(entry.getValue()));
+        }
+        return stores;
     }
 
     /**
@@ -92,21 +106,7 @@ public class AsyncUtils {
      * @param store The store to be converted
      * @return The callable equivalent
      */
-    public static <K, V> CallableStore<K, V> asCallable(Store<K, V> store) {
-        return new WrappedCallableStore<K, V>(store);
-    }
-
-    /**
-     * Converts the map of asynchronous stores to a map of synchronous ones.
-     * 
-     * @param asyncs The map of asynchronous stores
-     * @return The synchronous equivalent
-     */
-    public static <N, K, V> Map<N, Store<K, V>> asStores(Map<N, AsynchronousStore<K, V>> asyncs) {
-        Map<N, Store<K, V>> stores = Maps.newHashMap();
-        for(Map.Entry<N, AsynchronousStore<K, V>> entry: asyncs.entrySet()) {
-            stores.put(entry.getKey(), asStore(entry.getValue()));
-        }
-        return stores;
+    public static <K, V, T> CallableStore<K, V, T> asCallable(Store<K, V, T> store) {
+        return new WrappedCallableStore<K, V, T>(store);
     }
 }

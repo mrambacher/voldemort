@@ -37,7 +37,7 @@ import voldemort.utils.Utils;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
-public class ClientRequestStore implements CallableStore<ByteArray, byte[]> {
+public class ClientRequestStore implements CallableStore<ByteArray, byte[], byte[]> {
 
     private static final RequestFormatFactory requestFormatFactory = new RequestFormatFactory();
 
@@ -66,14 +66,19 @@ public class ClientRequestStore implements CallableStore<ByteArray, byte[]> {
         return new DeleteClientRequest(storeName, requestFormat, requestRoutingType, key, version);
     }
 
-    public ClientRequest<List<Versioned<byte[]>>> callGet(ByteArray key) {
+    public ClientRequest<List<Versioned<byte[]>>> callGet(ByteArray key, byte[] transform) {
         StoreUtils.assertValidKey(key);
-        return new GetClientRequest(storeName, requestFormat, requestRoutingType, key);
+        return new GetClientRequest(storeName, requestFormat, requestRoutingType, key, transform);
     }
 
-    public ClientRequest<Map<ByteArray, List<Versioned<byte[]>>>> callGetAll(Iterable<ByteArray> keys) {
+    public ClientRequest<Map<ByteArray, List<Versioned<byte[]>>>> callGetAll(Iterable<ByteArray> keys,
+                                                                             Map<ByteArray, byte[]> transforms) {
         StoreUtils.assertValidKeys(keys);
-        return new GetAllClientRequest(storeName, requestFormat, requestRoutingType, keys);
+        return new GetAllClientRequest(storeName,
+                                       requestFormat,
+                                       requestRoutingType,
+                                       keys,
+                                       transforms);
     }
 
     public ClientRequest<List<Version>> callGetVersions(ByteArray key) {
@@ -81,9 +86,14 @@ public class ClientRequestStore implements CallableStore<ByteArray, byte[]> {
         return new GetVersionsClientRequest(storeName, requestFormat, requestRoutingType, key);
     }
 
-    public ClientRequest<Version> callPut(ByteArray key, Versioned<byte[]> value) {
+    public ClientRequest<Version> callPut(ByteArray key, Versioned<byte[]> value, byte[] transform) {
         StoreUtils.assertValidKey(key);
-        return new PutClientRequest(storeName, requestFormat, requestRoutingType, key, value);
+        return new PutClientRequest(storeName,
+                                    requestFormat,
+                                    requestRoutingType,
+                                    key,
+                                    value,
+                                    transform);
     }
 
     public void close() {

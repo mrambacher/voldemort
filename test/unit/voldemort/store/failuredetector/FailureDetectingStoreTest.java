@@ -47,7 +47,7 @@ public class FailureDetectingStoreTest extends TestCase {
 
     private FailureDetector failureDetector;
     private final Class<? extends FailureDetector> failureDetectorClass;
-    private Store<String, String> store;
+    private Store<String, String, String> store;
     private final VoldemortException exception;
     private Node node;
 
@@ -66,10 +66,10 @@ public class FailureDetectingStoreTest extends TestCase {
                                                                                  .setBannagePeriod(100)
                                                                                  .setNodes(Collections.singletonList(node));
         failureDetector = create(failureDetectorConfig, false);
-        store = AsyncUtils.asStore(new FailureDetectingStore<String, String>(node,
-                                                                             failureDetector,
-                                                                             AsyncUtils.asAsync(new FailingStore<String, String>("test",
-                                                                                                                                 exception))));
+        store = AsyncUtils.asStore(new FailureDetectingStore<String, String, String>(node,
+                                                                                     failureDetector,
+                                                                                     AsyncUtils.asAsync(new FailingStore<String, String, String>("test",
+                                                                                                                                                 exception))));
     }
 
     @Override
@@ -97,7 +97,7 @@ public class FailureDetectingStoreTest extends TestCase {
     @Test
     public void testPut() {
         try {
-            store.put("key", new Versioned<String>("value"));
+            store.put("key", new Versioned<String>("value"), null);
             fail("Expected Failure");
         } catch(Exception e) {
             checkException(e);
@@ -108,7 +108,7 @@ public class FailureDetectingStoreTest extends TestCase {
     public void testGet() {
         try {
             failureDetector.waitForAvailability(node);
-            store.get("key");
+            store.get("key", null);
             fail("Expected Failure");
         } catch(Exception e) {
             checkException(e);
@@ -141,7 +141,7 @@ public class FailureDetectingStoreTest extends TestCase {
     public void testGetAll() {
         try {
             failureDetector.waitForAvailability(node);
-            store.getAll(Collections.singletonList("key"));
+            store.getAll(Collections.singletonList("key"), null);
             fail("Expected Failure");
         } catch(Exception e) {
             checkException(e);

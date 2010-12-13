@@ -48,25 +48,29 @@ public class PerformParallelPutRequests extends
 
     private final long timeoutMs;
 
-    private final DistributedStore<Node, ByteArray, byte[]> distributor;
+    private final DistributedStore<Node, ByteArray, byte[], byte[]> distributor;
+
+    private byte[] transforms;
 
     public PerformParallelPutRequests(PutPipelineData pipelineData,
                                       Event completeEvent,
                                       ByteArray key,
+                                      byte[] transforms,
                                       int preferred,
                                       int required,
                                       long timeoutMs,
-                                      DistributedStore<Node, ByteArray, byte[]> distributor) {
+                                      DistributedStore<Node, ByteArray, byte[], byte[]> distributor) {
         super(pipelineData, completeEvent, key);
         this.preferred = preferred;
         this.required = required;
         this.timeoutMs = timeoutMs;
         this.distributor = distributor;
+        this.transforms = transforms;
     }
 
     public void execute(final Pipeline pipeline) {
         Node master = pipelineData.getMaster();
-        Versioned<byte[]> versionedCopy = pipelineData.getVersionedCopy();
+        final Versioned<byte[]> versionedCopy = pipelineData.getVersionedCopy();
 
         if(logger.isDebugEnabled())
             logger.debug("Serial put requests determined master node as " + master.getId()
@@ -87,8 +91,9 @@ public class PerformParallelPutRequests extends
 
         DistributedFuture<Node, Version> future = distributor.submitPut(key,
                                                                         versionedCopy,
+                                                                        transforms,
                                                                         available,
-                                                                        attempts,
+                                                                        preferred,
                                                                         blocks);
 
         boolean quorumSatisfied = true;
@@ -143,6 +148,18 @@ public class PerformParallelPutRequests extends
                             pipelineData.setFatalError(e);
                             pipeline.addEvent(Event.ERROR);
                         }
+                    }
+                    if(pipelineData.getZoneResponses().size() >= (pipelineData.getZonesRequired() + 1)) {
+                        pipeline.addEvent(completeEvent);
+                    } else {
+                        pipelineData.setFatalError(new InsufficientZoneResponsesException((pipelineData.getZonesRequired() + 1)
+                                                                                          + " "
+                                                                                          + pipeline.getOperation()
+                                                                                                    .getSimpleName()
+                                                                                          + "s required zone, but only "
+                                                                                          + zonesSatisfied
+                                                                                          + " succeeded"));
+                        pipeline.abort();
                     }
                 }
             } else {

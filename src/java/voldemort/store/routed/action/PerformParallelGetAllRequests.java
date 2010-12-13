@@ -40,14 +40,14 @@ public class PerformParallelGetAllRequests
 
     private final long timeoutMs;
 
-    private final DistributedStore<Node, ByteArray, byte[]> distributor;
+    private final DistributedStore<Node, ByteArray, byte[], byte[]> distributor;
 
     public PerformParallelGetAllRequests(GetAllPipelineData pipelineData,
                                          Event completeEvent,
                                          int preferred,
                                          int required,
                                          long timeoutMs,
-                                         DistributedStore<Node, ByteArray, byte[]> distributor) {
+                                         DistributedStore<Node, ByteArray, byte[], byte[]> distributor) {
         super(pipelineData, completeEvent);
         this.preferred = preferred;
         this.required = required;
@@ -62,8 +62,9 @@ public class PerformParallelGetAllRequests
         if(logger.isTraceEnabled())
             logger.trace("Attempting " + attempts + " " + pipeline.getOperation().getSimpleName()
                          + " operations in parallel");
-
+        Map<ByteArray, byte[]> transforms = pipelineData.getTransforms();
         DistributedFuture<Node, Map<ByteArray, List<Versioned<byte[]>>>> future = distributor.submitGetAll(nodesToKeys,
+                                                                                                           transforms,
                                                                                                            attempts,
                                                                                                            required);
 

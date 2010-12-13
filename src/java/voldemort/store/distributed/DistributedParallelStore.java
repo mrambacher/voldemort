@@ -19,16 +19,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.log4j.LogManager;
-import org.apache.log4j.Logger;
-
-import voldemort.VoldemortException;
-import voldemort.store.InsufficientOperationalNodesException;
-import voldemort.store.NoSuchCapabilityException;
-import voldemort.store.StoreCapabilityType;
 import voldemort.store.StoreDefinition;
-import voldemort.store.StoreUtils;
-import voldemort.store.async.AsyncUtils;
 import voldemort.store.async.AsynchronousStore;
 import voldemort.store.async.StoreFuture;
 import voldemort.versioning.Version;
@@ -40,98 +31,63 @@ import com.google.common.collect.Maps;
  * A distributed store that runs requests in parallel and waits for the
  * preferred/required nodes to complete.
  */
-public class DistributedParallelStore<N, K, V> implements DistributedStore<N, K, V> {
+public class DistributedParallelStore<N, K, V, T> extends AbstractDistributedStore<N, K, V, T> {
 
-    private final boolean makeUnique;
-    /** The map of nodes to asynchronous stores */
-    final Map<N, AsynchronousStore<K, V>> nodeStores;
-    protected final ResultsBuilder<N, List<Versioned<V>>> getBuilder;
-    protected final ResultsBuilder<N, List<Version>> versionsBuilder;
-    protected final ResultsBuilder<N, Version> putBuilder;
-    protected final ResultsBuilder<N, Boolean> deleteBuilder;
-    protected final Logger logger = LogManager.getLogger(getClass());
+    public static <N, K, V, T> DistributedStore<N, K, V, T> create(Map<N, AsynchronousStore<K, V, T>> stores,
+                                                                   StoreDefinition storeDef,
+                                                                   boolean unique) {
+        return new DistributedParallelStore<N, K, V, T>(stores, storeDef, unique);
+    }
 
-    private final StoreDefinition storeDef;
-
-    public DistributedParallelStore(Map<N, AsynchronousStore<K, V>> stores,
+    public DistributedParallelStore(Map<N, AsynchronousStore<K, V, T>> stores,
                                     StoreDefinition storeDef,
                                     boolean unique) {
-        this.storeDef = storeDef;
-        this.nodeStores = stores;
-        this.makeUnique = unique;
-        this.getBuilder = DistributedStoreFactory.GetBuilder(unique);
-        this.versionsBuilder = DistributedStoreFactory.GetVersionsBuilder(unique);
-        this.putBuilder = DistributedStoreFactory.PutBuilder();
-        this.deleteBuilder = DistributedStoreFactory.DeleteBuilder();
+        super(stores, storeDef, unique);
     }
 
-    /**
-     * Returns the nodes for distribution for the input key
-     * 
-     * @param key The key for the request
-     * @return All of the nodes.
-     */
-    public Collection<N> getNodesForKey(final K key) {
-        Map<N, AsynchronousStore<K, V>> stores = getNodeStores();
-        return stores.keySet();
-    }
-
-    protected <R> DistributedFuture<N, R> submit(AsynchronousStore.Operations operation,
-                                                 Map<N, StoreFuture<R>> futures,
-                                                 ResultsBuilder<N, R> builder,
-                                                 int preferred,
-                                                 int required) {
+    protected <R> DistributedFutureTask<N, R> submit(AsynchronousStore.Operations operation,
+                                                     Map<N, StoreFuture<R>> futures,
+                                                     ResultsBuilder<N, R> builder,
+                                                     int available,
+                                                     int preferred,
+                                                     int required) {
         return new DistributedFutureTask<N, R>(operation.name(),
                                                futures,
                                                builder,
+                                               available,
                                                preferred,
                                                required);
     }
 
-    public AsynchronousStore<K, V> getNodeStore(N node) {
-        return nodeStores.get(node);
+    protected <R> DistributedFutureTask<N, R> submit(AsynchronousStore.Operations operation,
+                                                     Map<N, StoreFuture<R>> futures,
+                                                     ResultsBuilder<N, R> builder,
+                                                     int preferred,
+                                                     int required) {
+        return submit(operation, futures, builder, futures.size(), preferred, required);
     }
 
-    public Map<N, AsynchronousStore<K, V>> getNodeStores() {
-        return nodeStores;
-    }
-
-    public DistributedFuture<N, List<Versioned<V>>> submitGet(final K key,
-                                                              Collection<N> nodes,
-                                                              int preferred,
-                                                              int required)
-            throws VoldemortException {
-        StoreUtils.assertValidKey(key);
-        DistributedStoreFactory.assertValidNodes(nodes,
-                                                 this.nodeStores.keySet(),
-                                                 preferred,
-                                                 required);
-        checkRequiredReads(nodes, required);
-
+    @Override
+    protected DistributedFuture<N, List<Versioned<V>>> distributeGet(Collection<N> nodes,
+                                                                     final K key,
+                                                                     final T transform,
+                                                                     int preferred,
+                                                                     int required) {
         Map<N, StoreFuture<List<Versioned<V>>>> futures = Maps.newHashMap();
         for(N node: nodes) {
-            AsynchronousStore<K, V> async = nodeStores.get(node);
-            futures.put(node, async.submitGet(key));
+            futures.put(node, submitGet(node, key, transform));
         }
         return submit(AsynchronousStore.Operations.GET, futures, getBuilder, preferred, required);
     }
 
-    public DistributedFuture<N, Map<K, List<Versioned<V>>>> submitGetAll(final Map<N, List<K>> nodesToKeys,
-                                                                         int preferred,
-                                                                         int required)
-            throws VoldemortException {
-        if(nodesToKeys == null) {
-            throw new IllegalArgumentException("Nodes cannot be null.");
-        }
-        DistributedStoreFactory.assertValidNodes(nodesToKeys.keySet(),
-                                                 this.nodeStores.keySet(),
-                                                 preferred,
-                                                 required);
-
+    @Override
+    protected DistributedFuture<N, Map<K, List<Versioned<V>>>> distributeGetAll(final Map<N, List<K>> nodesToKeys,
+                                                                                final Map<K, T> transforms,
+                                                                                int preferred,
+                                                                                int required) {
         Map<N, StoreFuture<Map<K, List<Versioned<V>>>>> futures = Maps.newHashMap();
         for(Map.Entry<N, List<K>> entry: nodesToKeys.entrySet()) {
-            AsynchronousStore<K, V> async = nodeStores.get(entry.getKey());
-            futures.put(entry.getKey(), async.submitGetAll(entry.getValue()));
+            futures.put(entry.getKey(), submitGetAll(entry.getKey(), entry.getValue(), transforms));
         }
         ResultsBuilder<N, Map<K, List<Versioned<V>>>> getAllBuilder = DistributedStoreFactory.GetAllBuilder(nodesToKeys,
                                                                                                             required,
@@ -143,21 +99,16 @@ public class DistributedParallelStore<N, K, V> implements DistributedStore<N, K,
                       1);
     }
 
-    public DistributedFuture<N, Version> submitPut(K key,
-                                                   Versioned<V> value,
-                                                   Collection<N> nodes,
-                                                   int preferred,
-                                                   int required) throws VoldemortException {
-        StoreUtils.assertValidKey(key);
-        DistributedStoreFactory.assertValidNodes(nodes,
-                                                 this.nodeStores.keySet(),
-                                                 preferred,
-                                                 required);
-        checkRequiredWrites(nodes, required);
+    @Override
+    protected DistributedFuture<N, Version> distributePut(Collection<N> nodes,
+                                                          K key,
+                                                          Versioned<V> value,
+                                                          T transform,
+                                                          int preferred,
+                                                          int required) {
         Map<N, StoreFuture<Version>> futures = Maps.newHashMap();
         for(N node: nodes) {
-            AsynchronousStore<K, V> async = nodeStores.get(node);
-            futures.put(node, async.submitPut(key, value));
+            futures.put(node, submitPut(node, key, value, transform));
         }
         return submit(AsynchronousStore.Operations.PUT,
                       futures,
@@ -166,31 +117,15 @@ public class DistributedParallelStore<N, K, V> implements DistributedStore<N, K,
                       required);
     }
 
-    protected void checkRequiredReads(final Collection<N> nodes, int required)
-            throws InsufficientOperationalNodesException {
-        DistributedStoreFactory.checkRequiredReads(nodes.size(), required);
-    }
-
-    protected void checkRequiredWrites(final Collection<N> nodes, int required)
-            throws InsufficientOperationalNodesException {
-        DistributedStoreFactory.checkRequiredWrites(nodes.size(), required);
-    }
-
-    public DistributedFuture<N, Boolean> submitDelete(K key,
-                                                      Version version,
-                                                      Collection<N> nodes,
-                                                      int preferred,
-                                                      int required) throws VoldemortException {
-        StoreUtils.assertValidKey(key);
-        DistributedStoreFactory.assertValidNodes(nodes,
-                                                 this.nodeStores.keySet(),
-                                                 preferred,
-                                                 required);
-        checkRequiredWrites(nodes, required);
+    @Override
+    protected DistributedFuture<N, Boolean> distributeDelete(Collection<N> nodes,
+                                                             K key,
+                                                             Version version,
+                                                             int preferred,
+                                                             int required) {
         Map<N, StoreFuture<Boolean>> futures = Maps.newHashMap();
         for(N node: nodes) {
-            AsynchronousStore<K, V> async = nodeStores.get(node);
-            futures.put(node, async.submitDelete(key, version));
+            futures.put(node, submitDelete(node, key, version));
         }
         return submit(AsynchronousStore.Operations.DELETE,
                       futures,
@@ -199,75 +134,19 @@ public class DistributedParallelStore<N, K, V> implements DistributedStore<N, K,
                       required);
     }
 
-    public DistributedFuture<N, List<Version>> submitGetVersions(K key,
-                                                                 Collection<N> nodes,
-                                                                 int preferred,
-                                                                 int required)
-            throws VoldemortException {
-        StoreUtils.assertValidKey(key);
-        DistributedStoreFactory.assertValidNodes(nodes,
-                                                 this.nodeStores.keySet(),
-                                                 preferred,
-                                                 required);
-        checkRequiredReads(nodes, required);
+    @Override
+    protected DistributedFuture<N, List<Version>> distributeGetVersions(Collection<N> nodes,
+                                                                        K key,
+                                                                        int preferred,
+                                                                        int required) {
         Map<N, StoreFuture<List<Version>>> futures = Maps.newHashMap();
         for(N node: nodes) {
-            AsynchronousStore<K, V> async = nodeStores.get(node);
-            futures.put(node, async.submitGetVersions(key));
+            futures.put(node, submitGetVersions(node, key));
         }
         return submit(AsynchronousStore.Operations.GETVERSIONS,
                       futures,
                       this.versionsBuilder,
                       preferred,
                       required);
-    }
-
-    /**
-     * @return The name of the store.
-     */
-    public String getName() {
-        return storeDef.getName();
-    }
-
-    /**
-     * Close the store.
-     * 
-     * @throws VoldemortException If closing fails.
-     */
-    public void close() throws VoldemortException {
-        VoldemortException exception = null;
-        for(AsynchronousStore<K, V> async: nodeStores.values()) {
-            try {
-                async.close();
-            } catch(VoldemortException e) {
-                exception = e;
-            }
-        }
-        if(exception != null) {
-            throw exception;
-        }
-    }
-
-    /**
-     * Get some capability of the store. Examples would be the serializer used,
-     * or the routing strategy. This provides a mechanism to verify that the
-     * store hierarchy has some set of capabilities without knowing the precise
-     * layering.
-     * 
-     * @param capability The capability type to retrieve
-     * @return The given capaiblity
-     * @throws NoSuchCapabilityException if the capaibility is not present
-     */
-    public Object getCapability(StoreCapabilityType capability) {
-        switch(capability) {
-            case NODE_STORES:
-                return this.nodeStores;
-            case SYNCHRONOUS_NODE_STORES:
-                return AsyncUtils.asStores(nodeStores);
-            case ASYNCHRONOUS:
-                return this;
-            default:
-                throw new NoSuchCapabilityException(capability, getName());
-        }
     }
 }

@@ -26,7 +26,10 @@ public class VoldemortNativeSocketStoreTest extends AbstractSocketStoreTest {
     public static Collection<Object[]> configs() {
         return Arrays.asList(new Object[][] { { RequestFormatType.VOLDEMORT_V1, true },
                 { RequestFormatType.VOLDEMORT_V1, false },
-                { RequestFormatType.VOLDEMORT_V3, true }, { RequestFormatType.VOLDEMORT_V3, false } });
+                { RequestFormatType.VOLDEMORT_V3, true },
+                { RequestFormatType.VOLDEMORT_V3, false },
+                { RequestFormatType.VOLDEMORT_V4, true }, { RequestFormatType.VOLDEMORT_V4, false } });
+
     }
 
     @Override

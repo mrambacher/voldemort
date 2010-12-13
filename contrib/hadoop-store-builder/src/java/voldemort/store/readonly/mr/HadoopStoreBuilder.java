@@ -41,6 +41,8 @@ import voldemort.VoldemortException;
 import voldemort.cluster.Cluster;
 import voldemort.cluster.Node;
 import voldemort.store.StoreDefinition;
+import voldemort.store.readonly.ReadOnlyStorageFormat;
+import voldemort.store.readonly.ReadOnlyStorageMetadata;
 import voldemort.store.readonly.checksum.CheckSum;
 import voldemort.store.readonly.checksum.CheckSum.CheckSumType;
 import voldemort.utils.Utils;
@@ -225,26 +227,37 @@ public class HadoopStoreBuilder {
             tempFs.delete(tempDir, true);
 
             long size = sizeOfPath(tempFs, inputPath);
-            int numChunks = Math.max((int) (storeDef.getReplicationFactor() * size
-                                            / cluster.getNumberOfNodes() / chunkSizeBytes), 1);
+            int numChunksPerPartition = Math.max((int) (storeDef.getReplicationFactor() * size
+                                                        / cluster.getNumberOfPartitions() / chunkSizeBytes),
+                                                 1);
             logger.info("Data size = " + size + ", replication factor = "
                         + storeDef.getReplicationFactor() + ", numNodes = "
                         + cluster.getNumberOfNodes() + ", chunk size = " + chunkSizeBytes
-                        + ",  num.chunks = " + numChunks);
-            conf.setInt("num.chunks", numChunks);
-            int numReduces = cluster.getNumberOfNodes() * numChunks;
+                        + ",  num.chunks per partition = " + numChunksPerPartition);
+            conf.setInt("num.chunks", numChunksPerPartition);
+            int numReduces = cluster.getNumberOfPartitions() * numChunksPerPartition;
             conf.setNumReduceTasks(numReduces);
             logger.info("Number of reduces: " + numReduces);
 
             logger.info("Building store...");
             JobClient.runJob(conf);
 
-            // Issue 258 : Check if all folder exists with empty folders
+            ReadOnlyStorageMetadata metadata = new ReadOnlyStorageMetadata();
+            metadata.add(ReadOnlyStorageMetadata.FORMAT,
+                         ReadOnlyStorageFormat.READONLY_V1.getCode());
+
+            // Check if all folder exists and with format file
             for(Node node: cluster.getNodes()) {
                 Path nodePath = new Path(outputDir.toString(), "node-" + node.getId());
                 if(!outputFs.exists(nodePath)) {
                     outputFs.mkdirs(nodePath); // Create empty folder
                 }
+
+                // Write metadata
+                FSDataOutputStream metadataStream = outputFs.create(new Path(nodePath, ".metadata"));
+                metadataStream.write(metadata.toJsonString().getBytes());
+                metadataStream.flush();
+                metadataStream.close();
             }
 
             if(checkSumType != CheckSumType.NONE) {
@@ -260,6 +273,7 @@ public class HadoopStoreBuilder {
 
                 for(FileStatus node: nodes) {
                     if(node.isDir()) {
+                        // Read all check sum files
                         FileStatus[] storeFiles = outputFs.listStatus(node.getPath(),
                                                                       new PathFilter() {
 
@@ -295,6 +309,7 @@ public class HadoopStoreBuilder {
                 }
             }
         } catch(Exception e) {
+            logger.error("Error = " + e);
             throw new VoldemortException(e);
         }
 
@@ -311,12 +326,22 @@ public class HadoopStoreBuilder {
             // directories before files
             if(fs1.isDir())
                 return fs2.isDir() ? 0 : -1;
-            // index files after all other files
-            else if(fs1.getPath().getName().endsWith(".index"))
-                return fs2.getPath().getName().endsWith(".index") ? 0 : 1;
-            // everything else is equivalent
-            else
-                return 0;
+            if(fs2.isDir())
+                return fs1.isDir() ? 0 : 1;
+
+            String f1 = fs1.getPath().getName(), f2 = fs2.getPath().getName();
+
+            // if both same, lexicographically
+            if((f1.contains(".index") && f2.contains(".index"))
+               || (f1.contains(".data") && f2.contains(".data"))) {
+                return f1.compareToIgnoreCase(f2);
+            }
+
+            if(f1.contains(".index")) {
+                return 1;
+            } else {
+                return -1;
+            }
         }
     }
 

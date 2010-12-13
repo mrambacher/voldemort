@@ -31,25 +31,26 @@ import voldemort.versioning.Versioned;
  * 
  * @param <K> The key type
  * @param <V> The value type
+ * @param <T> The transforms type
  */
-public class VersionIncrementingStore<K, V> extends DelegatingStore<K, V> implements Store<K, V> {
+public class VersionIncrementingStore<K, V, T> extends DelegatingStore<K, V, T> implements
+        Store<K, V, T> {
 
     private final short nodeId;
     private final Time time;
 
-    public VersionIncrementingStore(Store<K, V> innerStore, int nodeId, Time time) {
+    public VersionIncrementingStore(Store<K, V, T> innerStore, int nodeId, Time time) {
         super(innerStore);
         this.nodeId = (short) nodeId;
         this.time = time;
     }
 
     @Override
-    public Version put(K key, Versioned<V> value) throws VoldemortException {
-
+    public Version put(K key, Versioned<V> value, T transforms) throws VoldemortException {
         value = value.cloneVersioned();
         Version clock = value.getVersion();
         clock.incrementClock(nodeId, time.getMilliseconds());
-        return super.put(key, value);
+        return super.put(key, value, transforms);
     }
 
     @Override

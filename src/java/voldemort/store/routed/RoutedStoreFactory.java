@@ -27,7 +27,7 @@ public class RoutedStoreFactory {
 
     public RoutedStore create(Cluster cluster,
                               StoreDefinition storeDefinition,
-                              DistributedStore<Node, ByteArray, byte[]> distributor,
+                              DistributedStore<Node, ByteArray, byte[], byte[]> distributor,
                               int clientZoneId) {
         if(isPipelineRoutedStoreEnabled) {
             return new PipelineRoutedStore(storeDefinition.getName(),
@@ -50,7 +50,7 @@ public class RoutedStoreFactory {
 
     public RoutedStore create(Cluster cluster,
                               StoreDefinition storeDefinition,
-                              DistributedStore<Node, ByteArray, byte[]> distributor) {
+                              DistributedStore<Node, ByteArray, byte[], byte[]> distributor) {
         return create(cluster, storeDefinition, distributor, Zone.DEFAULT_ZONE_ID);
     }
 

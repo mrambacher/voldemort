@@ -31,6 +31,8 @@ import voldemort.client.protocol.RequestFormatType;
 import voldemort.cluster.Cluster;
 import voldemort.cluster.Node;
 import voldemort.cluster.failuredetector.FailureDetector;
+import voldemort.serialization.IdentitySerializer;
+import voldemort.serialization.SerializationException;
 import voldemort.serialization.Serializer;
 import voldemort.serialization.SerializerDefinition;
 import voldemort.serialization.SerializerFactory;
@@ -125,22 +127,32 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
         return new DefaultStoreClient<K, V>(storeName, resolver, this, 3);
     }
 
-    public AsynchronousStore<ByteArray, byte[]> getAsyncStore(StoreDefinition storeDef, Node node) {
-        Store<ByteArray, byte[]> store = getStore(storeDef.getName(),
-                                                  node.getHost(),
-                                                  getPort(node),
-                                                  requestFormatType);
+    public AsynchronousStore<ByteArray, byte[], byte[]> getAsyncStore(String storeName, Node node) {
+        Store<ByteArray, byte[], byte[]> store = getStore(storeName,
+                                                          node.getHost(),
+                                                          getPort(node),
+                                                          requestFormatType);
         return ThreadedStore.create(store, this.threadPool);
     }
 
-    protected DistributedStore<Node, ByteArray, byte[]> getDistributedStore(StoreDefinition storeDef,
-                                                                            Cluster cluster) {
-        return DistributedStoreFactory.create(this, storeDef, cluster, this.getFailureDetector());
+    public AsynchronousStore<ByteArray, byte[], byte[]> getAsyncStore(StoreDefinition storeDef,
+                                                                      Node node) {
+        return getAsyncStore(storeDef.getName(), node);
+    }
+
+    protected DistributedStore<Node, ByteArray, byte[], byte[]> getDistributedStore(StoreDefinition storeDef,
+                                                                                    Cluster cluster,
+                                                                                    int zoneId) {
+        return DistributedStoreFactory.create(this,
+                                              storeDef,
+                                              cluster,
+                                              this.getFailureDetector(),
+                                              zoneId);
     }
 
     @SuppressWarnings("unchecked")
-    public <K, V> Store<K, V> getRawStore(String storeName,
-                                          InconsistencyResolver<Versioned<V>> resolver) {
+    public <K, V, T> Store<K, V, T> getRawStore(String storeName,
+                                                InconsistencyResolver<Versioned<V>> resolver) {
         // Get cluster and store metadata
         String clusterXml = bootstrapMetadataWithRetries(MetadataStore.CLUSTER_KEY, bootstrapUrls);
         Cluster cluster = clusterMapper.readCluster(new StringReader(clusterXml), false);
@@ -157,13 +169,14 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
         RoutedStoreFactory routedStoreFactory = new RoutedStoreFactory(config.isPipelineRoutedStoreEnabled(),
                                                                        this.getFailureDetector(),
                                                                        config.getRoutingTimeout(TimeUnit.MILLISECONDS));
-        DistributedStore<Node, ByteArray, byte[]> distributor = this.getDistributedStore(storeDef,
-                                                                                         cluster);
+        DistributedStore<Node, ByteArray, byte[], byte[]> distributor = this.getDistributedStore(storeDef,
+                                                                                                 cluster,
+                                                                                                 clientZoneId);
 
-        Store<ByteArray, byte[]> store = routedStoreFactory.create(cluster,
-                                                                   storeDef,
-                                                                   distributor,
-                                                                   clientZoneId);
+        Store<ByteArray, byte[], byte[]> store = routedStoreFactory.create(cluster,
+                                                                           storeDef,
+                                                                           distributor,
+                                                                           clientZoneId);
 
         if(isJmxEnabled) {
             StatTrackingStore statStore = new StatTrackingStore(store, this.stats);
@@ -188,15 +201,24 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
 
         Serializer<K> keySerializer = (Serializer<K>) serializerFactory.getSerializer(storeDef.getKeySerializer());
         Serializer<V> valueSerializer = (Serializer<V>) serializerFactory.getSerializer(storeDef.getValueSerializer());
-        Store<K, V> serializedStore = SerializingStore.wrap(store, keySerializer, valueSerializer);
+        if(storeDef.isView() && (storeDef.getTransformsSerializer() == null))
+            throw new SerializationException("Transforms serializer must be specified with a view ");
+
+        Serializer<T> transformsSerializer = (Serializer<T>) serializerFactory.getSerializer(storeDef.getTransformsSerializer() != null ? storeDef.getTransformsSerializer()
+                                                                                                                                       : new SerializerDefinition("identity"));
+
+        Store<K, V, T> serializedStore = SerializingStore.wrap(store,
+                                                               keySerializer,
+                                                               valueSerializer,
+                                                               transformsSerializer);
 
         // Add inconsistency resolving decorator, using their inconsistency
         // resolver (if they gave us one)
         InconsistencyResolver<Versioned<V>> secondaryResolver = resolver == null ? new TimeBasedInconsistencyResolver()
                                                                                 : resolver;
-        serializedStore = new InconsistencyResolvingStore<K, V>(serializedStore,
-                                                                new ChainedResolver<Versioned<V>>(new VectorClockInconsistencyResolver(),
-                                                                                                  secondaryResolver));
+        serializedStore = new InconsistencyResolvingStore<K, V, T>(serializedStore,
+                                                                   new ChainedResolver<Versioned<V>>(new VectorClockInconsistencyResolver(),
+                                                                                                     secondaryResolver));
         return serializedStore;
     }
 
@@ -254,14 +276,15 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
     private String bootstrapMetadata(String key, URI[] urls) {
         for(URI url: urls) {
             try {
-                Store<ByteArray, byte[]> remoteStore = getStore(MetadataStore.METADATA_STORE_NAME,
-                                                                url.getHost(),
-                                                                url.getPort(),
-                                                                this.requestFormatType);
-                Store<String, String> store = SerializingStore.wrap(remoteStore,
-                                                                    new StringSerializer("UTF-8"),
-                                                                    new StringSerializer("UTF-8"));
-                List<Versioned<String>> found = store.get(key);
+                Store<ByteArray, byte[], byte[]> remoteStore = getStore(MetadataStore.METADATA_STORE_NAME,
+                                                                        url.getHost(),
+                                                                        url.getPort(),
+                                                                        this.requestFormatType);
+                Store<String, String, byte[]> store = SerializingStore.wrap(remoteStore,
+                                                                            new StringSerializer("UTF-8"),
+                                                                            new StringSerializer("UTF-8"),
+                                                                            new IdentitySerializer());
+                List<Versioned<String>> found = store.get(key, null);
                 if(found.size() == 1)
                     return found.get(0).getValue();
             } catch(Exception e) {
@@ -301,10 +324,10 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
         return uris;
     }
 
-    protected abstract Store<ByteArray, byte[]> getStore(String storeName,
-                                                         String host,
-                                                         int port,
-                                                         RequestFormatType type);
+    protected abstract Store<ByteArray, byte[], byte[]> getStore(String storeName,
+                                                                 String host,
+                                                                 int port,
+                                                                 RequestFormatType type);
 
     protected abstract int getPort(Node node);
 
