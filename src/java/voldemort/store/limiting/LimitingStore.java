@@ -34,15 +34,18 @@ import voldemort.versioning.Versioned;
  */
 public class LimitingStore extends DelegatingStore<ByteArray, byte[], byte[]> {
 
-    private final int maxKeySize;
-    private final int maxMetadataSize;
-    private final int maxValueSize;
+    public static final String MAX_KEY_SIZE_PROPERTY = "max.key.size";
+    public static final String MAX_VALUE_SIZE_PROPERTY = "max.value.size";
+    public static final String MAX_METADATA_SIZE_PROPERTY = "max.metadata.size";
+    final int maxKeySize;
+    final int maxMetadataSize;
+    final int maxValueSize;
 
     public LimitingStore(Store<ByteArray, byte[], byte[]> store, StoreDefinition storeDef) {
         super(store);
-        maxKeySize = storeDef.getIntProperty("max.key.size", 0);
-        maxValueSize = storeDef.getIntProperty("max.value.size", 0);
-        maxMetadataSize = storeDef.getIntProperty("max.metadata.size", 0);
+        maxKeySize = storeDef.getIntProperty(MAX_KEY_SIZE_PROPERTY, 0);
+        maxValueSize = storeDef.getIntProperty(MAX_VALUE_SIZE_PROPERTY, 0);
+        maxMetadataSize = storeDef.getIntProperty(MAX_METADATA_SIZE_PROPERTY, 0);
     }
 
     /**

@@ -16,13 +16,18 @@
 
 package voldemort.store.limiting;
 
+import java.io.StringReader;
+
 import org.junit.Test;
 
+import voldemort.VoldemortTestConstants;
 import voldemort.store.AbstractByteArrayStoreTest;
 import voldemort.store.Store;
+import voldemort.store.StoreDefinition;
 import voldemort.store.memory.InMemoryStorageEngine;
 import voldemort.utils.ByteArray;
 import voldemort.versioning.Versioned;
+import voldemort.xml.StoreDefinitionsMapper;
 
 public class LimitingStoreTest extends AbstractByteArrayStoreTest {
 
@@ -69,5 +74,17 @@ public class LimitingStoreTest extends AbstractByteArrayStoreTest {
         } catch(Exception e) {
             assertEquals("Unexpected exception", LimitExceededException.class, e.getClass());
         }
+    }
+
+    @Test
+    public void testStoreDefinition() {
+        StoreDefinitionsMapper mapper = new StoreDefinitionsMapper();
+        StoreDefinition storeDef = mapper.readStoreList(new StringReader(VoldemortTestConstants.getStoreWithPropertiesXml()))
+                                         .get(0);
+        Store<ByteArray, byte[], byte[]> store = new InMemoryStorageEngine<ByteArray, byte[], byte[]>(storeDef.getName());
+        LimitingStore limit = new LimitingStore(store, storeDef);
+        assertTrue("Key limit (" + limit.maxKeySize + "> 0", (limit.maxKeySize > 0));
+        assertTrue("Value limit (" + limit.maxValueSize + "> 0", (limit.maxValueSize > 0));
+        assertTrue("Metadata limit (" + limit.maxMetadataSize + "> 0", (limit.maxMetadataSize > 0));
     }
 }

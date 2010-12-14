@@ -192,9 +192,9 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
                                          getCompressionStrategy(storeDef.getKeySerializer()),
                                          getCompressionStrategy(storeDef.getValueSerializer()));
         }
-        int maxKeySize = storeDef.getIntProperty("max.key.size", 0);
-        int maxValueSize = storeDef.getIntProperty("max.value.size", 0);
-        int maxMetadataSize = storeDef.getIntProperty("max.metadata.size", 0);
+        int maxKeySize = storeDef.getIntProperty(LimitingStore.MAX_KEY_SIZE_PROPERTY, 0);
+        int maxValueSize = storeDef.getIntProperty(LimitingStore.MAX_VALUE_SIZE_PROPERTY, 0);
+        int maxMetadataSize = storeDef.getIntProperty(LimitingStore.MAX_METADATA_SIZE_PROPERTY, 0);
         if(maxKeySize > 0 || maxValueSize > 0 || maxMetadataSize > 0) {
             store = new LimitingStore(store, maxKeySize, maxValueSize, maxMetadataSize);
         }

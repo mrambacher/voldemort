@@ -218,6 +218,21 @@ public class StoreDefinitionsMapper {
                 retentionThrottleRate = Integer.parseInt(throttleRate.getText());
         }
 
+        Properties properties = new Properties();
+        Element storeProps = store.getChild(STORE_PROPERTIES_ELMT);
+        if(storeProps != null) {
+            List<?> props = storeProps.getChildren(STORE_PROPERTY_ELMT);
+            Iterator<?> iter = props.iterator();
+            while(iter.hasNext()) {
+                Element prop = (Element) iter.next();
+                String propName = prop.getAttributeValue(STORE_PROPERTY_ATTR);
+                String propValue = prop.getText();
+                if(propName != null) {
+                    properties.setProperty(propName, propValue);
+                }
+            }
+        }
+
         if(routingStrategyType.compareTo(RoutingStrategyType.ZONE_STRATEGY) == 0) {
             if(zoneCountReads == null || zoneCountWrites == null || zoneReplicationFactor == null) {
                 throw new MappingException("Have not set one of the following correctly for store '"
@@ -257,6 +272,7 @@ public class StoreDefinitionsMapper {
                                            .setZoneCountWrites(zoneCountWrites)
                                            .setHintedHandoffStrategy(hintedHandoffStrategy)
                                            .setHintPrefListSize(hintPrefListSize)
+                                           .setProperties(properties)
                                            .build();
     }
 
