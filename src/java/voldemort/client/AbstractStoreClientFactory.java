@@ -21,6 +21,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -46,7 +47,9 @@ import voldemort.store.compress.CompressionStrategy;
 import voldemort.store.compress.CompressionStrategyFactory;
 import voldemort.store.distributed.DistributedStore;
 import voldemort.store.distributed.DistributedStoreFactory;
+import voldemort.store.failuredetector.FailureDetectingStore;
 import voldemort.store.limiting.LimitingStore;
+import voldemort.store.logging.LoggingStore;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.store.routed.RoutedStoreFactory;
 import voldemort.store.serialized.SerializingStore;
@@ -64,13 +67,15 @@ import voldemort.versioning.Versioned;
 import voldemort.xml.ClusterMapper;
 import voldemort.xml.StoreDefinitionsMapper;
 
+import com.google.common.collect.Maps;
+
 /**
  * A base class for various {@link voldemort.client.StoreClientFactory
  * StoreClientFactory} implementations
  * 
  * 
  */
-public abstract class AbstractStoreClientFactory implements StoreClientFactory {
+public abstract class AbstractStoreClientFactory implements StoreClientFactory, StoreFactory {
 
     private static AtomicInteger jmxIdCounter = new AtomicInteger(0);
 
@@ -150,22 +155,75 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
                                               zoneId);
     }
 
-    @SuppressWarnings("unchecked")
-    public <K, V, T> Store<K, V, T> getRawStore(String storeName,
-                                                InconsistencyResolver<Versioned<V>> resolver) {
-        // Get cluster and store metadata
+    public Cluster getCluster() {
         String clusterXml = bootstrapMetadataWithRetries(MetadataStore.CLUSTER_KEY, bootstrapUrls);
         Cluster cluster = clusterMapper.readCluster(new StringReader(clusterXml), false);
+        return cluster;
+    }
+
+    public StoreDefinition getStoreDefinition(String storeName) {
         String storesXml = bootstrapMetadataWithRetries(MetadataStore.STORES_KEY, bootstrapUrls);
         List<StoreDefinition> storeDefs = storeMapper.readStoreList(new StringReader(storesXml),
                                                                     false);
-        StoreDefinition storeDef = null;
-        for(StoreDefinition d: storeDefs)
-            if(d.getName().equals(storeName))
-                storeDef = d;
+        for(StoreDefinition storeDef: storeDefs) {
+            if(storeDef.getName().equals(storeName)) {
+                return storeDef;
+            }
+        }
+        return null;
+    }
+
+    public AsynchronousStore<ByteArray, byte[], byte[]> getNodeStore(Node node, String storeName) {
+        AsynchronousStore<ByteArray, byte[], byte[]> async = getAsyncStore(storeName, node);
+        AsynchronousStore<ByteArray, byte[], byte[]> logging = LoggingStore.create(async);
+        AsynchronousStore<ByteArray, byte[], byte[]> failure = FailureDetectingStore.create(node,
+                                                                                            this.getFailureDetector(),
+                                                                                            logging);
+        return failure;
+    }
+
+    public AsynchronousStore<ByteArray, byte[], byte[]> getNodeStore(Node node,
+                                                                     StoreDefinition storeDef) {
+        AsynchronousStore<ByteArray, byte[], byte[]> async = getAsyncStore(storeDef, node);
+        AsynchronousStore<ByteArray, byte[], byte[]> logging = LoggingStore.create(async);
+        AsynchronousStore<ByteArray, byte[], byte[]> failure = FailureDetectingStore.create(node,
+                                                                                            this.getFailureDetector(),
+                                                                                            logging);
+        return failure;
+    }
+
+    public Map<Node, AsynchronousStore<ByteArray, byte[], byte[]>> getNodeStores(StoreDefinition storeDef) {
+        Cluster cluster = getCluster();
+        Map<Node, AsynchronousStore<ByteArray, byte[], byte[]>> nodeStores = Maps.newHashMap();
+        for(Node node: cluster.getNodes()) {
+            AsynchronousStore<ByteArray, byte[], byte[]> async = getNodeStore(node, storeDef);
+            nodeStores.put(node, async);
+        }
+        return nodeStores;
+    }
+
+    public Map<Node, AsynchronousStore<ByteArray, byte[], byte[]>> getNodeStores(String storeName) {
+        Cluster cluster = getCluster();
+        Map<Node, AsynchronousStore<ByteArray, byte[], byte[]>> nodeStores = Maps.newHashMap();
+        for(Node node: cluster.getNodes()) {
+            AsynchronousStore<ByteArray, byte[], byte[]> async = getNodeStore(node, storeName);
+            nodeStores.put(node, async);
+        }
+        return nodeStores;
+
+    }
+
+    public <K, V, T> Store<K, V, T> getStore(String storeName) {
+        StoreDefinition storeDef = getStoreDefinition(storeName);
         if(storeDef == null)
             throw new BootstrapFailureException("Unknown store '" + storeName + "'.");
+        return getStore(storeDef);
+    }
 
+    @SuppressWarnings("unchecked")
+    public <K, V, T> Store<K, V, T> getStore(StoreDefinition storeDef) {
+        // Get cluster and store metadata
+        Cluster cluster = getCluster();
         RoutedStoreFactory routedStoreFactory = new RoutedStoreFactory(config.isPipelineRoutedStoreEnabled(),
                                                                        this.getFailureDetector(),
                                                                        config.getRoutingTimeout(TimeUnit.MILLISECONDS));
@@ -179,7 +237,8 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
                                                                            clientZoneId);
 
         if(isJmxEnabled) {
-            StatTrackingStore statStore = new StatTrackingStore(store, this.stats);
+            StatTrackingStore<ByteArray, byte[], byte[]> statStore = new StatTrackingStore<ByteArray, byte[], byte[]>(store,
+                                                                                                                      this.stats);
             store = statStore;
             JmxUtils.registerMbean(new StoreStatsJmx(statStore.getStats()),
                                    JmxUtils.createObjectName(JmxUtils.getPackageName(store.getClass()),
@@ -211,15 +270,23 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
                                                                keySerializer,
                                                                valueSerializer,
                                                                transformsSerializer);
+        return serializedStore;
+    }
 
+    @SuppressWarnings("unchecked")
+    public <K, V, T> Store<K, V, T> getRawStore(String storeName,
+                                                InconsistencyResolver<Versioned<V>> resolver) {
         // Add inconsistency resolving decorator, using their inconsistency
         // resolver (if they gave us one)
-        InconsistencyResolver<Versioned<V>> secondaryResolver = resolver == null ? new TimeBasedInconsistencyResolver()
+        Store<K, V, T> store = getStore(storeName);
+
+        InconsistencyResolver<Versioned<V>> secondaryResolver = resolver == null ? new TimeBasedInconsistencyResolver<V>()
                                                                                 : resolver;
-        serializedStore = new InconsistencyResolvingStore<K, V, T>(serializedStore,
-                                                                   new ChainedResolver<Versioned<V>>(new VectorClockInconsistencyResolver(),
-                                                                                                     secondaryResolver));
-        return serializedStore;
+        secondaryResolver = new ChainedResolver<Versioned<V>>(new VectorClockInconsistencyResolver<V>(),
+                                                              secondaryResolver);
+
+        store = new InconsistencyResolvingStore<K, V, T>(store, secondaryResolver);
+        return store;
     }
 
     protected abstract FailureDetector initFailureDetector(final ClientConfig config,
@@ -229,9 +296,7 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
         // first check: avoids locking as the field is volatile
         FailureDetector result = failureDetector;
         if(result == null) {
-            String clusterXml = bootstrapMetadataWithRetries(MetadataStore.CLUSTER_KEY,
-                                                             bootstrapUrls);
-            Cluster cluster = clusterMapper.readCluster(new StringReader(clusterXml), false);
+            Cluster cluster = getCluster();
             synchronized(this) {
                 // second check: avoids double initialization
                 result = failureDetector;
@@ -285,8 +350,9 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
                                                                             new StringSerializer("UTF-8"),
                                                                             new IdentitySerializer());
                 List<Versioned<String>> found = store.get(key, null);
-                if(found.size() == 1)
+                if(found.size() == 1) {
                     return found.get(0).getValue();
+                }
             } catch(Exception e) {
                 logger.warn("Failed to bootstrap from " + url, e);
             }

@@ -57,7 +57,6 @@ public class HttpStoreClientFactory extends AbstractStoreClientFactory {
 
     private final HttpClient httpClient;
     private final MultiThreadedHttpConnectionManager connectionManager;
-    private final RequestFormatFactory requestFormatFactory;
     private final boolean reroute;
 
     public HttpStoreClientFactory(ClientConfig config) {
@@ -82,7 +81,6 @@ public class HttpStoreClientFactory extends AbstractStoreClientFactory {
         managerParams.setMaxConnectionsPerHost(httpClient.getHostConfiguration(),
                                                config.getMaxConnectionsPerNode());
         this.reroute = config.getRoutingTier().equals(RoutingTier.SERVER);
-        this.requestFormatFactory = new RequestFormatFactory();
     }
 
     @Override
@@ -94,7 +92,7 @@ public class HttpStoreClientFactory extends AbstractStoreClientFactory {
                              host,
                              port,
                              httpClient,
-                             requestFormatFactory.getRequestFormat(type),
+                             RequestFormatFactory.getRequestFormat(type),
                              reroute);
     }
 
