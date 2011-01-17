@@ -29,13 +29,13 @@ import voldemort.versioning.Versioned;
 
 public final class VoldemortOperation {
 
-    private final byte opCode;
+    private final VoldemortOpCode operation;
     private final String key;
     private final byte[] value;
     private final Version version;
 
-    private VoldemortOperation(byte opCode, String key, byte[] value, Version version) {
-        this.opCode = opCode;
+    private VoldemortOperation(VoldemortOpCode operation, String key, byte[] value, Version version) {
+        this.operation = operation;
         this.key = key;
         this.value = value;
         this.version = version;
@@ -46,28 +46,31 @@ public final class VoldemortOperation {
             throw new SerializationException("Not enough bytes to serialize");
         DataInputStream inputStream = new DataInputStream(new ByteArrayInputStream(bytes));
         try {
-            this.opCode = inputStream.readByte();
-            switch(opCode) {
-                case VoldemortOpCode.GET_OP_CODE:
+            byte opCode = inputStream.readByte();
+            operation = VoldemortOpCode.fromCode(opCode);
+            switch(operation) {
+                case GET:
                     this.version = null;
                     this.key = inputStream.readUTF();
                     this.value = null;
                     break;
-                case VoldemortOpCode.PUT_OP_CODE:
+                case PUT:
                     this.version = VersionFactory.toVersion(bytes, 1);
                     this.key = inputStream.readUTF();
                     int valueSize = inputStream.readInt();
                     this.value = new byte[valueSize];
                     ByteUtils.read(inputStream, this.value);
                     break;
-                case VoldemortOpCode.DELETE_OP_CODE:
+                case DELETE:
                     this.version = VersionFactory.toVersion(bytes, 1);
                     this.key = inputStream.readUTF();
                     this.value = null;
                     break;
                 default:
-                    throw new SerializationException("Unknown opcode: " + bytes[0]);
+                    throw new SerializationException("Unsupported operation: " + operation);
             }
+        } catch(IllegalArgumentException e) {
+            throw new SerializationException(e.getMessage(), e);
         } catch(IOException e) {
             throw new SerializationException(e);
         }
@@ -77,11 +80,11 @@ public final class VoldemortOperation {
         try {
             ByteArrayOutputStream byteOutput = new ByteArrayOutputStream();
             DataOutputStream output = new DataOutputStream(byteOutput);
-            output.writeByte(opCode);
-            if(opCode != VoldemortOpCode.GET_OP_CODE)
+            output.writeByte(operation.asCode());
+            if(operation != VoldemortOpCode.GET)
                 output.write(version.toBytes());
             output.writeUTF(key);
-            if(opCode == VoldemortOpCode.PUT_OP_CODE) {
+            if(operation == VoldemortOpCode.PUT) {
                 output.writeInt(value.length);
                 output.write(value);
             }
@@ -92,18 +95,18 @@ public final class VoldemortOperation {
     }
 
     public VoldemortOperation makeGetOperation(String key) {
-        return new VoldemortOperation(VoldemortOpCode.GET_OP_CODE, key, null, null);
+        return new VoldemortOperation(VoldemortOpCode.GET, key, null, null);
     }
 
     public VoldemortOperation makePutOperation(String key, Versioned<byte[]> versioned) {
-        return new VoldemortOperation(VoldemortOpCode.PUT_OP_CODE,
+        return new VoldemortOperation(VoldemortOpCode.PUT,
                                       key,
                                       versioned.getValue(),
                                       versioned.getVersion());
     }
 
     public VoldemortOperation makeDeleteOperation(String key, Version version) {
-        return new VoldemortOperation(VoldemortOpCode.DELETE_OP_CODE, key, null, version);
+        return new VoldemortOperation(VoldemortOpCode.DELETE, key, null, version);
     }
 
 }

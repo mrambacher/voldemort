@@ -1,6 +1,8 @@
 /*
  * Copyright 2008-2009 LinkedIn, Inc
  * 
+ * Portion Copyright 2010 Nokia Corporation. All rights reserved.
+ * 
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
  * the License at
@@ -16,17 +18,56 @@
 
 package voldemort.serialization;
 
-public class VoldemortOpCode {
+/**
+ * An enumeration representing the messages between a client and server. Each
+ * request has an encoding (byte) and an associated name (String)
+ */
+public enum VoldemortOpCode {
+    GET("GET", 1),
+    PUT("PUT", 2),
+    DELETE("DELETE", 3),
+    GET_ALL("GET_ALL", 4),
+    GET_PARTITION_AS_STREAM("GET_PARTITION", 5),
+    PUT_ENTRIES_AS_STREAM("PUT_ENTRIES", 6),
+    DELETE_PARTITIONS("DELETE_PARTITIONS", 7),
+    UPDATE_METADATA("UPDATE_METADATA", 8),
+    REDIRECT_GET("REDIRECT_GET", 9),
+    GET_VERSION("GET_VERSION", 10),
+    GET_METADATA("GET_METADATA", 11);
 
-    public static final byte GET_OP_CODE = 1;
-    public static final byte PUT_OP_CODE = 2;
-    public static final byte DELETE_OP_CODE = 3;
-    public static final byte GET_ALL_OP_CODE = 4;
-    public static final byte GET_PARTITION_AS_STREAM_OP_CODE = 5;
-    public static final byte PUT_ENTRIES_AS_STREAM_OP_CODE = 6;
-    public static final byte DELETE_PARTITIONS_OP_CODE = 7;
-    public static final byte UPDATE_METADATA_OP_CODE = 8;
-    public static final byte REDIRECT_GET_OP_CODE = 9;
-    public static final byte GET_VERSION_OP_CODE = 10;
-    public static final byte GET_METADATA_OP_CODE = 11;
+    private final String method;
+    private final int code;
+
+    private VoldemortOpCode(String method, int code) {
+        this.method = method;
+        this.code = code;
+    }
+
+    @Override
+    public String toString() {
+        return method;
+    }
+
+    public byte asCode() {
+        return (byte) code;
+    }
+
+    public String getMethodName() {
+        return method;
+    }
+
+    /**
+     * Returns the code for the byte value
+     * 
+     * @param code The byte representing the request
+     * @return The matching OpCode or an exception if one cannot be found
+     */
+    public static VoldemortOpCode fromCode(byte code) {
+        for(VoldemortOpCode operation: VoldemortOpCode.values()) {
+            if(code == operation.asCode()) {
+                return operation;
+            }
+        }
+        throw new IllegalArgumentException("Requested operation '" + code + "' not found");
+    }
 }
