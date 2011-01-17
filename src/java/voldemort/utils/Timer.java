@@ -23,10 +23,10 @@ import org.apache.log4j.Logger;
 
 public class Timer {
 
-    private final String name;
+    private String name;
     private long start;
     private long completed = 0;
-    private final long timeLimit;
+    private long timeLimit;
     private List<Checkpoint> checkpoints;
 
     private final class Checkpoint {
@@ -36,13 +36,17 @@ public class Timer {
 
         public Checkpoint(String point) {
             this.point = point;
-            this.time = System.currentTimeMillis() - start;
+            this.time = System.currentTimeMillis();
         }
 
         @Override
         public String toString() {
-            return point + "@" + time;
+            return point + "@" + (time - start);
         }
+    }
+
+    public Timer(String name) {
+        this(name, -1);
     }
 
     public Timer(String name, long limit) {
@@ -52,32 +56,59 @@ public class Timer {
         reset();
     }
 
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public void setExpiration(long limit) {
+        this.timeLimit = limit;
+    }
+
     public void reset() {
         reset(System.currentTimeMillis());
     }
 
-    public void reset(long startTime) {
+    /**
+     * Reset the start time to the input time, removing any checkpoints that
+     * happened before this time.
+     * 
+     * @param startTime The new start time of the timer.
+     */
+    public synchronized void reset(long startTime) {
         this.start = startTime;
         this.completed = 0;
-        this.checkpoints.clear();
+        int points = checkpoints.size();
+        if(points > 0) { // If there are any checkpoints
+            Checkpoint point = checkpoints.get(points - 1); // Get the newest
+                                                            // (last) one
+            if(point == null || point.time <= startTime) { // If it older than
+                                                           // the start time
+                checkpoints.clear(); // Delete them all
+            } else { // Not newer
+                // Delete the checkpoints up to the timer
+                while(checkpoints.size() > 0 && checkpoints.get(0).time <= start) {
+                    checkpoints.remove(0);
+                }
+            }
+        }
+    }
+
+    public void checkpoint(Checkpoint point) {
+        checkpoints.add(point);
     }
 
     public boolean checkpoint(String point) {
         Checkpoint cp = new Checkpoint(point);
         checkpoints.add(cp);
-        return expired(cp.time);
-    }
-
-    public boolean expired() {
-        if(completed > 0) {
-            return expired(completed);
+        if(timeLimit > 0) {
+            return (getDuration(cp.time) > timeLimit);
         } else {
-            return expired(System.currentTimeMillis());
+            return false;
         }
     }
 
-    public boolean expired(long current) {
-        long duration = getDuration(current);
+    public boolean expired() {
+        long duration = getDuration();
         return duration > timeLimit;
     }
 
@@ -97,14 +128,22 @@ public class Timer {
         return completed(null);
     }
 
+    public boolean isComplete() {
+        return completed != 0;
+    }
+
     public long completed(Logger logger) {
+        return completed("", logger);
+    }
+
+    public long completed(String prefix, Logger logger) {
         if(completed == 0) {
             completed = System.currentTimeMillis();
             long duration = getDuration();
             if(duration > timeLimit) {
                 if(logger != null) {
-                    logger.warn("Timer " + name + " exceeded " + timeLimit + "ms duration="
-                                + getDuration() + "; points=" + checkpoints);
+                    logger.warn(prefix + "Duration " + duration + " exceeded " + timeLimit + ": "
+                                + toString());
                 }
             }
             return duration;
