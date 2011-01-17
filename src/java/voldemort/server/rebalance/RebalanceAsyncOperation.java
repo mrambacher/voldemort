@@ -30,6 +30,7 @@ import voldemort.client.rebalance.RebalancePartitionsInfo;
 import voldemort.server.VoldemortConfig;
 import voldemort.server.protocol.admin.AsyncOperation;
 import voldemort.store.metadata.MetadataStore;
+import voldemort.store.metadata.MetadataStore.RebalancePartitionsInfoLifeCycleStatus;
 import voldemort.store.readonly.ReadOnlyStorageConfiguration;
 import voldemort.utils.RebalanceUtils;
 
@@ -92,9 +93,11 @@ class RebalanceAsyncOperation extends AsyncOperation {
         final List<Exception> failures = new ArrayList<Exception>();
         final List<String> readOnlyStoresCompleted = new ArrayList<String>();
         try {
-            logger.info("starting rebalancing task" + stealInfo);
+            if (logger.isInfoEnabled()) {
+                logger.info("starting rebalancing task" + stealInfo);
+            }
 
-            for(final String storeName: ImmutableList.copyOf(stealInfo.getUnbalancedStoreList())) {
+            for (final String storeName : ImmutableList.copyOf(stealInfo.getUnbalancedStoreList())) {
 
                 executors.submit(new Runnable() {
 
@@ -104,7 +107,7 @@ class RebalanceAsyncOperation extends AsyncOperation {
                                                                    .getType()
                                                                    .compareTo(ReadOnlyStorageConfiguration.TYPE_NAME) == 0;
 
-                            if(isReadOnlyStore) {
+                            if (isReadOnlyStore) {
                                 readOnlyStoresCompleted.add(storeName);
                             }
 
@@ -112,14 +115,20 @@ class RebalanceAsyncOperation extends AsyncOperation {
 
                             // If read-only store then don't remove from
                             // unbalanced list since we still need to swap
-                            if(!isReadOnlyStore) {
+                            if (!isReadOnlyStore) {
                                 List<String> tempUnbalancedStoreList = new ArrayList<String>(stealInfo.getUnbalancedStoreList());
                                 tempUnbalancedStoreList.remove(storeName);
                                 stealInfo.setUnbalancedStoreList(tempUnbalancedStoreList);
                             }
-                            rebalancer.setRebalancingState(stealInfo);
 
-                        } catch(Exception e) {
+                            if (logger.isDebugEnabled()) {
+                                logger.debug("RUNNING status for rebalance partitios info: " + stealInfo);
+                            }
+
+                            // This is the only place that you change the status of the task as RUNNING.
+                            rebalancer.setRebalancingState(stealInfo, RebalancePartitionsInfoLifeCycleStatus.RUNNING);
+
+                        } catch (Exception e) {
                             logger.error("rebalanceSubTask:" + stealInfo + " failed for store:"
                                          + storeName, e);
                             failures.add(e);
@@ -133,17 +142,19 @@ class RebalanceAsyncOperation extends AsyncOperation {
 
             // If empty i.e. all were read-write stores, clean state
             List<String> unbalancedStores = Lists.newArrayList(stealInfo.getUnbalancedStoreList());
-            if(unbalancedStores.isEmpty()) {
+            if (unbalancedStores.isEmpty()) {
                 logger.info("Rebalancer: rebalance " + stealInfo + " completed successfully.");
                 // clean state only if successful operation, not all
                 // operations.
                 metadataStore.cleanRebalancingState(stealInfo);
-            } else {
+            }
+            else {
                 unbalancedStores.removeAll(readOnlyStoresCompleted);
-                if(unbalancedStores.size() > 0) {
+                if (unbalancedStores.size() > 0) {
                     throw new VoldemortRebalancingException("Failed to rebalance task " + stealInfo,
                                                             failures);
-                } else {
+                }
+                else {
                     logger.info("Rebalancer: rebalance "
                                 + stealInfo
                                 + " on all read-write stores completed successfully. Read-only stores left.");
@@ -166,7 +177,7 @@ class RebalanceAsyncOperation extends AsyncOperation {
         try {
             executors.shutdown();
             executors.awaitTermination(voldemortConfig.getAdminSocketTimeout(), TimeUnit.SECONDS);
-        } catch(InterruptedException e) {
+        } catch (InterruptedException e) {
             logger.error("Interrupted while awaiting termination for executors.", e);
         }
     }
@@ -174,8 +185,8 @@ class RebalanceAsyncOperation extends AsyncOperation {
     @Override
     public void stop() {
         updateStatus("stop() called on rebalance operation !!");
-        if(null != adminClient) {
-            for(int asyncID: rebalanceStatusList) {
+        if (null != adminClient) {
+            for (int asyncID : rebalanceStatusList) {
                 adminClient.stopAsyncRequest(metadataStore.getNodeId(), asyncID);
             }
         }
@@ -190,9 +201,10 @@ class RebalanceAsyncOperation extends AsyncOperation {
         logger.info("starting partitions migration for store:" + storeName);
 
         List<Integer> partitionList = null;
-        if(isReadOnlyStore) {
+        if (isReadOnlyStore) {
             partitionList = stealInfo.getStealMasterPartitions();
-        } else {
+        }
+        else {
             partitionList = stealInfo.getPartitionList();
         }
         int asyncId = adminClient.migratePartitions(stealInfo.getDonorId(),
@@ -209,7 +221,7 @@ class RebalanceAsyncOperation extends AsyncOperation {
 
         rebalanceStatusList.remove((Object) asyncId);
 
-        if(stealInfo.getDeletePartitionsList().size() > 0 && !isReadOnlyStore) {
+        if (stealInfo.getDeletePartitionsList().size() > 0 && !isReadOnlyStore) {
             adminClient.deletePartitions(stealInfo.getDonorId(),
                                          storeName,
                                          stealInfo.getDeletePartitionsList(),

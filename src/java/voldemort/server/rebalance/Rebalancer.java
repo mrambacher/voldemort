@@ -34,6 +34,7 @@ import voldemort.client.rebalance.RebalancePartitionsInfo;
 import voldemort.server.VoldemortConfig;
 import voldemort.server.protocol.admin.AsyncOperationService;
 import voldemort.store.metadata.MetadataStore;
+import voldemort.store.metadata.MetadataStore.RebalancePartitionsInfoLifeCycleStatus;
 import voldemort.store.metadata.MetadataStore.VoldemortState;
 import voldemort.utils.RebalanceUtils;
 
@@ -54,9 +55,11 @@ public class Rebalancer implements Runnable {
         this.voldemortConfig = voldemortConfig;
     }
 
-    public void start() {}
+    public void start() {
+    }
 
-    public void stop() {}
+    public void stop() {
+    }
 
     /**
      * Has rebalancing permit
@@ -85,7 +88,7 @@ public class Rebalancer implements Runnable {
      * @param nodeId The node id whose permit we want to release
      */
     public void releaseRebalancingPermit(int nodeId) {
-        if(!rebalancePermits.remove(nodeId))
+        if (!rebalancePermits.remove(nodeId))
             throw new VoldemortException(new IllegalStateException("Invalid state, must hold a "
                                                                    + "permit to release"));
     }
@@ -99,7 +102,7 @@ public class Rebalancer implements Runnable {
         try {
             voldemortState = metadataStore.getServerState();
             rebalancerState = metadataStore.getRebalancerState();
-        } catch(Exception e) {
+        } catch (Exception e) {
             logger.error("Error determining state", e);
             return;
         } finally {
@@ -109,30 +112,33 @@ public class Rebalancer implements Runnable {
         final ConcurrentHashMap<Integer, Map<String, String>> nodeIdsToStoreDirs = new ConcurrentHashMap<Integer, Map<String, String>>();
         final List<Exception> failures = new ArrayList<Exception>();
 
-        if(VoldemortState.REBALANCING_MASTER_SERVER.equals(voldemortState)
-           && acquireRebalancingPermit(metadataStore.getNodeId())) {
+        if (VoldemortState.REBALANCING_MASTER_SERVER.equals(voldemortState) && acquireRebalancingPermit(metadataStore.getNodeId())) {
             // free permit for RebalanceAsyncOperation to acquire
             releaseRebalancingPermit(metadataStore.getNodeId());
-            for(RebalancePartitionsInfo stealInfo: rebalancerState.getAll()) {
+            // for (RebalancePartitionsInfo stealInfo : rebalancerState.getAll()) {
+            for (final RebalancePartitionsInfoLiveCycle stealInfoLiveCycle : rebalancerState.getAll()) {
+                final RebalancePartitionsInfo stealInfo = stealInfoLiveCycle.getRebalancePartitionsInfo();
+
                 // free permit here for rebalanceLocalNode to acquire.
-                if(acquireRebalancingPermit(stealInfo.getDonorId())) {
+                if (acquireRebalancingPermit(stealInfo.getDonorId())) {
                     releaseRebalancingPermit(stealInfo.getDonorId());
 
                     try {
                         logger.warn("Rebalance server found incomplete rebalancing attempt, restarting rebalancing task "
                                     + stealInfo);
-                        if(stealInfo.getAttempt() < voldemortConfig.getMaxRebalancingAttempt()) {
-                            attemptRebalance(stealInfo);
+                        if (stealInfo.getAttempt() < voldemortConfig.getMaxRebalancingAttempt()) {
+                            attemptRebalance(stealInfoLiveCycle);
                             nodeIdsToStoreDirs.put(stealInfo.getDonorId(),
                                                    stealInfo.getDonorNodeROStoreToDir());
                             nodeIdsToStoreDirs.put(stealInfo.getStealerId(),
                                                    stealInfo.getStealerNodeROStoreToDir());
-                        } else {
+                        }
+                        else {
                             logger.warn("Rebalancing for rebalancing task " + stealInfo
                                         + " failed multiple times, Aborting more trials.");
                             metadataStore.cleanRebalancingState(stealInfo);
                         }
-                    } catch(Exception e) {
+                    } catch (Exception e) {
                         logger.error("RebalanceService rebalancing attempt " + stealInfo
                                      + " failed with exception", e);
                         failures.add(e);
@@ -140,9 +146,9 @@ public class Rebalancer implements Runnable {
                 }
             }
 
-            if(failures.size() == 0 && nodeIdsToStoreDirs.size() > 0) {
+            if (failures.size() == 0 && nodeIdsToStoreDirs.size() > 0) {
                 ExecutorService swapExecutors = RebalanceUtils.createExecutors(nodeIdsToStoreDirs.size());
-                for(final Integer nodeId: nodeIdsToStoreDirs.keySet()) {
+                for (final Integer nodeId : nodeIdsToStoreDirs.keySet()) {
                     swapExecutors.submit(new Runnable() {
 
                         public void run() {
@@ -156,7 +162,7 @@ public class Rebalancer implements Runnable {
                                 logger.info("Swapping read-only stores on node " + nodeId);
                                 adminClient.swapStoresAndCleanState(nodeId, storeDirs);
                                 logger.info("Successfully swapped on node " + nodeId);
-                            } catch(Exception e) {
+                            } catch (Exception e) {
                                 logger.error("Failed swapping on node " + nodeId, e);
                             } finally {
                                 adminClient.stop();
@@ -169,7 +175,7 @@ public class Rebalancer implements Runnable {
                 try {
                     RebalanceUtils.executorShutDown(swapExecutors,
                                                     voldemortConfig.getRebalancingTimeout());
-                } catch(Exception e) {
+                } catch (Exception e) {
                     logger.error("Interrupted swapping executor ", e);
                     return;
                 }
@@ -177,54 +183,55 @@ public class Rebalancer implements Runnable {
         }
     }
 
-    private void attemptRebalance(RebalancePartitionsInfo stealInfo) {
-        stealInfo.setAttempt(stealInfo.getAttempt() + 1);
+    private void attemptRebalance(final RebalancePartitionsInfoLiveCycle stealInfoLiveCycle) {
+        final RebalancePartitionsInfo rebalancePartitionsInfo = stealInfoLiveCycle.getRebalancePartitionsInfo();
+        rebalancePartitionsInfo.setAttempt(rebalancePartitionsInfo.getAttempt() + 1);
         AdminClient adminClient = RebalanceUtils.createTempAdminClient(voldemortConfig,
                                                                        metadataStore.getCluster(),
                                                                        4,
                                                                        2);
         try {
-            int rebalanceAsyncId = rebalanceLocalNode(stealInfo);
-            adminClient.waitForCompletion(stealInfo.getStealerId(),
+            int rebalanceAsyncId = rebalanceLocalNode(stealInfoLiveCycle);
+            adminClient.waitForCompletion(rebalancePartitionsInfo.getStealerId(),
                                           rebalanceAsyncId,
                                           voldemortConfig.getAdminSocketTimeout(),
                                           TimeUnit.SECONDS);
         } finally {
             adminClient.stop();
+            adminClient = null;
         }
     }
 
     /**
      * Rebalance logic at single node level.<br>
      * <imp> should be called by the rebalancing node itself</imp><br>
-     * Attempt to rebalance from node
-     * {@link RebalancePartitionsInfo#getDonorId()} for partitionList
-     * {@link RebalancePartitionsInfo#getPartitionList()}
+     * Attempt to rebalance from node {@link RebalancePartitionsInfo#getDonorId()} for partitionList {@link RebalancePartitionsInfo#getPartitionList()}
      * <p>
-     * Force Sets serverState to rebalancing, Sets stealInfo in MetadataStore,
-     * fetch keys from remote node and upsert them locally.<br>
+     * Force Sets serverState to rebalancing, Sets stealInfo in MetadataStore, fetch keys from remote node and upsert them locally.<br>
      * On success clean all states it changed
      * 
      * @param stealInfo Rebalance partition information.
      * @return taskId for asynchronous task.
      */
-    public int rebalanceLocalNode(final RebalancePartitionsInfo stealInfo) {
-        if(!acquireRebalancingPermit(stealInfo.getDonorId())) {
-            RebalancerState rebalancerState = metadataStore.getRebalancerState();
-            RebalancePartitionsInfo info = rebalancerState.find(stealInfo.getDonorId());
-            if(info != null) {
+    public int rebalanceLocalNode(final RebalancePartitionsInfoLiveCycle stealInfoLiveCycle) {
+        final RebalancePartitionsInfo stealInfo = stealInfoLiveCycle.getRebalancePartitionsInfo();
+
+        if (!acquireRebalancingPermit(stealInfo.getDonorId())) {
+            final RebalancerState rebalancerState = metadataStore.getRebalancerState();
+            final RebalancePartitionsInfoLiveCycle info = rebalancerState.find(stealInfo.getDonorId());
+            if (info != null) {
                 throw new AlreadyRebalancingException("Node "
                                                       + metadataStore.getCluster()
-                                                                     .getNodeById(info.getStealerId())
+                                                                     .getNodeById(info.getRebalancePartitionsInfo().getStealerId())
                                                       + " is already rebalancing from "
-                                                      + info.getDonorId() + " rebalanceInfo:"
+                                                      + info.getRebalancePartitionsInfo().getDonorId() + " rebalanceInfo:"
                                                       + info);
             }
         }
 
         // check and set State
-        checkCurrentState(stealInfo);
-        setRebalancingState(stealInfo);
+        checkCurrentState(stealInfoLiveCycle);
+        setRebalancingState(stealInfo, RebalancePartitionsInfoLifeCycleStatus.NEW);
 
         // get max parallel store rebalancing allowed
         final int maxParallelStoresRebalancing = (-1 != voldemortConfig.getMaxParallelStoresRebalancing()) ? voldemortConfig.getMaxParallelStoresRebalancing()
@@ -244,31 +251,44 @@ public class Rebalancer implements Runnable {
         return requestId;
     }
 
-    protected void setRebalancingState(RebalancePartitionsInfo stealInfo) {
+    protected void setRebalancingState(final RebalancePartitionsInfo stealInfo, final RebalancePartitionsInfoLifeCycleStatus status) {
         metadataStore.writeLock.lock();
         try {
-            metadataStore.put(MetadataStore.SERVER_STATE_KEY,
-                              VoldemortState.REBALANCING_MASTER_SERVER);
+            metadataStore.put(MetadataStore.SERVER_STATE_KEY, VoldemortState.REBALANCING_MASTER_SERVER);
             RebalancerState rebalancerState = metadataStore.getRebalancerState();
-            rebalancerState.add(stealInfo);
+            rebalancerState.add(stealInfo, status);
             metadataStore.put(MetadataStore.REBALANCING_STEAL_INFO, rebalancerState);
         } finally {
             metadataStore.writeLock.unlock();
         }
     }
 
-    private void checkCurrentState(RebalancePartitionsInfo stealInfo) {
+    private void checkCurrentState(final RebalancePartitionsInfoLiveCycle stealInfoLiveCycle) {
         metadataStore.readLock.lock();
-        try {
-            if(metadataStore.getServerState().equals(VoldemortState.REBALANCING_MASTER_SERVER)) {
-                RebalancerState rebalancerState = metadataStore.getRebalancerState();
-                RebalancePartitionsInfo info = rebalancerState.find(stealInfo.getDonorId());
 
-                if(info != null) {
+        if (logger.isDebugEnabled()) {
+            logger.debug("Checking current state: " + metadataStore.getServerState().name() + " - " + stealInfoLiveCycle);
+        }
+
+        try {
+            if (metadataStore.getServerState().equals(VoldemortState.REBALANCING_MASTER_SERVER)) {
+                RebalancerState rebalancerState = metadataStore.getRebalancerState();
+
+                final RebalancePartitionsInfo stealInfo = stealInfoLiveCycle.getRebalancePartitionsInfo();
+                final int donorId = stealInfo.getDonorId();
+                final RebalancePartitionsInfoLiveCycle previousLiveCycle = rebalancerState.find(donorId);
+
+                if (previousLiveCycle != null && RebalancePartitionsInfoLifeCycleStatus.RUNNING.equals(previousLiveCycle.getStatus())) {
                     throw new VoldemortException("Server " + metadataStore.getNodeId()
-                                                 + " is already rebalancing from: " + info
+                                                 + " is already rebalancing from: " + stealInfoLiveCycle
                                                  + " rejecting rebalance request:" + stealInfo);
                 }
+                else {
+                    if (logger.isInfoEnabled()) {
+                        logger.info("Found previous " + previousLiveCycle + " - about to be executed.");
+                    }
+                }
+
             }
         } finally {
             metadataStore.readLock.unlock();

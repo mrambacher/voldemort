@@ -1,12 +1,12 @@
 /*
  * Copyright 2008-2010 LinkedIn, Inc
- *
+ * 
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
  * the License at
- *
+ * 
  * http://www.apache.org/licenses/LICENSE-2.0
- *
+ * 
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
  * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
@@ -16,39 +16,63 @@
 
 package voldemort.server.rebalance;
 
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import voldemort.client.rebalance.RebalancePartitionsInfo;
-import voldemort.serialization.json.JsonReader;
-import voldemort.serialization.json.JsonWriter;
-import voldemort.store.metadata.MetadataStore;
-
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
+import voldemort.client.rebalance.RebalancePartitionsInfo;
+import voldemort.serialization.json.JsonReader;
+import voldemort.serialization.json.JsonWriter;
+import voldemort.store.metadata.MetadataStore;
+import voldemort.store.metadata.MetadataStore.RebalancePartitionsInfoLifeCycleStatus;
+
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+
 /**
- * Store and manipulate rebalancing state. Moved out from {@link RebalancePartitionsInfo} and
- * {@link MetadataStore}
- *
+ * Store and manipulate rebalancing state. Moved out from {@link RebalancePartitionsInfo} and {@link MetadataStore}
+ * 
  */
 public class RebalancerState {
-    private final Map<Integer,RebalancePartitionsInfo> stealInfoMap;
+    private final static String NL = System.getProperty("line.separator");
+    private final Map<Integer, RebalancePartitionsInfoLiveCycle> stealInfoMap;
 
+    /**
+     * Initializes internal map structure that keeps track of donorIDs to {@link RebalancePartitionsInfoLiveCycle}.
+     * <p>
+     * 
+     * Each association represents a rebalance action between the stealer and the donor in question.
+     * 
+     * The execution state of this rebalance action is track using {@link RebalancePartitionsInfoLiveCycle} 
+     * which contains an instance of {@link RebalancePartitionsInfoLifeCycleStatus}. All the 
+     * rebalance task will be initializaed as {@link RebalancePartitionsInfoLifeCycleStatus#NEW} 
+     * from the execution point of view.
+     * <p>
+     * 
+     * Note: If a stealerNode dies while rebalancing is taking place we have to resume this 
+     * failed task after the stealerNode is brought back to operation.
+     * 
+     * 
+     * @param stealInfoList list of {@link RebalancePartitionsInfo} used to initialized the
+     *            internal map structure <code>stealInfoMap</code>
+     */
     public RebalancerState(List<RebalancePartitionsInfo> stealInfoList) {
         stealInfoMap = Maps.newHashMapWithExpectedSize(stealInfoList.size());
-        for (RebalancePartitionsInfo rebalancePartitionsInfo: stealInfoList)
-            stealInfoMap.put(rebalancePartitionsInfo.getDonorId(),
-                             rebalancePartitionsInfo);
+
+        for (RebalancePartitionsInfo rebalancePartitionsInfo : stealInfoList) {
+            RebalancePartitionsInfoLiveCycle pinfoLiveCycle = new RebalancePartitionsInfoLiveCycle(rebalancePartitionsInfo, RebalancePartitionsInfoLifeCycleStatus.NEW);
+            stealInfoMap.put(rebalancePartitionsInfo.getDonorId(), pinfoLiveCycle);
+        }
+
     }
 
     public static RebalancerState create(String json) {
         List<RebalancePartitionsInfo> stealInfoList = Lists.newLinkedList();
         JsonReader reader = new JsonReader(new StringReader(json));
 
-        for (Object o: reader.readArray())  {
+        for (Object o : reader.readArray()) {
             Map<?, ?> m = (Map<?, ?>) o;
             stealInfoList.add(RebalancePartitionsInfo.create(m));
         }
@@ -59,8 +83,9 @@ public class RebalancerState {
     public String toJsonString() {
         List<Map<String, Object>> maps = Lists.newLinkedList();
 
-        for (RebalancePartitionsInfo rebalancePartitionsInfo: stealInfoMap.values())
-            maps.add(rebalancePartitionsInfo.asMap());
+        for (RebalancePartitionsInfoLiveCycle rebalancePartitionsInfoLiveCycle : stealInfoMap.values()) {
+            maps.add(rebalancePartitionsInfoLiveCycle.getRebalancePartitionsInfo().asMap());
+        }
 
         StringWriter stringWriter = new StringWriter();
         new JsonWriter(stringWriter).write(maps);
@@ -74,32 +99,38 @@ public class RebalancerState {
     }
 
     public boolean remove(RebalancePartitionsInfo rebalancePartitionsInfo) {
-        RebalancePartitionsInfo prev = stealInfoMap.remove(rebalancePartitionsInfo.getDonorId());
-
+        RebalancePartitionsInfoLiveCycle prev = stealInfoMap.remove(rebalancePartitionsInfo.getDonorId());
         return prev != null;
     }
 
-    public boolean update(RebalancePartitionsInfo rebalancePartitionsInfo) {
+    public boolean update(final RebalancePartitionsInfoLiveCycle rebalancePartitionsInfoLiveCycle) {
+        RebalancePartitionsInfo rebalancePartitionsInfo = rebalancePartitionsInfoLiveCycle.getRebalancePartitionsInfo();
         if (!stealInfoMap.containsKey(rebalancePartitionsInfo.getDonorId()))
             return false;
 
-        add(rebalancePartitionsInfo);
+        add(rebalancePartitionsInfoLiveCycle);
 
         return true;
     }
 
-    public void add(RebalancePartitionsInfo rebalancePartitionsInfo) {
-        stealInfoMap.put(rebalancePartitionsInfo.getDonorId(), rebalancePartitionsInfo);
+    public void add(final RebalancePartitionsInfoLiveCycle rebalancePartitionsInfoLiveCycle) {
+        int donorId = rebalancePartitionsInfoLiveCycle.getRebalancePartitionsInfo().getDonorId();
+        stealInfoMap.put(donorId, rebalancePartitionsInfoLiveCycle);
     }
 
-    public Collection<RebalancePartitionsInfo> getAll() {
+    public void add(RebalancePartitionsInfo rebalancePartitionsInfo, RebalancePartitionsInfoLifeCycleStatus status) {
+        stealInfoMap.put(rebalancePartitionsInfo.getDonorId(), new RebalancePartitionsInfoLiveCycle(rebalancePartitionsInfo, status));
+    }
+
+    public Collection<RebalancePartitionsInfoLiveCycle> getAll() {
         return stealInfoMap.values();
     }
 
-    public RebalancePartitionsInfo find(String store, List<Integer> partitionIds) {
-        for(int p: partitionIds) {
-            for (RebalancePartitionsInfo info: getAll()) {
-                if (info.getUnbalancedStoreList().contains(store) && info.getPartitionList().contains(p))
+    public RebalancePartitionsInfoLiveCycle find(String store, List<Integer> partitionIds) {
+        for (int p : partitionIds) {
+            for (RebalancePartitionsInfoLiveCycle info : getAll()) {
+                if (info.getRebalancePartitionsInfo().getUnbalancedStoreList().contains(store) &&
+                        info.getRebalancePartitionsInfo().getPartitionList().contains(p))
                     return info;
             }
         }
@@ -107,29 +138,31 @@ public class RebalancerState {
         return null;
     }
 
-    public RebalancePartitionsInfo find(int donorId) {
+    public RebalancePartitionsInfoLiveCycle find(int donorId) {
         return stealInfoMap.get(donorId);
     }
 
-    public List<RebalancePartitionsInfo> find(String store) {
-        List<RebalancePartitionsInfo> stealInfoList = Lists.newArrayListWithExpectedSize(stealInfoMap.size());
+    public List<RebalancePartitionsInfoLiveCycle> find(String store) {
+        List<RebalancePartitionsInfoLiveCycle> stealInfoList = Lists.newArrayListWithExpectedSize(stealInfoMap.size());
 
-        for (RebalancePartitionsInfo info: getAll())
-            if (info.getUnbalancedStoreList().contains(store))
+        for (RebalancePartitionsInfoLiveCycle info : getAll())
+            if (info.getRebalancePartitionsInfo().getUnbalancedStoreList().contains(store))
                 stealInfoList.add(info);
 
         return stealInfoList;
     }
 
-
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o)
+            return true;
+        if (o == null || getClass() != o.getClass())
+            return false;
 
         RebalancerState that = (RebalancerState) o;
 
-        if (!stealInfoMap.equals(that.stealInfoMap)) return false;
+        if (!stealInfoMap.equals(that.stealInfoMap))
+            return false;
 
         return true;
     }
@@ -142,10 +175,10 @@ public class RebalancerState {
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder("RebalancerState(operations: ");
-        sb.append("\n");
-        for (RebalancePartitionsInfo info: getAll()) {
+        sb.append(NL);
+        for (RebalancePartitionsInfoLiveCycle info : getAll()) {
             sb.append(info);
-            sb.append("\n");
+            sb.append(NL);
         }
         sb.append(")");
 
