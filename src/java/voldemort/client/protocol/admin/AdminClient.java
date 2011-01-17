@@ -22,7 +22,6 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.StringReader;
-import java.net.Socket;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
 import java.nio.channels.ReadableByteChannel;
@@ -46,8 +45,8 @@ import voldemort.client.protocol.RequestFormatType;
 import voldemort.client.protocol.VoldemortFilter;
 import voldemort.client.protocol.pb.ProtoUtils;
 import voldemort.client.protocol.pb.VAdminProto;
-import voldemort.client.protocol.pb.VProto;
 import voldemort.client.protocol.pb.VAdminProto.ROStoreVersionDirMap;
+import voldemort.client.protocol.pb.VProto;
 import voldemort.client.protocol.pb.VProto.RequestType;
 import voldemort.client.rebalance.RebalancePartitionsInfo;
 import voldemort.cluster.Cluster;
@@ -196,7 +195,7 @@ public class AdminClient {
 
             return ProtoUtils.readToBuilder(inputStream, builder);
         } catch(IOException e) {
-            close(sands.getSocket());
+            close(sands);
             throw new VoldemortException(e);
         } finally {
             pool.checkin(destination, sands);
@@ -275,7 +274,7 @@ public class AdminClient {
                 }
             }
         } catch(IOException e) {
-            close(sands.getSocket());
+            close(sands);
             throw new VoldemortException(e);
         } finally {
             pool.checkin(destination, sands);
@@ -289,6 +288,10 @@ public class AdminClient {
                                       boolean fetchValues,
                                       boolean fetchMasterEntries,
                                       long skipRecords) throws IOException {
+        if(logger.isDebugEnabled()) {
+            logger.debug("*** initiateFetchRequest - called successfully");
+        }
+
         VAdminProto.FetchPartitionEntriesRequest.Builder fetchRequest = VAdminProto.FetchPartitionEntriesRequest.newBuilder()
                                                                                                                 .addAllPartitions(partitionList)
                                                                                                                 .setFetchValues(fetchValues)
@@ -304,6 +307,11 @@ public class AdminClient {
                                                                                      .setType(VAdminProto.AdminRequestType.FETCH_PARTITION_ENTRIES)
                                                                                      .setFetchPartitionEntries(fetchRequest)
                                                                                      .build();
+
+        if(logger.isDebugEnabled()) {
+            logger.debug("*** FETCH_PARTITION_ENTRIES - created successfully");
+        }
+
         ProtoUtils.writeMessage(outputStream, request);
         outputStream.flush();
 
@@ -351,13 +359,33 @@ public class AdminClient {
                                                                      boolean fetchMasterEntries,
                                                                      long skipRecords) {
 
+        if(logger.isDebugEnabled()) {
+            logger.debug("*** fetchEntries - called");
+        }
+
         Node node = this.getAdminClientCluster().getNodeById(nodeId);
+
         final SocketDestination destination = new SocketDestination(node.getHost(),
                                                                     node.getAdminPort(),
                                                                     RequestFormatType.ADMIN_PROTOCOL_BUFFERS);
+        if(logger.isDebugEnabled()) {
+            logger.debug("*** fetchEntries - SocketDestination created successfully");
+        }
+
         final SocketAndStreams sands = pool.checkout(destination);
+        if(logger.isDebugEnabled()) {
+            logger.debug("*** fetchEntries - pool.checkout successfully");
+        }
+
         DataOutputStream outputStream = sands.getOutputStream();
+        if(logger.isDebugEnabled()) {
+            logger.debug("*** fetchEntries - sands.getOutputStream() successfully");
+        }
+
         final DataInputStream inputStream = sands.getInputStream();
+        if(logger.isDebugEnabled()) {
+            logger.debug("*** fetchEntries - sands.getInputStream() successfully");
+        }
 
         try {
             initiateFetchRequest(outputStream,
@@ -368,7 +396,7 @@ public class AdminClient {
                                  fetchMasterEntries,
                                  skipRecords);
         } catch(IOException e) {
-            close(sands.getSocket());
+            close(sands);
             pool.checkin(destination, sands);
             throw new VoldemortException(e);
         }
@@ -397,7 +425,7 @@ public class AdminClient {
                     return Pair.create(ProtoUtils.decodeBytes(partitionEntry.getKey()),
                                        ProtoUtils.decodeVersioned(partitionEntry.getVersioned()));
                 } catch(IOException e) {
-                    close(sands.getSocket());
+                    close(sands);
                     pool.checkin(destination, sands);
                     throw new VoldemortException(e);
                 }
@@ -455,7 +483,7 @@ public class AdminClient {
                                  fetchMasterEntries,
                                  skipRecords);
         } catch(IOException e) {
-            close(sands.getSocket());
+            close(sands);
             pool.checkin(destination, sands);
             throw new VoldemortException(e);
         }
@@ -481,7 +509,7 @@ public class AdminClient {
 
                     return ProtoUtils.decodeBytes(response.getKey());
                 } catch(IOException e) {
-                    close(sands.getSocket());
+                    close(sands);
                     pool.checkin(destination, sands);
                     throw new VoldemortException(e);
                 }
@@ -898,9 +926,9 @@ public class AdminClient {
         throw errorMapper.getError((short) error.getErrorCode(), error.getErrorMessage());
     }
 
-    private void close(Socket socket) {
+    private void close(SocketAndStreams sands) {
         try {
-            socket.close();
+            sands.close();
         } catch(IOException e) {
             logger.warn("Failed to close socket");
         }
@@ -1560,7 +1588,7 @@ public class AdminClient {
                 }
             }
         } catch(IOException e) {
-            close(sands.getSocket());
+            close(sands);
             throw new VoldemortException(e);
         } finally {
             pool.checkin(destination, sands);
@@ -1608,7 +1636,7 @@ public class AdminClient {
             while(true) {
                 int size = inputStream.readInt();
                 if(size == -1) {
-                    close(sands.getSocket());
+                    close(sands);
                     break;
                 }
 
@@ -1629,7 +1657,7 @@ public class AdminClient {
             }
 
         } catch(IOException e) {
-            close(sands.getSocket());
+            close(sands);
             throw new VoldemortException(e);
         } finally {
             pool.checkin(destination, sands);
