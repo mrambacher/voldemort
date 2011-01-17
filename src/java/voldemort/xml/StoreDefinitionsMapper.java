@@ -52,6 +52,7 @@ import voldemort.store.StoreDefinitionBuilder;
 import voldemort.store.StoreUtils;
 import voldemort.store.slop.strategy.HintedHandoffStrategyType;
 import voldemort.store.views.ViewStorageConfiguration;
+import voldemort.utils.Props;
 
 /**
  * Parses a stores.xml file
@@ -452,6 +453,18 @@ public class StoreDefinitionsMapper {
 
         if(storeDefinition.hasRetentionScanThrottleRate())
             store.addContent(new Element(STORE_RETENTION_SCAN_THROTTLE_RATE_ELMT).setText(Integer.toString(storeDefinition.getRetentionScanThrottleRate())));
+        Props props = storeDefinition.getProperties();
+        if(props.size() > 0) {
+            Element propertiesElement = new Element(STORE_PROPERTIES_ELMT);
+            for(String name: props.keySet()) {
+                String value = props.getString(name);
+                Element property = new Element(STORE_PROPERTY_ELMT);
+                property.setText(value);
+                property.setAttribute(STORE_PROPERTY_ATTR, name);
+                propertiesElement.addContent(property);
+            }
+            store.addContent(propertiesElement);
+        }
 
         return store;
     }
