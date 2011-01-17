@@ -93,7 +93,7 @@ public class VoldemortTestConstants {
     private static String readString(String filename) {
         try {
             return IOUtils.toString(VoldemortTestConstants.class.getResourceAsStream(filename));
-        } catch(IOException e) {
+        } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
@@ -121,4 +121,9 @@ public class VoldemortTestConstants {
     public static String getViewStoreDefinitionXml() {
         return readString("config/view-store.xml");
     }
+
+    public static String getSingleStore322Xml() {
+        return readString("config/single-store-322.xml");
+    }
+
 }
