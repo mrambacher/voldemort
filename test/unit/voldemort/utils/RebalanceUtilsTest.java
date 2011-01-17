@@ -19,6 +19,7 @@ package voldemort.utils;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
+import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -26,6 +27,7 @@ import java.util.List;
 
 import junit.framework.TestCase;
 import voldemort.ServerTestUtils;
+import voldemort.VoldemortTestConstants;
 import voldemort.client.rebalance.RebalanceClusterPlan;
 import voldemort.client.rebalance.RebalanceNodePlan;
 import voldemort.client.rebalance.RebalancePartitionsInfo;
@@ -52,7 +54,7 @@ public class RebalanceUtilsTest extends TestCase {
 
         try {
             storeDefList = new StoreDefinitionsMapper().readStoreList(new FileReader(new File(storeDefFile)));
-        } catch(FileNotFoundException e) {
+        } catch (FileNotFoundException e) {
             throw new RuntimeException("Failed to find storeDefFile:" + storeDefFile, e);
         }
     }
@@ -68,7 +70,7 @@ public class RebalanceUtilsTest extends TestCase {
         assertEquals("There should have exactly one rebalancing node",
                      1,
                      rebalancePlan.getRebalancingTaskQueue().size());
-        for(RebalanceNodePlan rebalanceNodeInfo: rebalancePlan.getRebalancingTaskQueue()) {
+        for (RebalanceNodePlan rebalanceNodeInfo : rebalancePlan.getRebalancingTaskQueue()) {
             assertEquals("rebalanceInfo should have exactly one item",
                          1,
                          rebalanceNodeInfo.getRebalanceTaskList().size());
@@ -89,47 +91,6 @@ public class RebalanceUtilsTest extends TestCase {
     }
 
     public void testRebalancePlanWithReplicationChanges() {
-
-        /**
-         * This unit test is wrong. I was posted the issue in Voldemort at
-         * http://code.google.com/p/project-voldemort/issues/detail?id=288
-         * 
-         * the stores in the unit test are 2/1/1
-         * 
-         * cluster.xml (before rebalance) Node Primary Replica 0 [0, 1, 2, 3]
-         * (7, 8, 9) 1 [4, 5, 6] (0, 1, 2, 3) 2 [7, 8, 9] (4, 5, 6)
-         * 
-         * ============================== targetCluster.xml (after rebalance)
-         * Node Primary Replica 0 [0, 2, 3] (1, 7, 8, 9) 1 [4, 6] (2, 3, 5) 2
-         * [7, 8, 9] (6) 3 [1, 5] (0, 4)
-         * 
-         * Based on the mentioned unit-test, the remapping of the cluster is due
-         * to migrating 2 primary partitions (1, 5) to a new node (Node3) this
-         * will bring a set of other changes related to move the replicas too
-         * (as shown above)
-         * 
-         * This is rebalancing plan as printed out by the program with my code
-         * changes (I have posted 2: RebalanceClusterPlan.java.diff and
-         * RebalanceClusterTools.diff)
-         * 
-         * StealerNode:0 RebalancingStealInfo(0 <--- 1 partitions:[1]
-         * stores:[users, veggies, test-replication-memory, test-recovery-data,
-         * test-replication-persistent, test-readrepair-memory])
-         * 
-         * StealerNode:1 RebalancingStealInfo(1 <--- 2 partitions:[5]
-         * stores:[users, veggies, test-replication-memory, test-recovery-data,
-         * test-replication-persistent, test-readrepair-memory])
-         * 
-         * StealerNode:3 RebalancingStealInfo(3 <--- 0 partitions:[1]
-         * stores:[users, veggies, test-replication-memory, test-recovery-data,
-         * test-replication-persistent, test-readrepair-memory])
-         * RebalancingStealInfo(3 <--- 1 partitions:[0, 5] stores:[users,
-         * veggies, test-replication-memory, test-recovery-data,
-         * test-replication-persistent, test-readrepair-memory])
-         * RebalancingStealInfo(3 <--- 2 partitions:[4] stores:[users, veggies,
-         * test-replication-memory, test-recovery-data,
-         * test-replication-persistent, test-readrepair-memory])
-         */
         currentCluster = ServerTestUtils.getLocalCluster(3, new int[][] { { 0, 1, 2, 3 },
                 { 4, 5, 6 }, { 7, 8, 9 } });
 
@@ -147,75 +108,20 @@ public class RebalanceUtilsTest extends TestCase {
                      1,
                      rebalancePlan.getRebalancingTaskQueue().size());
 
-        /**************
-        RebalanceNodePlan planStealer0 = rebalancePlan.getRebalancingTaskQueue().poll();
-        RebalanceNodePlan planStealer1 = rebalancePlan.getRebalancingTaskQueue().poll();
-        RebalanceNodePlan planStealer3 = rebalancePlan.getRebalancingTaskQueue().poll();
-
-        assertEquals("Rebalancing node 0 should have 1 entries",
-                     1,
-                     planStealer0.getRebalanceTaskList().size());
-        assertEquals("Rebalancing node 1 should have 1 entries",
-                     1,
-                     planStealer1.getRebalanceTaskList().size());
-        assertEquals("Rebalancing node 3 should have 3 entries",
-                     3,
-                     planStealer3.getRebalanceTaskList().size());
-
-         * 8 // StealerNode:0 // RebalancingStealInfo(0 <--- 1 partitions:[1]
-         * stores:[users, veggies, // test-replication-memory,
-         * test-recovery-data, // test-replication-persistent,
-         * test-readrepair-memory]) RebalancePartitionsInfo stealer0Donor1 = new
-         * RebalancePartitionsInfo(0, 1, Arrays.asList(1), new
-         * ArrayList<Integer>(0), RebalanceUtils.getStoreNames(storeDefList),
-         * 0);
-         * 
-         * // StealerNode:1 // RebalancingStealInfo(1 <--- 2 partitions:[5]
-         * stores:[users, veggies, // test-replication-memory,
-         * test-recovery-data, // test-replication-persistent,
-         * test-readrepair-memory]) RebalancePartitionsInfo stealer1Donor2 = new
-         * RebalancePartitionsInfo(1, 2, Arrays.asList(5), new
-         * ArrayList<Integer>(0), RebalanceUtils.getStoreNames(storeDefList),
-         * 0);
-         * 
-         * // StealerNode:3 // RebalancingStealInfo(3 <--- 0 partitions:[1]
-         * stores:[users, veggies, // test-replication-memory,
-         * test-recovery-data, // test-replication-persistent,
-         * test-readrepair-memory]) // RebalancingStealInfo(3 <--- 1
-         * partitions:[0, 5] stores:[users, // veggies, test-replication-memory,
-         * test-recovery-data, // test-replication-persistent,
-         * test-readrepair-memory]) // RebalancingStealInfo(3 <--- 2
-         * partitions:[4] stores:[users, veggies, // test-replication-memory,
-         * test-recovery-data, // test-replication-persistent,
-         * test-readrepair-memory])
-         * 
-         * RebalancePartitionsInfo stealer3Donor0 = new
-         * RebalancePartitionsInfo(3, 0, Arrays.asList(1), new
-         * ArrayList<Integer>(0), RebalanceUtils.getStoreNames(storeDefList),
-         * 0); RebalancePartitionsInfo stealer3Donor1 = new
-         * RebalancePartitionsInfo(3, 1, Arrays.asList(0, 5), new
-         * ArrayList<Integer>(0), RebalanceUtils.getStoreNames(storeDefList),
-         * 0); RebalancePartitionsInfo stealer3Donor2 = new
-         * RebalancePartitionsInfo(3, 2, Arrays.asList(4), new
-         * ArrayList<Integer>(0), RebalanceUtils.getStoreNames(storeDefList),
-         * 0);
-         * 
-         * checkAllRebalanceInfoPresent(planStealer0,
-         * Arrays.asList(stealer0Donor1));
-         * checkAllRebalanceInfoPresent(planStealer1,
-         * Arrays.asList(stealer1Donor2));
-         * checkAllRebalanceInfoPresent(planStealer3,
-         * Arrays.asList(stealer3Donor0, stealer3Donor1, stealer3Donor2));
-         * 
-         **** */
         RebalanceNodePlan nodePlan = rebalancePlan.getRebalancingTaskQueue().poll();
 
-        assertEquals("Rebalancing node 3 should have 2 entries", 2, nodePlan.getRebalanceTaskList()
-                                                                            .size());
+        assertEquals("Rebalancing node 3 should have 2 entries", 2, nodePlan.getRebalanceTaskList().size());
+        ArrayList<Integer> empty = new ArrayList<Integer>();
+
+        // http://code.google.com/p/project-voldemort/issues/detail?id=288&q=rebalance
+        // (see comment 12)
+        // In this test-case partition 1 and 5 should not be deleted.
+        // If they are deleted then the replication factor 2 (in this case)
+        // is violated.
         RebalancePartitionsInfo stealInfo0 = new RebalancePartitionsInfo(3,
                                                                          0,
                                                                          Arrays.asList(0, 1),
-                                                                         Arrays.asList(1),
+                                                                         empty,
                                                                          Arrays.asList(1),
                                                                          RebalanceUtils.getStoreNames(storeDefList),
                                                                          new HashMap<String, String>(),
@@ -224,7 +130,7 @@ public class RebalanceUtilsTest extends TestCase {
         RebalancePartitionsInfo stealInfo1 = new RebalancePartitionsInfo(3,
                                                                          1,
                                                                          Arrays.asList(4, 5),
-                                                                         Arrays.asList(5),
+                                                                         empty,
                                                                          Arrays.asList(5),
                                                                          RebalanceUtils.getStoreNames(storeDefList),
                                                                          new HashMap<String, String>(),
@@ -234,28 +140,75 @@ public class RebalanceUtilsTest extends TestCase {
         checkAllRebalanceInfoPresent(nodePlan, Arrays.asList(stealInfo0, stealInfo1));
     }
 
+    /**
+     * http://code.google.com/p/project-voldemort/issues/detail?id=288&q=
+     * rebalance
+     * (see comment-2)
+     * 
+     * 
+     */
+    public void testRebalanceAllReplicasBeingMigrated() {
+        List<StoreDefinition> storeDef = new StoreDefinitionsMapper().readStoreList(new StringReader(VoldemortTestConstants.getSingleStore322Xml()));
+
+        currentCluster = ServerTestUtils.getLocalCluster(3, new int[][] {
+                { 0, 4 },
+                { 2, 3 },
+                { 1, 5 } });
+
+        targetCluster = ServerTestUtils.getLocalCluster(4, new int[][] {
+                { 4 },
+                { 2, 3 },
+                { 1, 5 },
+                { 0 } });
+
+        RebalanceClusterPlan rebalancePlan = new RebalanceClusterPlan(currentCluster,
+                                                                      targetCluster,
+                                                                      storeDef,
+                                                                      true,
+                                                                      null);
+
+        // the rebalancing plan should have exactly 1 node
+        assertEquals("There should have exactly one rebalancing node",
+                     1,
+                     rebalancePlan.getRebalancingTaskQueue().size());
+
+        // System.out.println(rebalancePlan);
+        RebalanceNodePlan nodePlan = rebalancePlan.getRebalancingTaskQueue().poll();
+
+        assertEquals("Rebalancing node 3 should have 1 entry", 1, nodePlan.getRebalanceTaskList().size());
+        RebalancePartitionsInfo stealInfo0 = new RebalancePartitionsInfo(3,
+                                                                         0,
+                                                                         Arrays.asList(0, 4, 5),
+                                                                         Arrays.asList(0),
+                                                                         Arrays.asList(0),
+                                                                         RebalanceUtils.getStoreNames(storeDef),
+                                                                         new HashMap<String, String>(),
+                                                                         new HashMap<String, String>(),
+                                                                         0);
+        checkAllRebalanceInfoPresent(nodePlan, Arrays.asList(stealInfo0));
+    }
+
     private void checkAllRebalanceInfoPresent(RebalanceNodePlan nodePlan,
                                               List<RebalancePartitionsInfo> rebalanceInfoList) {
-        for(RebalancePartitionsInfo rebalanceInfo: rebalanceInfoList) {
+        for (RebalancePartitionsInfo rebalanceInfo : rebalanceInfoList) {
             boolean match = false;
-            for(RebalancePartitionsInfo nodeRebalanceInfo: nodePlan.getRebalanceTaskList()) {
-                if(rebalanceInfo.getDonorId() == nodeRebalanceInfo.getDonorId()) {
+            for (RebalancePartitionsInfo nodeRebalanceInfo : nodePlan.getRebalanceTaskList()) {
+                if (rebalanceInfo.getDonorId() == nodeRebalanceInfo.getDonorId()) {
                     assertEquals("partitions should match",
                                  true,
-                                 rebalanceInfo.getPartitionList()
-                                              .containsAll(nodeRebalanceInfo.getPartitionList()));
+                                 compareList(rebalanceInfo.getPartitionList(), nodeRebalanceInfo.getPartitionList()));
+
                     assertEquals("delete partitions should match",
                                  true,
-                                 rebalanceInfo.getDeletePartitionsList()
-                                              .containsAll(nodeRebalanceInfo.getDeletePartitionsList()));
+                                 compareList(rebalanceInfo.getDeletePartitionsList(), nodeRebalanceInfo.getDeletePartitionsList()));
+
                     assertEquals("store list should match",
                                  true,
-                                 rebalanceInfo.getUnbalancedStoreList()
-                                              .containsAll(nodeRebalanceInfo.getUnbalancedStoreList()));
+                                 compareList(rebalanceInfo.getUnbalancedStoreList(), nodeRebalanceInfo.getUnbalancedStoreList()));
+
                     assertEquals("steal master partitions should match",
                                  true,
-                                 rebalanceInfo.getStealMasterPartitions()
-                                              .containsAll(nodeRebalanceInfo.getStealMasterPartitions()));
+                                 compareList(rebalanceInfo.getStealMasterPartitions(), nodeRebalanceInfo.getStealMasterPartitions()));
                     match = true;
                 }
             }
@@ -289,6 +242,30 @@ public class RebalanceUtilsTest extends TestCase {
         assertEquals("RebalanceStealInfo fromString --> toString should match.",
                      info.toString(),
                      (RebalancePartitionsInfo.create(info.toJsonString())).toString());
+    }
+
+    private <T> boolean compareList(List<T> listA, List<T> listB) {
+        // Both are null.
+        if (listA == null && listB == null)
+            return true;
+
+        // At least one of them is null.
+        if (listA == null || listB == null)
+            return false;
+
+        // If the size is different.
+        if (listA.size() != listB.size())
+            return false;
+
+        // After checking the size we can call containsAll.
+        // for example:
+        //
+        // listA =[0, 4, 5]
+        // listB =[0, 4]
+        //
+        // This will return TRUE but they are not equal list.
+        // 
+        return listA.containsAll(listB);
     }
 
 }

@@ -40,53 +40,54 @@ public class UtilsTest extends TestCase {
 
     /**
      * http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6203387
-     * 
+     *
      * This unit-test case is not consistent in its behavior due to a Java bug.
-     * Also we can not apply the work around in this case of "Opening the file
-     * and catch the exception" idea because the context is not a file but a
-     * directory.
-     * 
+     * Also we can not apply the work around in this case of "Opening the file and
+     * catch the exception" idea because the context is not a file but a directory.
+     *
      * For example: If you run this shipped code you will see different
      * behaviors.
-     * 
-     * 
-     * d--------- 2 root root 4096 Nov 17 17:08 john.dir
-     * 
+     *
+     *
+     * d---------   2 root  root    4096 Nov 17 17:08 john.dir
+     *
      * <pre>
-     * try {
-     *     File file1 = new File(&quot;./tmp/john.dir&quot;);
-     *     File file2 = new File(&quot;/tmp/john.dir&quot;);
-     *     String canonicalPath1 = file1.getCanonicalPath();
-     *     String canonicalPath2 = file2.getCanonicalPath();
-     *     System.out.println(&quot;canonical 1 = &quot; + canonicalPath1);
-     *     System.out.println(&quot;canonical 2 = &quot; + canonicalPath2);
-     *     System.out.println(&quot;canonical 1 equals canonical 2 = &quot; + canonicalPath1.equals(canonicalPath2));
-     *     System.out.println(&quot;can read 1 = &quot; + file1.canRead());
-     *     System.out.println(&quot;can read 2 = &quot; + file2.canRead());
-     * } catch(Exception exception) {
-     *     exception.printStackTrace();
-     * }
-     * 
+     *     try {
+     *       File file1 = new File("./tmp/john.dir");
+     *       File file2 = new File("/tmp/john.dir");
+     *       String canonicalPath1 = file1.getCanonicalPath();
+     *       String canonicalPath2 = file2.getCanonicalPath();
+     *       System.out.println("canonical 1 = " + canonicalPath1);
+     *       System.out.println("canonical 2 = " + canonicalPath2);
+     *       System.out.println("canonical 1 equals canonical 2 = " + canonicalPath1.equals(canonicalPath2));
+     *       System.out.println("can read 1 = " + file1.canRead());
+     *       System.out.println("can read 2 = " + file2.canRead());
+     *     }
+     *     catch (Exception exception)
+     *     {
+     *       exception.printStackTrace();
+     *     }
+     *
      * </pre>
-     * 
+     *
      * This unit-test
      */
-    // public void testMkDir() {
-    // File tempDir = new File(System.getProperty("java.io.tmpdir"), "temp"
-    // + System.currentTimeMillis());
-    //
-    // // Working case
-    // Utils.mkdirs(tempDir);
-    // assertTrue(tempDir.exists());
-    //
-    // // Exists & writable false
-    // tempDir.setWritable(false);
-    // try {
-    // Utils.mkdirs(tempDir);
-    // fail("Mkdir should have thrown an exception");
-    // } catch(VoldemortException e) {}
-    //
-    // }
+//    public void testMkDir() {
+//        File tempDir = new File(System.getProperty("java.io.tmpdir"), "temp"
+//                                                                      + System.currentTimeMillis());
+//
+//        // Working case
+//        Utils.mkdirs(tempDir);
+//        assertTrue(tempDir.exists());
+//
+//        // Exists & writable false
+//        tempDir.setWritable(false);
+//        try {
+//            Utils.mkdirs(tempDir);
+//            fail("Mkdir should have thrown an exception");
+//        } catch(VoldemortException e) {}
+//
+//    }
 
     public void testSymlink() throws IOException {
         String tempParentDir = System.getProperty("java.io.tmpdir");
