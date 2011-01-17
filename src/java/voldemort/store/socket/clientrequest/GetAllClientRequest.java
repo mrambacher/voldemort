@@ -16,14 +16,12 @@
 
 package voldemort.store.socket.clientrequest;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
 
+import voldemort.client.protocol.ClientRequestFormat;
 import voldemort.client.protocol.RequestFormat;
+import voldemort.serialization.VoldemortOpCode;
 import voldemort.server.RequestRoutingType;
 import voldemort.utils.ByteArray;
 import voldemort.versioning.Versioned;
@@ -35,32 +33,17 @@ public class GetAllClientRequest extends
     private final Map<ByteArray, byte[]> transforms;
 
     public GetAllClientRequest(String storeName,
-                               RequestFormat requestFormat,
-                               RequestRoutingType requestRoutingType,
                                Iterable<ByteArray> keys,
-                               Map<ByteArray, byte[]> transforms) {
-        super(storeName, requestFormat, requestRoutingType);
+                               Map<ByteArray, byte[]> transforms,
+                               RequestRoutingType routingType) {
+        super(VoldemortOpCode.GET_ALL, storeName, routingType);
         this.keys = keys;
         this.transforms = transforms;
     }
 
-    public boolean isCompleteResponse(ByteBuffer buffer) {
-        return requestFormat.isCompleteGetAllResponse(buffer);
-    }
-
     @Override
-    protected void formatRequestInternal(DataOutputStream outputStream) throws IOException {
-        requestFormat.writeGetAllRequest(outputStream,
-                                         storeName,
-                                         keys,
-                                         transforms,
-                                         requestRoutingType);
-    }
-
-    @Override
-    protected Map<ByteArray, List<Versioned<byte[]>>> parseResponseInternal(DataInputStream inputStream)
-            throws IOException {
-        return requestFormat.readGetAllResponse(inputStream);
+    protected ClientRequestFormat<Map<ByteArray, List<Versioned<byte[]>>>> getRequest(RequestFormat format) {
+        return format.createGetAllRequest(storeName, keys, transforms, routingType);
     }
 
 }

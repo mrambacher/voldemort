@@ -16,23 +16,52 @@
 
 package voldemort.store.socket.clientrequest;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+
+import voldemort.client.protocol.ClientRequestFormat;
 import voldemort.client.protocol.RequestFormat;
+import voldemort.serialization.VoldemortOpCode;
 import voldemort.server.RequestRoutingType;
 
 public abstract class AbstractStoreClientRequest<T> extends AbstractClientRequest<T> {
 
+    private ClientRequestFormat<T> request;
+
     protected final String storeName;
+    protected final RequestRoutingType routingType;
 
-    protected final RequestFormat requestFormat;
-
-    protected final RequestRoutingType requestRoutingType;
-
-    public AbstractStoreClientRequest(String storeName,
-                                      RequestFormat requestFormat,
-                                      RequestRoutingType requestRoutingType) {
+    public AbstractStoreClientRequest(VoldemortOpCode request,
+                                      String storeName,
+                                      RequestRoutingType routingType) {
+        super(request.getMethodName());
+        this.routingType = routingType;
         this.storeName = storeName;
-        this.requestFormat = requestFormat;
-        this.requestRoutingType = requestRoutingType;
     }
 
+    @Override
+    public String toString() {
+        return "Request[" + name + "/" + storeName + "]";
+    }
+
+    abstract protected ClientRequestFormat<T> getRequest(RequestFormat format);
+
+    @Override
+    protected boolean isCompleteResponseInternal(ByteBuffer buffer) {
+        return request.isCompleteResponse(buffer);
+    }
+
+    @Override
+    protected void formatRequestInternal(RequestFormat format, DataOutputStream outputStream)
+            throws IOException {
+        request = getRequest(format);
+        request.writeRequest(outputStream);
+    }
+
+    @Override
+    protected T parseResponseInternal(DataInputStream inputStream) throws IOException {
+        return request.readResponse(inputStream);
+    }
 }

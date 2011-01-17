@@ -16,13 +16,11 @@
 
 package voldemort.store.socket.clientrequest;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.List;
 
+import voldemort.client.protocol.ClientRequestFormat;
 import voldemort.client.protocol.RequestFormat;
+import voldemort.serialization.VoldemortOpCode;
 import voldemort.server.RequestRoutingType;
 import voldemort.utils.ByteArray;
 import voldemort.versioning.Versioned;
@@ -33,28 +31,21 @@ public class GetClientRequest extends AbstractStoreClientRequest<List<Versioned<
     private final byte[] transforms;
 
     public GetClientRequest(String storeName,
-                            RequestFormat requestFormat,
-                            RequestRoutingType requestRoutingType,
                             ByteArray key,
-                            byte[] transforms) {
-        super(storeName, requestFormat, requestRoutingType);
+                            byte[] transforms,
+                            RequestRoutingType routingType) {
+        super(VoldemortOpCode.GET, storeName, routingType);
         this.key = key;
         this.transforms = transforms;
     }
 
-    public boolean isCompleteResponse(ByteBuffer buffer) {
-        return requestFormat.isCompleteGetResponse(buffer);
+    @Override
+    public String toString() {
+        return "Request[" + name + "/" + storeName + "(" + new String(key.get()) + ")]";
     }
 
     @Override
-    protected void formatRequestInternal(DataOutputStream outputStream) throws IOException {
-        requestFormat.writeGetRequest(outputStream, storeName, key, transforms, requestRoutingType);
+    protected ClientRequestFormat<List<Versioned<byte[]>>> getRequest(RequestFormat format) {
+        return format.createGetRequest(storeName, key, transforms, routingType);
     }
-
-    @Override
-    protected List<Versioned<byte[]>> parseResponseInternal(DataInputStream inputStream)
-            throws IOException {
-        return requestFormat.readGetResponse(inputStream);
-    }
-
 }

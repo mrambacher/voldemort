@@ -16,13 +16,11 @@
 
 package voldemort.store.socket.clientrequest;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.List;
 
+import voldemort.client.protocol.ClientRequestFormat;
 import voldemort.client.protocol.RequestFormat;
+import voldemort.serialization.VoldemortOpCode;
 import voldemort.server.RequestRoutingType;
 import voldemort.utils.ByteArray;
 import voldemort.versioning.Version;
@@ -31,26 +29,18 @@ public class GetVersionsClientRequest extends AbstractStoreClientRequest<List<Ve
 
     private final ByteArray key;
 
-    public GetVersionsClientRequest(String storeName,
-                                    RequestFormat requestFormat,
-                                    RequestRoutingType requestRoutingType,
-                                    ByteArray key) {
-        super(storeName, requestFormat, requestRoutingType);
+    public GetVersionsClientRequest(String storeName, ByteArray key, RequestRoutingType routingType) {
+        super(VoldemortOpCode.GET_VERSION, storeName, routingType);
         this.key = key;
     }
 
-    public boolean isCompleteResponse(ByteBuffer buffer) {
-        return requestFormat.isCompleteGetVersionResponse(buffer);
+    @Override
+    public String toString() {
+        return "Request[" + name + "/" + storeName + "(" + new String(key.get()) + ")]";
     }
 
     @Override
-    protected void formatRequestInternal(DataOutputStream outputStream) throws IOException {
-        requestFormat.writeGetVersionRequest(outputStream, storeName, key, requestRoutingType);
+    protected ClientRequestFormat<List<Version>> getRequest(RequestFormat format) {
+        return format.createGetVersionsRequest(storeName, key, routingType);
     }
-
-    @Override
-    protected List<Version> parseResponseInternal(DataInputStream inputStream) throws IOException {
-        return requestFormat.readGetVersionResponse(inputStream);
-    }
-
 }

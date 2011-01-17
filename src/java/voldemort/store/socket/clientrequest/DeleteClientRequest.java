@@ -16,12 +16,9 @@
 
 package voldemort.store.socket.clientrequest;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.nio.ByteBuffer;
-
+import voldemort.client.protocol.ClientRequestFormat;
 import voldemort.client.protocol.RequestFormat;
+import voldemort.serialization.VoldemortOpCode;
 import voldemort.server.RequestRoutingType;
 import voldemort.utils.ByteArray;
 import voldemort.versioning.Version;
@@ -29,31 +26,24 @@ import voldemort.versioning.Version;
 public class DeleteClientRequest extends AbstractStoreClientRequest<Boolean> {
 
     private final ByteArray key;
-
     private final Version version;
 
     public DeleteClientRequest(String storeName,
-                               RequestFormat requestFormat,
-                               RequestRoutingType requestRoutingType,
                                ByteArray key,
-                               Version version) {
-        super(storeName, requestFormat, requestRoutingType);
+                               Version version,
+                               RequestRoutingType routingType) {
+        super(VoldemortOpCode.DELETE, storeName, routingType);
         this.key = key;
         this.version = version;
     }
 
-    public boolean isCompleteResponse(ByteBuffer buffer) {
-        return requestFormat.isCompleteDeleteResponse(buffer);
+    @Override
+    public String toString() {
+        return "Request[" + name + "/" + storeName + "(" + new String(key.get()) + ")]";
     }
 
     @Override
-    protected void formatRequestInternal(DataOutputStream outputStream) throws IOException {
-        requestFormat.writeDeleteRequest(outputStream, storeName, key, version, requestRoutingType);
+    protected ClientRequestFormat<Boolean> getRequest(RequestFormat format) {
+        return format.createDeleteRequest(storeName, key, version, routingType);
     }
-
-    @Override
-    protected Boolean parseResponseInternal(DataInputStream inputStream) throws IOException {
-        return requestFormat.readDeleteResponse(inputStream);
-    }
-
 }

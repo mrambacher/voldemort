@@ -19,8 +19,11 @@ package voldemort.store.socket.clientrequest;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.concurrent.TimeUnit;
 
 import voldemort.VoldemortException;
+import voldemort.client.protocol.RequestFormat;
 import voldemort.store.UnreachableStoreException;
 
 /**
@@ -40,13 +43,31 @@ public abstract class AbstractClientRequest<T> implements ClientRequest<T> {
 
     private volatile boolean isParsed = false;
 
-    protected abstract void formatRequestInternal(DataOutputStream outputStream) throws IOException;
+    private long expiration = -1;
+
+    protected final String name;
+
+    protected AbstractClientRequest(String name) {
+        this.name = name;
+    }
+
+    protected abstract void formatRequestInternal(RequestFormat format,
+                                                  DataOutputStream outputStream) throws IOException;
 
     protected abstract T parseResponseInternal(DataInputStream inputStream) throws IOException;
 
-    public boolean formatRequest(DataOutputStream outputStream) {
+    public String getName() {
+        return name;
+    }
+
+    @Override
+    public String toString() {
+        return "Request[" + name + "]";
+    }
+
+    public boolean formatRequest(RequestFormat format, DataOutputStream outputStream) {
         try {
-            formatRequestInternal(outputStream);
+            formatRequestInternal(format, outputStream);
         } catch(IOException e) {
             error = e;
             return false;
@@ -73,24 +94,56 @@ public abstract class AbstractClientRequest<T> implements ClientRequest<T> {
     public T call() throws VoldemortException, IOException {
         if(!isComplete)
             throw new IllegalStateException("Client response not complete, cannot determine result");
-
+        if(error != null) {
+            if(error instanceof IOException) {
+                throw (IOException) error;
+            } else if(error instanceof VoldemortException) {
+                throw (VoldemortException) error;
+            } else {
+                throw new VoldemortException(error);
+            }
+        }
         if(!isParsed)
             throw new UnreachableStoreException("Client response not read/parsed, cannot determine result");
 
-        if(error instanceof IOException) {
-            throw (IOException) error;
-        } else if(error instanceof VoldemortException) {
-            throw (VoldemortException) error;
-        }
         return result;
     }
 
-    public final void complete() {
-        isComplete = true;
+    abstract protected boolean isCompleteResponseInternal(ByteBuffer buffer);
+
+    public boolean isCompleteResponse(ByteBuffer buffer) {
+        return isCompleteResponseInternal(buffer);
+    }
+
+    public void markCompleted(Exception ex) {
+        if(!isComplete) {
+            isComplete = true;
+            if(ex != null) {
+                this.error = ex;
+            }
+        }
     }
 
     public boolean isComplete() {
         return isComplete;
+    }
+
+    public void setExpirationTime(long timeout, TimeUnit units) {
+        if(timeout > 0) {
+            expiration = System.nanoTime() + units.convert(timeout, TimeUnit.NANOSECONDS);
+        } else {
+            expiration = -1;
+        }
+    }
+
+    public boolean hasExpired() {
+        if(isComplete() || expiration <= 0) {
+            return false;
+        } else if(System.nanoTime() <= expiration) {
+            return false;
+        } else {
+            return true;
+        }
     }
 
 }

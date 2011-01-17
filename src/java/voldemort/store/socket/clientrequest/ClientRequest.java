@@ -21,6 +21,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.Callable;
+import java.util.concurrent.TimeUnit;
 
 import voldemort.VoldemortException;
 import voldemort.client.protocol.RequestFormat;
@@ -39,6 +40,13 @@ import voldemort.client.protocol.RequestFormat;
  */
 
 public interface ClientRequest<T> extends Callable<T> {
+
+    /**
+     * Returns the name (e.g. PUT, GET) of the request
+     * 
+     * @return
+     */
+    public String getName();
 
     /**
      * Once completed has been called, this will return the result of the
@@ -63,7 +71,7 @@ public interface ClientRequest<T> extends Callable<T> {
      * @param outputStream Write the request to this output stream
      */
 
-    public boolean formatRequest(DataOutputStream outputStream);
+    public boolean formatRequest(RequestFormat format, DataOutputStream outputStream);
 
     /**
      * isCompleteResponse determines if the response that the
@@ -111,7 +119,7 @@ public interface ClientRequest<T> extends Callable<T> {
      * be invoked by users of the sub-system.
      */
 
-    public void complete();
+    public void markCompleted(Exception ex);
 
     /**
      * Returns <code>true</code> if {@link #complete()} was called.
@@ -121,4 +129,7 @@ public interface ClientRequest<T> extends Callable<T> {
 
     public boolean isComplete();
 
+    public void setExpirationTime(long timeout, TimeUnit units);
+
+    public boolean hasExpired();
 }

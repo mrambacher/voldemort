@@ -1,6 +1,8 @@
 /*
  * Copyright 2008-2010 LinkedIn, Inc
  * 
+ * Portion Copyright 2010 Nokia Corporation. All rights reserved.
+ * 
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
  * the License at
@@ -16,6 +18,7 @@
 
 package voldemort.store.socket.clientrequest;
 
+import java.io.IOException;
 import java.net.ConnectException;
 import java.net.InetSocketAddress;
 import java.nio.channels.ClosedSelectorException;
@@ -23,7 +26,6 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.util.Date;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
@@ -39,6 +41,7 @@ import org.apache.log4j.Logger;
 import voldemort.store.socket.SocketDestination;
 import voldemort.utils.DaemonThreadFactory;
 import voldemort.utils.SelectorManager;
+import voldemort.utils.SelectorManagerWorker;
 import voldemort.utils.Time;
 import voldemort.utils.pool.ResourceFactory;
 
@@ -122,93 +125,58 @@ public class ClientRequestExecutorFactory implements
         socketChannel.socket().setKeepAlive(this.socketKeepAlive);
         socketChannel.configureBlocking(false);
         socketChannel.connect(new InetSocketAddress(dest.getHost(), dest.getPort()));
-
-        long finishConnectTimeoutMs = System.currentTimeMillis() + connectTimeoutMs;
-
-        // Since we're non-blocking and it takes a non-zero amount of time
-        // to connect, invoke finishConnect and loop.
-        while(!socketChannel.finishConnect()) {
-            long diff = finishConnectTimeoutMs - System.currentTimeMillis();
-
-            if(diff < 0) {
-                // Don't forget to close the socket before we throw our
-                // exception or they'll leak :(
-                try {
-                    socketChannel.close();
-                } catch(Exception e) {
-                    if(logger.isEnabledFor(Level.WARN))
-                        logger.warn(e, e);
-                }
-
-                throw new ConnectException("Cannot connect socket " + numCreated + " for "
-                                           + dest.getHost() + ":" + dest.getPort() + " after "
-                                           + connectTimeoutMs + " ms");
-            }
-
-            if(logger.isTraceEnabled())
-                logger.trace("Still creating socket " + numCreated + " for " + dest.getHost() + ":"
-                             + dest.getPort() + ", " + diff + " ms. remaining to connect");
-
-            // Break up the connection timeout into chunks N/10 of the
-            // total.
-            try {
-                Thread.sleep(connectTimeoutMs / 10);
-            } catch(InterruptedException e) {
-                if(logger.isEnabledFor(Level.WARN))
-                    logger.warn(e, e);
-            }
-        }
-
-        if(logger.isDebugEnabled())
-            logger.debug("Created socket " + numCreated + " for " + dest.getHost() + ":"
-                         + dest.getPort() + " using protocol "
-                         + dest.getRequestFormatType().getCode());
-
-        // check buffer sizes--you often don't get out what you put in!
-        if(socketChannel.socket().getReceiveBufferSize() != this.socketBufferSize)
-            logger.debug("Requested socket receive buffer size was " + this.socketBufferSize
-                         + " bytes but actual size is "
-                         + socketChannel.socket().getReceiveBufferSize() + " bytes.");
-
-        if(socketChannel.socket().getSendBufferSize() != this.socketBufferSize)
-            logger.debug("Requested socket send buffer size was " + this.socketBufferSize
-                         + " bytes but actual size is "
-                         + socketChannel.socket().getSendBufferSize() + " bytes.");
-
         ClientRequestSelectorManager selectorManager = selectorManagers[counter.getAndIncrement()
                                                                         % selectorManagers.length];
 
         Selector selector = selectorManager.getSelector();
-        ClientRequestExecutor clientRequestExecutor = new ClientRequestExecutor(selector,
+        ClientRequestExecutor clientRequestExecutor = new ClientRequestExecutor(selectorManager,
                                                                                 socketChannel,
-                                                                                socketBufferSize);
-        BlockingClientRequest<String> clientRequest = new BlockingClientRequest<String>(new ProtocolNegotiatorClientRequest(dest.getRequestFormatType()),
-                                                                                        this.getTimeout());
-        clientRequestExecutor.addClientRequest(clientRequest);
+                                                                                socketBufferSize,
+                                                                                soTimeoutMs,
+                                                                                dest.getRequestFormatType());
+        // If the connection timeout is set, sleep-spin here waiting for the
+        // connect to complete.
+        // If the connection timeout is 0, then the connect will be handled via
+        // NIO and
+        // the selector will handle the OP_CONNECT case.
+        if(this.connectTimeoutMs > 0) {
+            long startTime = System.currentTimeMillis();
+            long duration = 0;
+            long currWaitTime = 1;
+            long prevWaitTime = 1;
+            if(logger.isTraceEnabled())
+                logger.trace("Waiting " + connectTimeoutMs + " ms for socket " + dest.getHost()
+                             + ":" + dest.getPort() + "to finish connect");
+            // Since we're non-blocking and it takes a non-zero amount of time
+            // to connect, invoke finishConnect and loop.
+            while(!clientRequestExecutor.finishConnect()) {
+                duration = System.currentTimeMillis() - startTime;
+                long remaining = this.connectTimeoutMs - duration;
+                if(remaining < 0) {
+                    throw new ConnectException("Cannot connect socket " + numCreated + " for "
+                                               + dest.getHost() + ":" + dest.getPort() + " after "
+                                               + duration + " ms");
+                }
 
+                if(logger.isTraceEnabled())
+                    logger.trace("Still creating socket " + numCreated + " for " + dest.getHost()
+                                 + ":" + dest.getPort() + ", " + remaining
+                                 + " ms. remaining to connect");
+
+                try {
+                    // Break up the connection timeout into smaller units,
+                    // employing a Fibonacci-style back-off (1, 2, 3, 5, 8, ...)
+                    Thread.sleep(Math.min(remaining, currWaitTime));
+                    currWaitTime = Math.min(currWaitTime + prevWaitTime, 50);
+                    prevWaitTime = currWaitTime - prevWaitTime;
+                } catch(InterruptedException e) {
+                    if(logger.isEnabledFor(Level.WARN))
+                        logger.warn(e, e);
+                }
+            }
+        }
         selectorManager.registrationQueue.add(clientRequestExecutor);
         selector.wakeup();
-
-        // Block while we wait for the protocol negotiation to complete.
-        clientRequest.await();
-
-        try {
-            // This will throw an error if the result of the protocol
-            // negotiation failed, otherwise it returns an uninteresting token
-            // we can safely ignore.
-            clientRequest.call();
-        } catch(Exception e) {
-            // Don't forget to close the socket before we throw our exception or
-            // they'll leak :(
-            try {
-                socketChannel.close();
-            } catch(Exception ex) {
-                if(logger.isEnabledFor(Level.WARN))
-                    logger.warn(ex, ex);
-            }
-
-            throw e;
-        }
 
         return clientRequestExecutor;
     }
@@ -239,7 +207,6 @@ public class ClientRequestExecutorFactory implements
         }
 
         boolean isValid = clientRequestExecutor.isValid();
-
         if(!isValid && logger.isDebugEnabled())
             logger.debug("Client request executor connection " + clientRequestExecutor
                          + " is no longer valid, closing.");
@@ -307,14 +274,34 @@ public class ClientRequestExecutorFactory implements
             return selector;
         }
 
-        /**
-         * Process the {@link ClientRequestExecutor} registrations which are
-         * made inside {@link ClientRequestExecutorFactory} on creation of a new
-         * {@link ClientRequestExecutor}.
-         */
-
         @Override
-        protected void processEvents() {
+        protected void processRequest(SelectionKey selectionKey, SelectorManagerWorker worker)
+                throws Exception {
+
+            // In the case of a connect event, clear the bit, finish the
+            // connection, and start to negotiate the protocol.
+            if(selectionKey.isConnectable()) {
+                ClientRequestExecutor executor = (ClientRequestExecutor) worker;
+                SocketChannel socketChannel = executor.getSocketChannel();
+                this.markForOperation(socketChannel, 0);
+                try {
+                    if(executor.finishConnect()) {
+                        executor.startNegotiateProtocol();
+                    } else {
+                        logger.debug("Channel was marked for connect but failed "
+                                     + socketChannel.socket());
+                        markForOperation(socketChannel, SelectionKey.OP_CONNECT);
+                    }
+                } catch(IOException e) {
+                    logger.error("Failed to connect to executor ", e);
+                }
+            } else {
+                // Not a connect event, handle it normally
+                super.processRequest(selectionKey, worker);
+            }
+        }
+
+        private void registerRequests() {
             try {
                 ClientRequestExecutor clientRequestExecutor = null;
 
@@ -326,16 +313,46 @@ public class ClientRequestExecutorFactory implements
                         break;
                     }
 
-                    SocketChannel socketChannel = clientRequestExecutor.getSocketChannel();
-
                     try {
+                        SocketChannel socketChannel = clientRequestExecutor.getSocketChannel();
                         if(logger.isDebugEnabled())
                             logger.debug("Registering connection from " + socketChannel.socket());
-
-                        socketChannel.register(selector,
-                                               SelectionKey.OP_WRITE,
-                                               clientRequestExecutor);
-
+                        // Check if the connection is already complete.
+                        // This handles the case of waiting earlier for the
+                        // connect to complete
+                        // or a quick connect and avoids going through an
+                        // additional selector if
+                        // not necessary
+                        if(socketChannel.isConnected()) {
+                            // Connection is already complete.
+                            // Register it and start negotiating the protocol
+                            socketChannel.register(selector, 0, clientRequestExecutor);
+                            clientRequestExecutor.startNegotiateProtocol();
+                        } else {
+                            try {
+                                if(clientRequestExecutor.finishConnect()) {
+                                    // Connection is complete. Register it and
+                                    // start
+                                    // negotiating the protocol
+                                    socketChannel.register(selector, 0, clientRequestExecutor);
+                                    clientRequestExecutor.startNegotiateProtocol();
+                                } else if(socketChannel.isOpen()) {
+                                    // Connection is complete. Register for
+                                    // connectionevents
+                                    socketChannel.register(selector,
+                                                           SelectionKey.OP_CONNECT,
+                                                           clientRequestExecutor);
+                                } else {
+                                    logger.warn("Channel "
+                                                + socketChannel.socket().getRemoteSocketAddress()
+                                                + " is already closed");
+                                }
+                            } catch(IOException e) {
+                                logger.error("Failed to register connect executor "
+                                                     + socketChannel.socket(),
+                                             e);
+                            }
+                        }
                     } catch(ClosedSelectorException e) {
                         if(logger.isDebugEnabled())
                             logger.debug("Selector is closed, exiting");
@@ -352,37 +369,18 @@ public class ClientRequestExecutorFactory implements
                 if(logger.isEnabledFor(Level.ERROR))
                     logger.error(e.getMessage(), e);
             }
+        }
 
-            // In blocking I/O, the higher level code can interrupt the thread
-            // if a timeout has been exceeded, triggering an IOException and
-            // stopping the read/write. However, for our asynchronous I/O, we
-            // don't have any threads blocking on I/O. So we resort to polling
-            // to check if the timeout has been exceeded. So loop over all of
-            // the keys that are registered and call checkTimeout. (That method
-            // will handle the canceling of the SelectionKey if need be.)
-            try {
-                Iterator<SelectionKey> i = selector.keys().iterator();
+        /**
+         * Process the {@link ClientRequestExecutor} registrations which are
+         * made inside {@link ClientRequestExecutorFactory} on creation of a new
+         * {@link ClientRequestExecutor}.
+         */
 
-                while(i.hasNext()) {
-                    SelectionKey selectionKey = i.next();
-                    ClientRequestExecutor clientRequestExecutor = (ClientRequestExecutor) selectionKey.attachment();
-
-                    // A race condition can occur wherein our SelectionKey is
-                    // still registered but the attachment has be nulled out on
-                    // its way to being canceled.
-                    if(clientRequestExecutor != null) {
-                        try {
-                            clientRequestExecutor.checkTimeout(selectionKey);
-                        } catch(Exception e) {
-                            if(logger.isEnabledFor(Level.ERROR))
-                                logger.error(e.getMessage(), e);
-                        }
-                    }
-                }
-            } catch(Exception e) {
-                if(logger.isEnabledFor(Level.ERROR))
-                    logger.error(e.getMessage(), e);
-            }
+        @Override
+        protected void processEvents() {
+            super.processEvents();
+            registerRequests();
         }
     }
 
