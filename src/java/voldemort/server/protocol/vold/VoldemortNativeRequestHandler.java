@@ -72,24 +72,29 @@ public class VoldemortNativeRequestHandler extends AbstractRequestHandler implem
             writeException(outputStream, new VoldemortException("No store named '" + storeName
                                                                 + "'."));
         } else {
-            switch(opCode) {
-                case VoldemortOpCode.GET_OP_CODE:
-                    handleGet(inputStream, outputStream, store);
-                    break;
-                case VoldemortOpCode.GET_ALL_OP_CODE:
-                    handleGetAll(inputStream, outputStream, store);
-                    break;
-                case VoldemortOpCode.PUT_OP_CODE:
-                    handlePut(inputStream, outputStream, store);
-                    break;
-                case VoldemortOpCode.DELETE_OP_CODE:
-                    handleDelete(inputStream, outputStream, store);
-                    break;
-                case VoldemortOpCode.GET_VERSION_OP_CODE:
-                    handleGetVersion(inputStream, outputStream, store);
-                    break;
-                default:
-                    throw new IOException("Unknown op code: " + opCode);
+            VoldemortOpCode operation = VoldemortOpCode.fromCode(opCode);
+            if(operation != null) {
+                switch(operation) {
+                    case GET:
+                        handleGet(inputStream, outputStream, store);
+                        break;
+                    case GET_ALL:
+                        handleGetAll(inputStream, outputStream, store);
+                        break;
+                    case PUT:
+                        handlePut(inputStream, outputStream, store);
+                        break;
+                    case DELETE:
+                        handleDelete(inputStream, outputStream, store);
+                        break;
+                    case GET_VERSION:
+                        handleGetVersion(inputStream, outputStream, store);
+                        break;
+                    default:
+                        throw new IOException("Unsupported operation: " + operation);
+                }
+            } else {
+                throw new IOException("Unsupported opCode: " + opCode);
             }
         }
         outputStream.flush();
@@ -181,53 +186,54 @@ public class VoldemortNativeRequestHandler extends AbstractRequestHandler implem
     protected boolean isCompleteRequest(final ByteBuffer buffer, DataInputStream inputStream)
             throws IOException {
         byte opCode = inputStream.readByte();
+        VoldemortOpCode operation = VoldemortOpCode.fromCode(opCode);
         int newPosition;
         checkCompleteRequestHeader(inputStream);
+        if(operation != null) {
+            switch(operation) {
+                case GET:
+                case GET_VERSION:
+                    // Read the key just to skip the bytes.
+                    checkCompleteGetRequest(inputStream);
+                    break;
+                case GET_ALL:
+                    checkCompleteGetAllRequest(inputStream);
+                    break;
+                case PUT:
+                    int dataSize = checkCompletePutRequest(inputStream);
+                    newPosition = buffer.position() + dataSize;
 
-        switch(opCode) {
-            case VoldemortOpCode.GET_OP_CODE:
-            case VoldemortOpCode.GET_VERSION_OP_CODE:
-                // Read the key just to skip the bytes.
-                checkCompleteGetRequest(inputStream);
-                break;
-            case VoldemortOpCode.GET_ALL_OP_CODE:
-                checkCompleteGetAllRequest(inputStream);
-                break;
-            case VoldemortOpCode.PUT_OP_CODE:
-                int dataSize = checkCompletePutRequest(inputStream);
-                newPosition = buffer.position() + dataSize;
+                    if(newPosition > buffer.limit() || newPosition < 0) {
+                        return false;
+                        // throw new
+                        // Exception("Data inconsistency on put - dataSize: " +
+                        // dataSize
+                        // + ", position: " + buffer.position() + ", limit: "
+                        // + buffer.limit());
+                    }
+                    // Here we skip over the data (without reading it in) and
+                    // move our position to just past it.
+                    buffer.position(buffer.position() + dataSize);
+                    break;
+                case DELETE:
+                    int versionSize = checkCompleteDeleteRequest(inputStream);
+                    newPosition = buffer.position() + versionSize;
 
-                if(newPosition > buffer.limit() || newPosition < 0) {
-                    return false;
-                    // throw new
-                    // Exception("Data inconsistency on put - dataSize: " +
-                    // dataSize
-                    // + ", position: " + buffer.position() + ", limit: "
-                    // + buffer.limit());
-                }
-                // Here we skip over the data (without reading it in) and
-                // move our position to just past it.
-                buffer.position(buffer.position() + dataSize);
-                break;
-            case VoldemortOpCode.DELETE_OP_CODE:
-                int versionSize = checkCompleteDeleteRequest(inputStream);
-                newPosition = buffer.position() + versionSize;
-
-                if(newPosition > buffer.limit() || newPosition < 0) {
-                    return false;
-                    // throw new
-                    // Exception("Data inconsistency on delete - versionSize: "
-                    // + versionSize + ", position: " + buffer.position()
-                    // + ", limit: " + buffer.limit());
-                }
-                // Here we skip over the version (without reading it in) and
-                // move our position to just past it.
-                buffer.position(buffer.position() + versionSize);
-                break;
-            default:
-                // Do nothing, let the request handler address this...
+                    if(newPosition > buffer.limit() || newPosition < 0) {
+                        return false;
+                        // throw new
+                        // Exception("Data inconsistency on delete - versionSize: "
+                        // + versionSize + ", position: " + buffer.position()
+                        // + ", limit: " + buffer.limit());
+                    }
+                    // Here we skip over the version (without reading it in) and
+                    // move our position to just past it.
+                    buffer.position(buffer.position() + versionSize);
+                    break;
+                default:
+                    // Do nothing, let the request handler address this...
+            }
         }
-
         // If there aren't any remaining, we've "consumed" all the bytes and
         // thus have a complete request...
         return !buffer.hasRemaining();

@@ -411,7 +411,6 @@ public class StorageService extends AbstractService {
             DistributedStore<Node, ByteArray, byte[], byte[]> distributor = DistributedStoreFactory.create(nodeStores,
                                                                                                            def,
                                                                                                            cluster,
-                                                                                                           failureDetector,
                                                                                                            cluster.getNodeById(localNode)
                                                                                                                   .getZoneId());
 

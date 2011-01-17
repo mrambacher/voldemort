@@ -20,29 +20,38 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.log4j.Logger;
 
+import voldemort.utils.SelectorManagerWorker;
+
+/**
+ * This class pulls requests off the request queue and runs them.
+ */
 public class NioWorkerThread implements Runnable {
 
-    private final BlockingQueue<AsyncRequestHandler> requests;
+    private final BlockingQueue<SelectorManagerWorker> requests;
     private final AtomicBoolean isClosed;
     private int count;
     private final Logger logger = Logger.getLogger(getClass());
 
-    public NioWorkerThread(BlockingQueue<AsyncRequestHandler> requests) {
+    public NioWorkerThread(BlockingQueue<SelectorManagerWorker> requests) {
         this.isClosed = new AtomicBoolean(false);
         this.requests = requests;
     }
 
+    /**
+     * Runs the requests off the work queue, blocking for requests if none are
+     * present.
+     */
     public void run() {
         try {
             while(true) {
-                AsyncRequestHandler handler = requests.take();
+                SelectorManagerWorker worker = requests.take();
                 if(isClosed.get()) {
                     if(logger.isInfoEnabled())
                         logger.info("Closing NIO worker thread");
                     break;
-                } else if(handler != null) {
+                } else if(worker != null) {
                     count++;
-                    handler.run();
+                    worker.run();
                 }
             }
         } catch(InterruptedException e) {
