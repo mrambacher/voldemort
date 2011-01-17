@@ -1,18 +1,18 @@
 package voldemort.client.rebalance;
 
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.apache.log4j.Logger;
@@ -20,11 +20,10 @@ import org.apache.log4j.Logger;
 import voldemort.VoldemortException;
 import voldemort.cluster.Cluster;
 import voldemort.cluster.Node;
+import voldemort.routing.RoutingStrategy;
+import voldemort.routing.RoutingStrategyFactory;
 import voldemort.store.StoreDefinition;
-import voldemort.utils.Pair;
 import voldemort.utils.RebalanceUtils;
-
-import com.google.common.collect.Multimap;
 
 /**
  * Compares the currentCluster configuration with the desired
@@ -34,28 +33,41 @@ import com.google.common.collect.Multimap;
  */
 public class RebalanceClusterPlan {
     private final static Logger logger = Logger.getLogger(RebalanceClusterPlan.class);
-
-    /** New Line - OS independent. */
     private final static String NL = System.getProperty("line.separator");
-
-    /**
-     * Queue with the rebalance plan to be executed as a result or remapping the
-     * cluster
-     */
-    private Queue<RebalanceNodePlan> optimizedRebalanceTaskQueue;
-
-    /**
-     * Complete rebalance plan. Contains all the "movements" of primaries and
-     * replicas
-     * partitions as a consequence of remapping the cluster.
-     */
     private final Queue<RebalanceNodePlan> rebalanceTaskQueue;
-
-    /** The list of store definitions to rebalance */
     private final List<StoreDefinition> storeDefList;
 
-    /** Current cluster */
+    /**
+     * For the "current" cluster, this map contains a list of partitions
+     * (primary & replicas) that each node has.
+     */
+    private final Map<Integer, Set<Integer>> clusterNodeIdToAllPartitions;
+
+    /**
+     * For the "target" cluster, this map contains a list of partitions
+     * (primary & replicas) that each node will have as a result of
+     * re-mapping the cluster.
+     */
+    private final Map<Integer, Set<Integer>> targetNodeIdToAllPartitions;
+
+    /**
+     * As a result of re-mapping the cluster, you will have nodes that will
+     * lose partitions (primaries or replicas). This map contains all
+     * partitions (primary & replicas) that were moved away from the node,
+     * in other words, they were deleted from the node.
+     */
+    private final Map<Integer, Set<Integer>> targetNodeIdToAllDeletedPartitions;
+
+    /**
+     * As a result of re-mapping the cluster, some partitions need to be "deleted"
+     * from the node, in other words, the node no longer has a ownership of this
+     * partition (primary or replica). This map keeps track of the deleted
+     * partitions that have being taking care by the logic that builds the
+     * rebalance-plan.
+     */
+    private Map<Integer, Set<Integer>> alreadyDeletedNodeIdToPartions = new TreeMap<Integer, Set<Integer>>();
     private final Cluster currentCluster;
+    private final Cluster targetCluster;
 
     /**
      * Compares the currentCluster configuration with the desired
@@ -68,30 +80,42 @@ public class RebalanceClusterPlan {
      *            The target cluster definition
      * @param storeDefList
      *            The list of store definitions to rebalance
-     * @param deleteDonorPartition
+     * @param enabledDeletePartition
      *            Delete the RW partition on the donor side after
      *            rebalance
      * @param currentROStoreVersionsDirs
      *            A mapping of nodeId to map of store names to version ids
      */
-    public RebalanceClusterPlan(Cluster currentCluster,
-                                Cluster targetCluster,
-                                List<StoreDefinition> storeDefList,
-                                boolean deleteDonorPartition,
-                                Map<Integer, Map<String, String>> currentROStoreVersionsDirs) {
-        this.rebalanceTaskQueue = new ConcurrentLinkedQueue<RebalanceNodePlan>();
-        this.storeDefList = storeDefList;
+    public RebalanceClusterPlan(final Cluster currentCluster,
+                                final Cluster targetCluster,
+                                final List<StoreDefinition> storeDefList,
+                                final boolean enabledDeletePartition,
+                                final Map<Integer, Map<String, String>> currentROStoreVersionsDirs) {
         this.currentCluster = currentCluster;
+        this.targetCluster = targetCluster;
+
+        this.rebalanceTaskQueue = new ConcurrentLinkedQueue<RebalanceNodePlan>();
+        this.storeDefList = Collections.unmodifiableList(storeDefList);
 
         if (currentCluster.getNumberOfPartitions() != targetCluster.getNumberOfPartitions())
             throw new VoldemortException("Total number of partitions should not change !!");
 
+        // Create only once the node-to-all-partitions relationship.
+        // all-partitions means primaries and replicas that this node is
+        // responsable for.
+        this.clusterNodeIdToAllPartitions = Collections.unmodifiableMap(createNodeIdToAllPartitions(currentCluster));
+        this.targetNodeIdToAllPartitions = Collections.unmodifiableMap(createNodeIdToAllPartitions(targetCluster));
+
+        // As a result of re-mapping the cluster, target nodes can lose or gain partitions.
+        targetNodeIdToAllDeletedPartitions = Collections.unmodifiableMap(createTargetNodeItToAllDeletePartitions());
+
         for (Node node : targetCluster.getNodes()) {
-            List<RebalancePartitionsInfo> rebalanceNodeList = getRebalanceNodeTask(currentCluster,
-                                                                                   targetCluster,
-                                                                                   RebalanceUtils.getStoreNames(storeDefList),
-                                                                                   node.getId(),
-                                                                                   deleteDonorPartition);
+            List<RebalancePartitionsInfo> rebalanceNodeList = createRebalancePartitionsInfo(currentCluster,
+                                                                                  targetCluster,
+                                                                                  RebalanceUtils.getStoreNames(storeDefList),
+                                                                                  node.getId(),
+                                                                                  enabledDeletePartition);
+
             if (rebalanceNodeList.size() > 0) {
                 if (currentROStoreVersionsDirs != null && currentROStoreVersionsDirs.size() > 0) {
                     for (RebalancePartitionsInfo partitionsInfo : rebalanceNodeList) {
@@ -105,326 +129,424 @@ public class RebalanceClusterPlan {
     }
 
     public Queue<RebalanceNodePlan> getRebalancingTaskQueue() {
-        if (optimizedRebalanceTaskQueue == null) {
-            optimizedRebalanceTaskQueue = optimizeRebalanceTaskQueue(rebalanceTaskQueue);
-        }
-        return optimizedRebalanceTaskQueue;
+        return rebalanceTaskQueue;
     }
 
     /**
-     * Optimizes the rebalance plan.<br>
+     * Target nodes that lost partitions as a result of rebalance.
      * 
-     * Optimizations can be made to original rebalance plan
-     * <code>rebalanceTaskQueue</code>.
-     * This method servers as a hub for individual method calls that
-     * will contribute to the optimization of the plan.
-     * 
-     * @param queue rebalance plan to be optimized.
-     * @return optimized rebalance plan
+     * @return map to all "target" nodes-to-lost partitions relationship.
      */
-    private Queue<RebalanceNodePlan> optimizeRebalanceTaskQueue(final Queue<RebalanceNodePlan> queue) {
-        // toString(rebalanceTaskQueue);
-        Queue<RebalanceNodePlan> optimizedQueue = avoidDeleteNeededPartitions(queue);
+    private Map<Integer, Set<Integer>> createTargetNodeItToAllDeletePartitions() {
+        final Map<Integer, Set<Integer>> map = new TreeMap<Integer, Set<Integer>>();
+        for (Integer targetNodeId : targetNodeIdToAllPartitions.keySet()) {
+            Set<Integer> clusterAllPartitions = clusterNodeIdToAllPartitions.get(targetNodeId);
+            Set<Integer> targetAllPartitions = targetNodeIdToAllPartitions.get(targetNodeId);
+
+            Set<Integer> deletedPartitions = getDeletedInTarget(clusterAllPartitions, targetAllPartitions);
+            map.put(targetNodeId, deletedPartitions);
+        }
+        return map;
+    }
+
+    /**
+     * This approach is based on 2 principals:
+     * 
+     * <ol>
+     * <li>The number of partitions don't change only they get redistributes across nodes.
+     * <li>A primary or replica partition that is going to be deleted is never used to copy from by another stealer.
+     * </ol>
+     * 
+     * Principal #2, based on design rebalance can be run in parallel, using multiple threads.
+     * If one thread deletes a partition that another thread is using to copy data from then
+     * a raised condition will be encounter losing data. To prevent this we follow principal
+     * #2 in this method.
+     * 
+     */
+    private List<RebalancePartitionsInfo> createRebalancePartitionsInfo(
+                                                    final Cluster currentCluster,
+                                                    final Cluster targetCluster,
+                                                    final List<String> storeNames,
+                                                    final int stealerId,
+                                                    final boolean enabledDeletePartition) {
+
+        final List<RebalancePartitionsInfo> result = new ArrayList<RebalancePartitionsInfo>();
+
+        // Separates primaries from replicas this stealer is stealing.
+        final Set<Integer> stealingPrimaries = getStealPrimaries(currentCluster, targetCluster, stealerId);
+        final Set<Integer> stealingReplicas = getStealReplicas(currentCluster, targetCluster, stealerId);
         if (logger.isDebugEnabled()) {
-            logger.debug("Avoid deleting needed partitions: " + toString(optimizedQueue));
+            logger.debug("stealer id: " + stealerId + ", stealing primaries: " + stealingPrimaries);
+            logger.debug("stealer id: " + stealerId + ", stealing replicas: " + stealingReplicas);
         }
 
-        optimizedQueue = avoidCopyExistingPartitions(optimizedQueue);
-        if (logger.isDebugEnabled()) {
-            logger.debug("Avoid copying existing partitions: " + toString(optimizedQueue));
+        // If this stealer is not stealing any partitions then return.
+        if (stealingPrimaries.size() == 0 && stealingReplicas.size() == 0) {
+            return result;
         }
 
-        optimizedQueue = avoidContactingMultipleNodes(optimizedQueue);
-        if (logger.isDebugEnabled()) {
-            logger.debug("Avoid contacting multiple nodes: " + toString(optimizedQueue));
-        }
-
-        return optimizedQueue;
-    }
-
-    /**
-     * Primary partition 'Z' is donated from node 'A' to node 'B' and the same
-     * partition 'Z' could comes back now as a Replica to node 'A'. Under this
-     * scenario this partition will be deleted if Rebalance CLI
-     * {@link RebalanceCLI} is launched without the option 'no-delete' (which is
-     * the default)
-     * 
-     * The side effect of this is that 'Z' will be deleted all together if the
-     * Rebalance Plan executes the migration of the Primary partition after the
-     * Rebalance Plan that copy the partition as Replica.
-     * 
-     * @param queue to be checked
-     * @return queue modified
-     */
-    private Queue<RebalanceNodePlan> avoidDeleteNeededPartitions(final Queue<RebalanceNodePlan> queue) {
-        int planSize = queue.size();
-        RebalanceNodePlan[] oldNodePlans = new RebalanceNodePlan[planSize];
-        RebalanceNodePlan[] newNodePlans = new RebalanceNodePlan[planSize];
-
-        queue.toArray(oldNodePlans);
-        queue.toArray(newNodePlans);
-
-        // Take the original rebalance plan and loop through the Rebalance Node
-        // Plans
-        for (RebalanceNodePlan oldNodePlan : oldNodePlans) {
-            for (RebalancePartitionsInfo oldPartitionInfo : oldNodePlan.getRebalanceTaskList()) {
-
-                final List<Integer> oldPartitionsList = oldPartitionInfo.getPartitionList();
-                if (oldPartitionsList == null || oldPartitionsList.size() == 0)
-                    continue;
-
-                final int oldStealerId = oldPartitionInfo.getStealerId();
-
-                // Now look thrown the newNodePlan and remove the partition that
-                // is check to be deleted only if it's a replica in other plans.
-                for (RebalanceNodePlan newNodePlan : newNodePlans) {
-                    for (RebalancePartitionsInfo newPartitionInfo : newNodePlan.getRebalanceTaskList()) {
-
-                        // Check if you have a Donor that happens to be a
-                        // Stealer in another NodePlan.
-                        int newDonorId = newPartitionInfo.getDonorId();
-                        if (newDonorId == oldStealerId) {
-                            newPartitionInfo.getDeletePartitionsList().removeAll(oldPartitionsList);
-                        }
-                    }
-
-                }
-
-            }
-        }
-        List<RebalanceNodePlan> collection = Arrays.asList(newNodePlans);
-        return new ConcurrentLinkedQueue<RebalanceNodePlan>(collection);
-    }
-
-    /**
-     * Avoid copying partitions that exist in the node. Primary partitions could
-     * be moved as a result of rebalance. Also a replica of the same partition
-     * can be migrated back to the same node. In this case an optimization can
-     * be made by avoiding this unnecessary migration.
-     * 
-     * @param queue to be checked
-     * @return queue modified
-     */
-    private Queue<RebalanceNodePlan> avoidCopyExistingPartitions(final Queue<RebalanceNodePlan> queue) {
-        RebalanceNodePlan[] rebalanceNodePlans = new RebalanceNodePlan[queue.size()];
-        queue.toArray(rebalanceNodePlans);
-
-        // Take the original rebalance plan and loop through the Rebalance Node
-        // Plans
-        for (RebalanceNodePlan rebalanceNodePlan : rebalanceNodePlans) {
-            for (RebalancePartitionsInfo rebalancePartitionsInfo : rebalanceNodePlan.getRebalanceTaskList()) {
-
-                final int stealerId = rebalancePartitionsInfo.getStealerId();
-                final List<Integer> copyPartitionsList = new ArrayList<Integer>(rebalancePartitionsInfo.getPartitionList());
-
-                // Try to see if moving this partition to this node is
-                // unnecessary.
-                // If this node has the partition already no need to copy it.
-                for (Integer partition : copyPartitionsList) {
-                    if (RebalanceUtils.containsNode(currentCluster, stealerId)) {
-                        if (currentCluster.getNodeById(stealerId).getPartitionIds().contains(partition)) {
-                            rebalancePartitionsInfo.getPartitionList().remove(partition);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Delete the plans that now don't have any partition to move.
-        List<RebalanceNodePlan> rebalanceNodePlansList = new LinkedList<RebalanceNodePlan>(Arrays.asList(rebalanceNodePlans));
-        Iterator<RebalanceNodePlan> iterator = rebalanceNodePlansList.iterator();
-        while (iterator.hasNext()) {
-            if (removeIfEmpty(iterator.next().getRebalanceTaskList())) {
-                iterator.remove();
-            }
-        }
-
-        return new ConcurrentLinkedQueue<RebalanceNodePlan>(rebalanceNodePlansList);
-    }
-
-    /**
-     * In case that you have 2 or more donors, the logic could check if only one
-     * of these donor is enoght to steal from. If the donor has primary or
-     * replica partitions that we are about to take from another donor we can
-     * minimize network activity by only stealing from one node only all the
-     * partitions that we need.
-     * 
-     * @param queue to be checked
-     * @return queue modified
-     */
-    private Queue<RebalanceNodePlan> avoidContactingMultipleNodes(Queue<RebalanceNodePlan> queue) {
-        RebalanceNodePlan[] rebalanceNodePlans = new RebalanceNodePlan[queue.size()];
-        queue.toArray(rebalanceNodePlans);
-
-        for (RebalanceNodePlan nodePlan : rebalanceNodePlans) {
-            // Let's look how can we avoid talking to too many donors.
-            Map<Integer, Set<Integer>> donorToDonatedPartitionMap = createDonorToDonatedPartitionMap(nodePlan);
-            Set<Integer> donorIdsSet = new TreeSet<Integer>(donorToDonatedPartitionMap.keySet());
-            int numDonors = donorIdsSet.size();
-            Integer[] a = new Integer[numDonors];
-            donorIdsSet.toArray(a);
-
-            for (int i = 0; i < numDonors - 1; i++) {
-                int donorIdA = a[i];
-                List<Integer> partitionIds = null;
-                if (RebalanceUtils.containsNode(currentCluster, donorIdA)) {
-                    Node donorNode = currentCluster.getNodeById(donorIdA);
-                    partitionIds = donorNode.getPartitionIds();
-                }
-
-                for (int j = i + 1; j < numDonors; j++) {
-                    int donorIdB = a[j];
-                    Iterator<Integer> iter = donorToDonatedPartitionMap.get(donorIdB).iterator();
-                    while (iter.hasNext()) {
-                        Integer donatedPartition = iter.next();
-                        if (partitionIds.contains(donatedPartition)) {
-                            donorToDonatedPartitionMap.get(donorIdA).add(donatedPartition);
-                            iter.remove();
-                        }
-                    }
-
-                }
-            }
-
-            // /
-
-            Iterator<RebalancePartitionsInfo> iter = nodePlan.getRebalanceTaskList().iterator();
-
-            while (iter.hasNext()) {
-                RebalancePartitionsInfo partitionInfo = iter.next();
-                int donorId = partitionInfo.getDonorId();
-                Set<Integer> set = donorToDonatedPartitionMap.get(donorId);
-                if (set == null || set.isEmpty()) {
-                    iter.remove();
-                }
-                else {
-                    partitionInfo.getPartitionList().clear();
-                    partitionInfo.getPartitionList().addAll(set);
-                }
-
-            }
-
-            //
-        }
-        // for (RebalanceNodePlan nodePlan : rebalanceNodePlans) {
-        // }
-
-        List<RebalanceNodePlan> collection = Arrays.asList(rebalanceNodePlans);
-        return new ConcurrentLinkedQueue<RebalanceNodePlan>(collection);
-
-    }
-
-    private Map<Integer, Set<Integer>> createDonorToDonatedPartitionMap(final RebalanceNodePlan rebalanceNodePlan) {
-        Map<Integer, Set<Integer>> donorToDonatedPartitionMap = new LinkedHashMap<Integer, Set<Integer>>();
-        for (RebalancePartitionsInfo partitionInfo : rebalanceNodePlan.getRebalanceTaskList()) {
-            int donorId = partitionInfo.getDonorId();
-            Set<Integer> donatedPartitionsList = new TreeSet<Integer>();
-            donatedPartitionsList.addAll(partitionInfo.getPartitionList());
-            donatedPartitionsList.addAll(partitionInfo.getStealMasterPartitions());
-            if (donorToDonatedPartitionMap.containsKey(donorId)) {
-                donorToDonatedPartitionMap.get(donorId).addAll(donatedPartitionsList);
-            }
-            else {
-                donorToDonatedPartitionMap.put(donorId, donatedPartitionsList);
-            }
-        }
-        return donorToDonatedPartitionMap;
-    }
-
-    /**
-     * Remove instances of {@link RebalancePartitionsInfo} if they empty
-     * based on {{@link #isEmpty(RebalancePartitionsInfo)}
-     * 
-     * @param list
-     *            entries to be checked.
-     * @return TRUE is list is empty.
-     */
-    private boolean removeIfEmpty(List<RebalancePartitionsInfo> list) {
-        if (list == null || list.isEmpty())
-            return true;
-
-        Iterator<RebalancePartitionsInfo> iterator = list.iterator();
-        while (iterator.hasNext()) {
-            if (isEmpty(iterator.next())) {
-                iterator.remove();
-            }
-        }
-
-        return list.isEmpty();
-    }
-
-    private boolean isEmpty(final RebalancePartitionsInfo rebalancePartitionsInfo) {
-        return (rebalancePartitionsInfo.getStealMasterPartitions().isEmpty() &&
-                rebalancePartitionsInfo.getPartitionList().isEmpty() && rebalancePartitionsInfo.getDeletePartitionsList().isEmpty());
-    }
-
-    /**
-     * For a particular stealer node retrieves a list of plans corresponding to
-     * each donor node.
-     * 
-     * @param currentCluster
-     *            The cluster definition of the current cluster
-     * @param targetCluster
-     *            The cluster definition of the target cluster
-     * @param storeList
-     *            The list of stores
-     * @param stealNodeId
-     *            The node id of the stealer node
-     * @param deleteDonorPartition
-     *            Delete the donor partitions after rebalance
-     * @return List of plans per donor node
-     */
-    private List<RebalancePartitionsInfo> getRebalanceNodeTask(Cluster currentCluster,
-                                                               Cluster targetCluster,
-                                                               List<String> storeList,
-                                                               int stealNodeId,
-                                                               boolean deleteDonorPartition) {
-        Map<Integer, Integer> currentPartitionsToNodeMap = RebalanceUtils.getCurrentPartitionMapping(currentCluster);
-        List<Integer> stealList = getStealList(currentCluster, targetCluster, stealNodeId);
-
-        Map<Integer, List<Integer>> donorToDonatedMasterPartitions = getDonorToDonatedMasterPartitions(stealList,
-                                                                                   currentPartitionsToNodeMap);
-
-        // copies partitions needed to satisfy new replication mapping.
-        // these partitions should be copied but not deleted from original node.
-        Map<Integer, List<Integer>> donorToDonatedReplicaPartitions = getDonorToDonatedReplicaPartitions(currentCluster,
-                                                                                     targetCluster,
-                                                                                     stealNodeId,
-                                                                                     currentPartitionsToNodeMap);
-
-        List<RebalancePartitionsInfo> stealInfoList = new ArrayList<RebalancePartitionsInfo>();
+        // Now let's find out which donor can donate partitions to this stealer.
         for (Node donorNode : currentCluster.getNodes()) {
-            Set<Integer> stealPartitions = new HashSet<Integer>();
-            Set<Integer> deletePartitions = new HashSet<Integer>();
-            // create Set for steal master partitions
-            Set<Integer> stealMasterPartitions = new HashSet<Integer>();
+            if (donorNode.getId() == stealerId)
+                continue;
 
-            if (donorToDonatedMasterPartitions.containsKey(donorNode.getId())) {
-                stealPartitions.addAll(donorToDonatedMasterPartitions.get(donorNode.getId()));
-                // add one steal master partition
-                stealMasterPartitions.addAll(donorToDonatedMasterPartitions.get(donorNode.getId()));
-                if (deleteDonorPartition)
-                    deletePartitions.addAll(donorToDonatedMasterPartitions.get(donorNode.getId()));
+            // If you have treated all partitions (primaries and replicas) that this
+            // stealer should stole, then you are all done.
+            if (hasAllPartitionTreated(stealingPrimaries) && hasAllPartitionTreated(stealingReplicas)) {
+                break;
             }
 
-            if (donorToDonatedReplicaPartitions.containsKey(donorNode.getId())) {
-                stealPartitions.addAll(donorToDonatedReplicaPartitions.get(donorNode.getId()));
-            }
+            final Set<Integer> trackStealPartitions = new HashSet<Integer>();
+            final Set<Integer> trackDeletePartitions = new HashSet<Integer>();
+            final Set<Integer> trackStealMasterPartitions = new HashSet<Integer>();
 
-            if (stealPartitions.size() > 0) {
-                stealInfoList.add(new RebalancePartitionsInfo(stealNodeId,
+            // Checks if this donor is donating primary partition only.
+            donatePrimary(donorNode, stealingPrimaries, trackStealMasterPartitions, trackStealPartitions, trackDeletePartitions, enabledDeletePartition);
+
+            // Checks if this donor can donate a replicas.
+            donateReplicas(donorNode, stealingReplicas, trackStealPartitions);
+
+            // Delete partition if at least you have donated a primary or replica
+            // Checks if this donor needs to delete replicas only
+            deleteDonatedPartitions(donorNode, trackDeletePartitions, enabledDeletePartition);
+
+            if (trackStealPartitions.size() > 0) {
+                result.add(new RebalancePartitionsInfo(stealerId,
                                                               donorNode.getId(),
-                                                              new ArrayList<Integer>(stealPartitions),
-                                                              new ArrayList<Integer>(deletePartitions),
-                                                              new ArrayList<Integer>(stealMasterPartitions),
-                                                              storeList,
+                                                              new ArrayList<Integer>(trackStealPartitions),
+                                                              new ArrayList<Integer>(trackDeletePartitions),
+                                                              new ArrayList<Integer>(trackStealMasterPartitions),
+                                                              storeNames,
                                                               new HashMap<String, String>(),
                                                               new HashMap<String, String>(),
                                                               0));
             }
         }
 
-        return stealInfoList;
+        return result;
+    }
+
+    /**
+     * For a particular stealer node find all the replica partitions it will steal.
+     * If the stealer node has a primary that was given away and later on this
+     * partition became a replica then this replica is not going to be consider
+     * one that need to be migrated due to the fact that it's already in the
+     * stealer node so there is no need to copy it because it's alredy in the
+     * stealer node.
+     * 
+     * @param cluster current running cluster.
+     * @param target target cluster.
+     * @param stealerId node-id acting as stealer
+     * @return set of partition ids representing the replicas about to be stolen.
+     */
+    private Set<Integer> getStealReplicas(final Cluster cluster, final Cluster target, final int stealerId) {
+        Map<Integer, Set<Integer>> clusterNodeIdToReplicas = getNodeIdToReplicas(cluster);
+        Map<Integer, Set<Integer>> targetNodeIdToReplicas = getNodeIdToReplicas(target);
+
+        Set<Integer> clusterStealerReplicas = clusterNodeIdToReplicas.get(stealerId);
+        Set<Integer> targetStealerReplicas = targetNodeIdToReplicas.get(stealerId);
+
+        Set<Integer> replicasAddedInTarget = getAddedInTarget(clusterStealerReplicas, targetStealerReplicas);
+
+        if (RebalanceUtils.containsNode(cluster, stealerId)) {
+            replicasAddedInTarget.removeAll(cluster.getNodeById(stealerId).getPartitionIds());
+        }
+        return replicasAddedInTarget;
+    }
+
+    private void deleteDonatedPartitions(final Node donor, Set<Integer> trackDeletePartitions, boolean enabledDeletePartition) {
+        final int donorId = donor.getId();
+        final List<Integer> donorPrimaryPartitionIds = donor.getPartitionIds();
+        if (enabledDeletePartition) {
+
+            if (targetNodeIdToAllDeletedPartitions.get(donorId) != null && targetNodeIdToAllDeletedPartitions.get(donorId).size() > 0) {
+                // Gets all delete partition for this donor (Creates a deep copy first).
+                Set<Integer> delPartitions = new TreeSet<Integer>(targetNodeIdToAllDeletedPartitions.get(donorId));
+
+                // How many have you deleted so far?
+                Set<Integer> alreadyDeletedPartitions = alreadyDeletedNodeIdToPartions.get(donorId);
+
+                // Removes any primary partitions and the ones already deleted.
+                // There is no side effect in deleting an already deleted partition,
+                // but just for the sake of clarity, let's only delete once a partition.
+                if (alreadyDeletedPartitions != null)
+                    delPartitions.removeAll(alreadyDeletedPartitions);
+
+                if (donorPrimaryPartitionIds != null)
+                    delPartitions.removeAll(donorPrimaryPartitionIds);
+
+                // add these del partition to the set used in the RebalancePartitionsIndo.
+                trackDeletePartitions.addAll(delPartitions);
+
+                addDeletedPartition(alreadyDeletedNodeIdToPartions, donorId, delPartitions);
+                // targetNodeIdToDeletedPartitions.get(donorId).removeAll(delPartitions);
+            }
+        }
+
+    }
+
+    private void donateReplicas(final Node donorNode, Set<Integer> stealingOnlyReplicas, Set<Integer> trackStealPartitions) {
+        final int donorId = donorNode.getId();
+        final Set<Integer> donorAllParitions = clusterNodeIdToAllPartitions.get(donorId);
+        final Iterator<Integer> iter = stealingOnlyReplicas.iterator();
+        while (iter.hasNext()) {
+            Integer stealingReplica = iter.next();
+
+            // only give a replica if this replica is not destiny to be deleted.
+            // failing do to that could potentially mean that your are relaying to copy a partition
+            // that can be deleted in another {@link RebalancePartitionsInfo}
+            // Remember that it's a possibility by design that you could have parallelism, meaning that
+            // different threads carry on the execution of different partition-info-plan.
+            // So there is no guarantee which thread will run first. If you delete a partition that was used
+            // as a copy from then you could end up deleting the partition first, and never able to copy
+            // the partition after that, in other words it's gone before you get a change to copy it.
+            if (donorAllParitions.contains(stealingReplica) && !targetNodeIdToAllDeletedPartitions.get(donorId).contains(stealingReplica)) {
+                trackStealPartitions.add(stealingReplica);
+                // only one node will donate this partition.
+                iter.remove();
+            }
+        }
+
+    }
+
+    private void donatePrimary(final Node donorNode, Set<Integer> stealingOnlyPrimaries, Set<Integer> trackStealMasterPartitions, Set<Integer> trackStealPartitions, Set<Integer> trackDeletePartitions, boolean enabledDeletePartition) {
+        final List<Integer> donorPrimaryPartitionIds = Collections.unmodifiableList(donorNode.getPartitionIds());
+        final int donorId = donorNode.getId();
+        final Iterator<Integer> iter = stealingOnlyPrimaries.iterator();
+        while (iter.hasNext()) {
+            Integer stealingPrimary = iter.next();
+            if (donorPrimaryPartitionIds.contains(stealingPrimary)) {
+                trackStealMasterPartitions.add(stealingPrimary);
+                trackStealPartitions.add(stealingPrimary);
+
+                // This slealedPrimary partition has been donated, let's counter it out.
+                iter.remove();
+
+                if (enabledDeletePartition) {
+                    // Should we suppose to delete this partition?
+                    Set<Integer> deletedPartitions = targetNodeIdToAllDeletedPartitions.get(donorId);
+                    if (deletedPartitions != null && deletedPartitions.contains(stealingPrimary)) {
+                        trackDeletePartitions.add(stealingPrimary);
+                        addDeletedPartition(alreadyDeletedNodeIdToPartions, donorId, stealingPrimary);
+                    }
+                }
+            }
+        }
+    }
+
+    private boolean hasAllPartitionTreated(Set<Integer> partitionToBeTreatedSet) {
+        return (partitionToBeTreatedSet == null || partitionToBeTreatedSet.size() == 0);
+    }
+
+    private void addDeletedPartition(Map<Integer, Set<Integer>> map, int key, Set<Integer> values) {
+        for (Integer value : values) {
+            addDeletedPartition(map, key, value);
+        }
+    }
+
+    private void addDeletedPartition(Map<Integer, Set<Integer>> map, int key, Integer value) {
+        if (map.containsKey(key)) {
+            map.get(key).add(value);
+        }
+        else {
+            Set<Integer> set = new TreeSet<Integer>();
+            set.add(value);
+            map.put(key, set);
+        }
+    }
+
+    /**
+     * Returns a set of partitions that were added to the target.
+     * there are 4 possible scenarios:
+     * 
+     * getAddedInTarget(cluster, null) - nothing was added, returns null.
+     * getAddedInTarget(null, target) - everything in target was added, return target.
+     * getAddedInTarget(null, null) - neither added nor deleted, return null.
+     * getAddedInTarget(cluster, target)) - returns new partition not found in cluster.
+     * 
+     * @param cluster
+     * @param target
+     * @return
+     */
+    private Set<Integer> getAddedInTarget(Set<Integer> cluster, Set<Integer> target) {
+        if (cluster == null || target == null) {
+            return target;
+        }
+        return getDiff(target, cluster);
+    }
+
+    /**
+     * Returns a set of partitions that were deleted to the target.
+     * there are 4 possible scenarios:
+     * 
+     * getDeletedInTarget(cluster, null) - everything was deleted, returns cluster.
+     * getDeletedInTarget(null, target) - everything in target was added, return target.
+     * getDeletedInTarget(null, null) - neither added nor deleted, return null.
+     * getDeletedInTarget(cluster, target)) - returns deleted partition not found in target.
+     * 
+     * @param cluster
+     * @param target
+     * @return
+     */
+    private Set<Integer> getDeletedInTarget(final Set<Integer> cluster, final Set<Integer> target) {
+        if (cluster == null || target == null) {
+            return cluster;
+        }
+        return getDiff(cluster, target);
+    }
+
+    private Set<Integer> getDiff(final Set<Integer> source, final Set<Integer> dest) {
+        Set<Integer> diff = new TreeSet<Integer>();
+        for (Integer id : source) {
+            if (!dest.contains(id)) {
+                diff.add(id);
+            }
+        }
+        return diff;
+    }
+
+    /**
+     * This is a very useful method that returns a string representation of the cluster
+     * The idea of this method is to expose clearly the Node and its primary & replicas
+     * partitions in the ollowing format:
+     * 
+     * <pre>
+     * 
+     * Current Cluster:
+     * 0 - [0, 1, 2, 3] + [7, 8, 9]
+     * 1 - [4, 5, 6] + [0, 1, 2, 3]
+     * 2 - [7, 8, 9] + [4, 5, 6]
+     * 
+     * </pre>
+     * 
+     * @param nodeItToAllPartitions
+     * @param cluster
+     * @return string representation of the cluster, indicating node,primary and replica relationship.
+     * 
+     */
+    private String printMap(final Map<Integer, Set<Integer>> nodeItToAllPartitions, final Cluster cluster) {
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<Integer, Set<Integer>> entry : nodeItToAllPartitions.entrySet()) {
+            final Integer nodeId = entry.getKey();
+            final Set<Integer> primariesAndReplicas = entry.getValue();
+
+            final List<Integer> primaries = cluster.getNodeById(nodeId).getPartitionIds();
+            Set<Integer> onlyPrimaries = new TreeSet<Integer>();
+            Set<Integer> onlyReplicas = new TreeSet<Integer>();
+
+            for (Integer allPartition : primariesAndReplicas) {
+                if (primaries.contains(allPartition)) {
+                    onlyPrimaries.add(allPartition);
+                }
+                else {
+                    onlyReplicas.add(allPartition);
+                }
+            }
+            sb.append(nodeId + " - " + onlyPrimaries + " + " + onlyReplicas).append(NL);
+        }
+        return sb.toString();
+    }
+
+    private Map<Integer, Set<Integer>> createNodeIdToAllPartitions(final Cluster cluster) {
+        final Collection<Node> nodes = cluster.getNodes();
+        final StoreDefinition maxReplicationStore = RebalanceUtils.getMaxReplicationStore(this.storeDefList);
+        final RoutingStrategy routingStrategy = new RoutingStrategyFactory().updateRoutingStrategy(maxReplicationStore, cluster);
+
+        final Map<Integer, Set<Integer>> nodeIdToAllPartitions = new HashMap<Integer, Set<Integer>>();
+        final Map<Integer, Integer> partitionToNodeIdMap = getPartitionToNode(nodes);
+
+        // Map initialization.
+        for (Node node : nodes) {
+            nodeIdToAllPartitions.put(node.getId(), new TreeSet<Integer>());
+        }
+
+        // Loops through all nodes
+        for (Node node : nodes) {
+
+            // Gets the partitions that this node was configured with.
+            for (Integer primary : node.getPartitionIds()) {
+
+                // Gets the list of replicating partitions.
+                List<Integer> replicaPartitionList = routingStrategy.getReplicatingPartitionList(primary);
+
+                // Get the node that this replicating partition belongs to.
+                for (Integer replicaPartition : replicaPartitionList) {
+                    Integer replicaNodeId = partitionToNodeIdMap.get(replicaPartition);
+
+                    // The replicating node will have a copy of primary.
+                    nodeIdToAllPartitions.get(replicaNodeId).add(primary);
+                }
+            }
+        }
+        return nodeIdToAllPartitions;
+    }
+
+    private Map<Integer, Set<Integer>> getNodeIdToReplicas(final Cluster cluster) {
+        final Collection<Node> nodes = cluster.getNodes();
+        final StoreDefinition maxReplicationStore = RebalanceUtils.getMaxReplicationStore(this.storeDefList);
+        final RoutingStrategy routingStrategy = new RoutingStrategyFactory().updateRoutingStrategy(maxReplicationStore, cluster);
+
+        final Map<Integer, Set<Integer>> nodeIdToReplicas = new HashMap<Integer, Set<Integer>>();
+        final Map<Integer, Integer> partitionToNodeIdMap = getPartitionToNode(nodes);
+
+        // Map initialization.
+        for (Node node : nodes) {
+            nodeIdToReplicas.put(node.getId(), new TreeSet<Integer>());
+        }
+
+        // Loops through all nodes
+        for (Node node : nodes) {
+
+            // Gets the partitions that this node was configured with.
+            for (Integer primary : node.getPartitionIds()) {
+
+                // Gets the list of replicating partitions.
+                List<Integer> replicaPartitionList = routingStrategy.getReplicatingPartitionList(primary);
+
+                // Because we only want the replicas and "outingStrategy.getReplicatingPartitionList(primary)"
+                // gives you also the primary we would have to remove the
+                // primary from the list.
+                replicaPartitionList.remove(primary);
+
+                // Get the node that this replicating partition belongs to.
+                for (Integer replicaPartition : replicaPartitionList) {
+                    Integer replicaNodeId = partitionToNodeIdMap.get(replicaPartition);
+
+                    // The replicating node will have a copy of primary.
+                    nodeIdToReplicas.get(replicaNodeId).add(primary);
+                }
+            }
+        }
+        return nodeIdToReplicas;
+    }
+
+    /**
+     * @return Reverse lookup from partitionId-to-NodeID. This is a Map of the
+     *         information found
+     *         in cluster.xml.
+     */
+    private Map<Integer, Integer> getPartitionToNode(final Collection<Node> nodes) {
+        final Map<Integer, Integer> partitionToNodeIdMap = new LinkedHashMap<Integer, Integer>();
+
+        // For each node in the cluster, get its partitions (shards in VShards
+        // terminology)
+        for (Node node : nodes) {
+            for (Integer partitionId : node.getPartitionIds()) {
+
+                // Make sure that this same partition was NOT configured in
+                // another
+                // Node. If so then throw an exception and let me know
+                // the Nodes that shared this bad partition id.
+                Integer previousRegisteredNodeId = partitionToNodeIdMap.get(partitionId);
+                if (previousRegisteredNodeId != null) {
+                    throw new IllegalArgumentException("Partition id " + partitionId + " found in 2 nodes ID's: " + node.getId() + " and " + previousRegisteredNodeId);
+                }
+
+                partitionToNodeIdMap.put(partitionId, node.getId());
+            }
+        }
+
+        return partitionToNodeIdMap;
     }
 
     /**
@@ -438,7 +560,7 @@ public class RebalanceClusterPlan {
      *            The id of the stealer node
      * @return Returns a list of partitions which this stealer node will get
      */
-    private List<Integer> getStealList(Cluster currentCluster,
+    private Set<Integer> getStealPrimaries(Cluster currentCluster,
                                        Cluster targetCluster,
                                        int stealNodeId) {
         List<Integer> targetList = new ArrayList<Integer>(targetCluster.getNodeById(stealNodeId)
@@ -451,87 +573,13 @@ public class RebalanceClusterPlan {
         // remove all current partitions from targetList
         targetList.removeAll(currentList);
 
-        return targetList;
-    }
-
-    /**
-     * For a particular stealer node id returns a mapping of donor node ids to
-     * their respective partition ids which we need to steal due to the change
-     * of replication
-     * 
-     * @param currentCluster
-     *            Current cluster definition
-     * @param targetCluster
-     *            Cluster definition of the target
-     * @param stealNodeId
-     *            The node id of the stealer node
-     * @param currentPartitionsToNodeMap
-     *            The mapping of current partitions to
-     *            their nodes
-     * @return Map of donor node ids to their partitions they'll donate
-     */
-    private Map<Integer, List<Integer>> getDonorToDonatedReplicaPartitions(Cluster currentCluster,
-                                                              Cluster targetCluster,
-                                                              int stealNodeId,
-                                                              Map<Integer, Integer> currentPartitionsToNodeMap) {
-        Map<Integer, List<Integer>> replicationMapping = new HashMap<Integer, List<Integer>>();
-        List<Integer> targetList = targetCluster.getNodeById(stealNodeId).getPartitionIds();
-
-        // get changing replication mapping
-        RebalanceClusterTool clusterTool = new RebalanceClusterTool(currentCluster,
-                                                                    RebalanceUtils.getMaxReplicationStore(this.storeDefList));
-        Multimap<Integer, Pair<Integer, Integer>> replicationChanges = clusterTool.getRemappedReplicas(targetCluster);
-
-        for (final Entry<Integer, Pair<Integer, Integer>> entry : replicationChanges.entries()) {
-            int newReplica = entry.getValue().getSecond();
-            if (targetList.contains(newReplica)) {
-                // stealerNode need to replicate some new partition now.
-                int donorNode = currentPartitionsToNodeMap.get(entry.getValue().getFirst());
-                if (donorNode != stealNodeId)
-                    createAndAdd(replicationMapping, donorNode, entry.getKey());
-            }
-        }
-
-        return replicationMapping;
-    }
-
-    /**
-     * Converts a list of partitions ids which a stealer is going to receive to
-     * a map of donor node ids to the corresponding partitions
-     * 
-     * @param stealList
-     *            The partitions ids going to be stolen
-     * @param currentPartitionsToNodeMap
-     *            Mapping of current partitions to their
-     *            respective nodes ids
-     * @return Returns a mapping of donor node ids to the partitions being
-     *         stolen
-     */
-    private Map<Integer, List<Integer>> getDonorToDonatedMasterPartitions(List<Integer> stealList,
-                                                                 Map<Integer, Integer> currentPartitionsToNodeMap) {
-        HashMap<Integer, List<Integer>> stealPartitionsMap = new HashMap<Integer, List<Integer>>();
-        for (int p : stealList) {
-            int donorNode = currentPartitionsToNodeMap.get(p);
-            createAndAdd(stealPartitionsMap, donorNode, p);
-        }
-
-        return stealPartitionsMap;
-    }
-
-    private void createAndAdd(Map<Integer, List<Integer>> map, int key, int value) {
-        // create array if needed
-        if (!map.containsKey(key)) {
-            map.put(key, new ArrayList<Integer>());
-        }
-
-        // add partition to list.
-        map.get(key).add(value);
+        return new TreeSet<Integer>(targetList);
     }
 
     @Override
     public String toString() {
         if (rebalanceTaskQueue.isEmpty()) {
-            return "Cluster is already balanced, No rebalancing needed";
+            return "Rebalance task queue is empty, No rebalancing needed";
         }
 
         StringBuilder builder = new StringBuilder();
@@ -558,6 +606,13 @@ public class RebalanceClusterPlan {
         }
 
         return builder.toString();
+    }
+
+    public String printPartitionDistribution() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Current Cluster: ").append(NL).append(printMap(clusterNodeIdToAllPartitions, currentCluster)).append(NL);
+        sb.append("Target Cluster: ").append(NL).append(printMap(targetNodeIdToAllPartitions, targetCluster)).append(NL);
+        return sb.toString();
     }
 
 }
