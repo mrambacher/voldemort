@@ -1,6 +1,8 @@
 /*
  * Copyright 2009 Mustard Grain, Inc., 2009-2010 LinkedIn, Inc.
  * 
+ * Portion Copyright 2010 Nokia Corporation. All rights reserved.
+ * 
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
  * the License at
@@ -16,17 +18,18 @@
 
 package voldemort.server.niosocket;
 
-import java.net.InetSocketAddress;
 import java.nio.channels.ClosedSelectorException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.util.Queue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.apache.log4j.Level;
 
 import voldemort.server.protocol.RequestHandlerFactory;
 import voldemort.utils.SelectorManager;
+import voldemort.utils.SelectorManagerWorker;
 
 /**
  * SelectorManager handles the non-blocking polling of IO events using the
@@ -91,21 +94,32 @@ import voldemort.utils.SelectorManager;
 
 public class NioSelectorManager extends SelectorManager {
 
-    private final InetSocketAddress endpoint;
-
     private final Queue<SocketChannel> socketChannelQueue;
+
+    private final BlockingQueue<SelectorManagerWorker> pendingRequests;
 
     private final RequestHandlerFactory requestHandlerFactory;
 
     private final int socketBufferSize;
+    private final long requestTimeoutMs;
 
-    public NioSelectorManager(InetSocketAddress endpoint,
-                              RequestHandlerFactory requestHandlerFactory,
-                              int socketBufferSize) {
-        this.endpoint = endpoint;
+    /**
+     * Creates a new NioSelectorManager
+     * 
+     * @param requestHandlerFactory The factory for handling incoming requests
+     * @param socketBufferSize The size of the socket buffer for server sockets
+     * @param requestTimeoutMs The maximum time requests are expected to take
+     * @param requests A queue on which to place incoming requests
+     */
+    public NioSelectorManager(RequestHandlerFactory requestHandlerFactory,
+                              int socketBufferSize,
+                              long requestTimeoutMs,
+                              BlockingQueue<SelectorManagerWorker> requests) {
+        this.pendingRequests = requests;
         this.socketChannelQueue = new ConcurrentLinkedQueue<SocketChannel>();
         this.requestHandlerFactory = requestHandlerFactory;
         this.socketBufferSize = socketBufferSize;
+        this.requestTimeoutMs = requestTimeoutMs;
     }
 
     public void accept(SocketChannel socketChannel) {
@@ -116,15 +130,68 @@ public class NioSelectorManager extends SelectorManager {
         selector.wakeup();
     }
 
+    /**
+     * Processes the request for the selection key This method processes the IO
+     * (read and write) operations in this thread but can redirect the "work"
+     * operations to a queue of requests (to increase parallelism and reduce
+     * latency).
+     * 
+     * @param selectionKey The key that was marked as ready
+     * @param worker The worker attached to that key
+     */
+    @Override
+    protected void processRequest(SelectionKey selectionKey, SelectorManagerWorker worker)
+            throws Exception {
+        // If the key is readable, read the request.
+        // If the read was a complete request, add it to the request queue (if
+        // there is one)
+        // or run it inline (if there is no queue).
+        if(selectionKey.isReadable()) {
+            if(worker.read()) {
+                if(pendingRequests != null) {
+                    // Before adding the request to the queue, mark the key as
+                    // "not readable"
+                    // Otherwise, we may be back here before the request has
+                    // been processed
+                    SocketChannel socketChannel = (SocketChannel) selectionKey.channel();
+                    this.markForOperation(socketChannel, selectionKey.interestOps()
+                                                         & (~SelectionKey.OP_READ));
+                    this.pendingRequests.add(worker);
+                } else {
+                    // Run the request. Since this is running in the selector
+                    // thread, there is
+                    // no need to clear the read bit here -- since the selector
+                    // is blocked and
+                    // will not be doing another select while the request is in
+                    // process.
+                    worker.run();
+                }
+            }
+        } else if(selectionKey.isWritable()) {
+            // Attempt the write operation. If it is complete, mark the channel
+            // as readable.
+            if(worker.write()) {
+                SocketChannel socketChannel = (SocketChannel) selectionKey.channel();
+                this.markForRead(socketChannel);
+            }
+        } else if(!selectionKey.isValid()) {
+            worker.close();
+        }
+    }
+
+    /**
+     * Registers new socket connections with the selector.
+     */
     @Override
     protected void processEvents() {
+        super.processEvents();
         try {
             SocketChannel socketChannel = null;
 
             while((socketChannel = socketChannelQueue.poll()) != null) {
                 if(isClosed.get()) {
                     if(logger.isInfoEnabled())
-                        logger.debug("Closed, exiting for " + endpoint);
+                        logger.debug("Closed, exiting");
 
                     break;
                 }
@@ -133,10 +200,10 @@ public class NioSelectorManager extends SelectorManager {
                     if(logger.isDebugEnabled())
                         logger.debug("Registering connection from "
                                      + socketChannel.socket().getPort());
-
                     socketChannel.socket().setTcpNoDelay(true);
                     socketChannel.socket().setReuseAddress(true);
                     socketChannel.socket().setSendBufferSize(socketBufferSize);
+                    socketChannel.socket().setReceiveBufferSize(socketBufferSize);
 
                     if(socketChannel.socket().getReceiveBufferSize() != this.socketBufferSize)
                         if(logger.isDebugEnabled())
@@ -152,12 +219,13 @@ public class NioSelectorManager extends SelectorManager {
                                          + socketChannel.socket().getSendBufferSize() + " bytes.");
 
                     socketChannel.configureBlocking(false);
-                    AsyncRequestHandler attachment = new AsyncRequestHandler(selector,
+                    AsyncRequestHandler attachment = new AsyncRequestHandler(this,
                                                                              socketChannel,
                                                                              requestHandlerFactory,
-                                                                             socketBufferSize);
+                                                                             socketBufferSize,
+                                                                             requestTimeoutMs);
 
-                    if(!isClosed.get())
+                    if(isOpen())
                         socketChannel.register(selector, SelectionKey.OP_READ, attachment);
                 } catch(ClosedSelectorException e) {
                     if(logger.isDebugEnabled())
@@ -176,5 +244,4 @@ public class NioSelectorManager extends SelectorManager {
                 logger.error(e.getMessage(), e);
         }
     }
-
 }

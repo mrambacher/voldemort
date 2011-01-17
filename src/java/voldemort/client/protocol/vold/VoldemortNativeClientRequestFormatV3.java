@@ -27,8 +27,9 @@ public class VoldemortNativeClientRequestFormatV3 extends VoldemortNativeClientR
     }
 
     @Override
-    protected int getHeaderSize(byte operation, String storeName, RequestRoutingType routingType)
-            throws IOException {
+    protected int getHeaderSize(VoldemortOpCode operation,
+                                String storeName,
+                                RequestRoutingType routingType) throws IOException {
         // 1 byte for VoldemortOpCode
         // N bytes for store name
         // 1 byte for RequestRoutingType
@@ -40,7 +41,7 @@ public class VoldemortNativeClientRequestFormatV3 extends VoldemortNativeClientR
                                        String storeName,
                                        ByteArray key,
                                        RequestRoutingType routingType) throws IOException {
-        int requestSize = getHeaderSize(VoldemortOpCode.GET_OP_CODE, storeName, routingType)
+        int requestSize = getHeaderSize(VoldemortOpCode.GET, storeName, routingType)
                           + VoldemortNativeProtocol.getKeyRequestSize(key);
 
         outputStream.writeInt(requestSize);
@@ -51,7 +52,7 @@ public class VoldemortNativeClientRequestFormatV3 extends VoldemortNativeClientR
                                     ByteArray key,
                                     Version version,
                                     RequestRoutingType routingType) throws IOException {
-        return getHeaderSize(VoldemortOpCode.DELETE_OP_CODE, storeName, routingType)
+        return getHeaderSize(VoldemortOpCode.DELETE, storeName, routingType)
                + VoldemortNativeProtocol.getKeyRequestSize(key) + this.getVersionSize(version);
     }
 
@@ -66,7 +67,7 @@ public class VoldemortNativeClientRequestFormatV3 extends VoldemortNativeClientR
 
         outputStream.writeInt(requestSize);
 
-        writeMessageHeader(outputStream, VoldemortOpCode.DELETE_OP_CODE, storeName, routingType);
+        writeMessageHeader(outputStream, VoldemortOpCode.DELETE, storeName, routingType);
 
         VoldemortNativeProtocol.writeKey(outputStream, key);
         writeVersion(outputStream, version);
@@ -77,7 +78,7 @@ public class VoldemortNativeClientRequestFormatV3 extends VoldemortNativeClientR
                                     Iterable<ByteArray> keys,
                                     Map<ByteArray, byte[]> transforms,
                                     RequestRoutingType routingType) throws IOException {
-        int requestSize = getHeaderSize(VoldemortOpCode.GET_ALL_OP_CODE, storeName, routingType) + 4; // Header
+        int requestSize = getHeaderSize(VoldemortOpCode.GET_ALL, storeName, routingType) + 4; // Header
         // +
         // list
         // size
@@ -104,7 +105,7 @@ public class VoldemortNativeClientRequestFormatV3 extends VoldemortNativeClientR
                                  ByteArray key,
                                  byte[] transforms,
                                  RequestRoutingType routingType) throws IOException {
-        int requestSize = getHeaderSize(VoldemortOpCode.GET_OP_CODE, storeName, routingType)
+        int requestSize = getHeaderSize(VoldemortOpCode.GET, storeName, routingType)
                           + VoldemortNativeProtocol.getKeyRequestSize(key);
         return requestSize;
     }
@@ -127,7 +128,7 @@ public class VoldemortNativeClientRequestFormatV3 extends VoldemortNativeClientR
                                  Versioned<byte[]> versioned,
                                  byte[] transforms,
                                  RequestRoutingType routingType) throws IOException {
-        return getHeaderSize(VoldemortOpCode.PUT_OP_CODE, storeName, routingType)
+        return getHeaderSize(VoldemortOpCode.PUT, storeName, routingType)
                + VoldemortNativeProtocol.getKeyRequestSize(key) + getVersionedSize(versioned);
     }
 

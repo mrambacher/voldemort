@@ -1,6 +1,8 @@
 /*
  * Copyright 2009 Mustard Grain, Inc., 2009-2010 LinkedIn, Inc.
  * 
+ * Portion Copyright 2010 Nokia Corporation. All rights reserved.
+ * 
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
  * the License at
@@ -18,11 +20,10 @@ package voldemort.utils;
 
 import java.io.EOFException;
 import java.io.IOException;
+import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.CancelledKeyException;
-import java.nio.channels.ClosedByInterruptException;
-import java.nio.channels.SelectionKey;
-import java.nio.channels.Selector;
+import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -42,13 +43,14 @@ import org.apache.log4j.Logger;
 
 public abstract class SelectorManagerWorker implements Runnable {
 
-    protected final Selector selector;
+    protected Timer timer;
+    protected final SelectorManager manager;
 
     protected final SocketChannel socketChannel;
 
     protected final int socketBufferSize;
 
-    protected final int resizeThreshold;
+    private final int resizeThreshold;
 
     protected final ByteBufferBackedInputStream inputStream;
 
@@ -60,10 +62,11 @@ public abstract class SelectorManagerWorker implements Runnable {
 
     protected final Logger logger = Logger.getLogger(getClass());
 
-    public SelectorManagerWorker(Selector selector,
+    public SelectorManagerWorker(SelectorManager manager,
                                  SocketChannel socketChannel,
-                                 int socketBufferSize) {
-        this.selector = selector;
+                                 int socketBufferSize,
+                                 long requestTimeoutMs) {
+        this.manager = manager;
         this.socketChannel = socketChannel;
         this.socketBufferSize = socketBufferSize;
         this.resizeThreshold = socketBufferSize * 2; // This is arbitrary...
@@ -71,14 +74,115 @@ public abstract class SelectorManagerWorker implements Runnable {
         this.outputStream = new ByteBufferBackedOutputStream(ByteBuffer.allocate(socketBufferSize));
         this.createTimestamp = System.nanoTime();
         this.isClosed = new AtomicBoolean(false);
+        this.timer = new Timer("Request[" + socketChannel.socket().getRemoteSocketAddress() + "]",
+                               requestTimeoutMs);
 
         if(logger.isDebugEnabled())
             logger.debug("Accepting remote connection from " + socketChannel.socket());
     }
 
-    protected abstract void read(SelectionKey selectionKey) throws IOException;
+    public SocketAddress getRemoteSocketAddress() {
+        return socketChannel.socket().getRemoteSocketAddress();
+    }
 
-    protected abstract void write(SelectionKey selectionKey) throws IOException;
+    public void addCheckpoint(String point) {
+        timer.checkpoint(point);
+    }
+
+    protected void markCompleted(String message) {
+        timer.completed(message, logger);
+        timer.reset();
+    }
+
+    protected long getDuration() {
+        return timer.getDuration();
+    }
+
+    public boolean read() throws IOException {
+        int count = 0;
+        ByteBuffer inputBuffer = inputStream.getBuffer();
+        if((count = socketChannel.read(inputBuffer)) == -1)
+            throw new EOFException("EOF for " + getRemoteSocketAddress());
+
+        if(logger.isTraceEnabled())
+            traceInputBufferState(inputBuffer, "Read " + count + " bytes");
+
+        if(count == 0) {
+            return false;
+        }
+        // Take note of the position after we read the bytes. We'll need it in
+        // case of incomplete reads later on down the method.
+        final int position = inputBuffer.position();
+        // Flip the buffer, set our limit to the current position and then set
+        // the position to 0 in preparation for reading in the RequestHandler.
+        inputBuffer.flip();
+        if(isCompleteRequest(inputBuffer, position)) {
+            addCheckpoint("Read Complete");
+            inputBuffer.rewind();
+            return true;
+        } else {
+            addCheckpoint("Read " + count + "/" + inputBuffer.capacity() + "/"
+                          + inputBuffer.remaining());
+            return false;
+        }
+    }
+
+    abstract protected void runRequest() throws IOException;
+
+    public void run() {
+        try {
+            addCheckpoint("Running request");
+            runRequest();
+            if(!timer.isComplete()) {
+                addCheckpoint("Request Complete");
+            }
+        } catch(ClosedChannelException e) {
+            close();
+        } catch(CancelledKeyException e) {
+            close();
+        } catch(EOFException e) {
+            close();
+        } catch(Throwable t) {
+            if(logger.isEnabledFor(Level.ERROR))
+                logger.error(t.getMessage(), t);
+            close();
+        }
+    }
+
+    abstract protected boolean isCompleteRequest(ByteBuffer buffer, int position)
+            throws IOException;
+
+    public boolean write() throws IOException {
+        ByteBuffer outputBuffer = outputStream.getBuffer();
+        if(outputBuffer.hasRemaining()) {
+            // If we have data, write what we can now...
+            int count = socketChannel.write(outputBuffer);
+            addCheckpoint("Wrote " + count);
+
+            if(logger.isTraceEnabled()) {
+                logger.trace("Wrote " + count + " bytes, remaining: " + outputBuffer.remaining()
+                             + " for " + getRemoteSocketAddress());
+            }
+        } else if(logger.isTraceEnabled()) {
+            logger.trace("Wrote no bytes for " + getRemoteSocketAddress());
+        }
+        // If there's more to write but we didn't write it, we'll take that to
+        // mean that we're done here. We don't clear or reset anything. We leave
+        // our buffer state where it is and try our luck next time.
+        if(outputBuffer.hasRemaining()) {
+            return false;
+        } else {
+            // If we don't have anything else to write, that means we're done
+            // with the request! So clear the buffers (resizing if necessary).
+            if(outputBuffer.capacity() >= resizeThreshold) {
+                outputStream.setBuffer(ByteBuffer.allocate(socketBufferSize));
+            } else {
+                outputBuffer.clear();
+            }
+            addCheckpoint("Write Complete");
+            return true;
+        }
+    }
 
     /**
      * Returns the nanosecond-based timestamp of when this was created.
@@ -88,34 +192,6 @@ public abstract class SelectorManagerWorker implements Runnable {
 
     public long getCreateTimestamp() {
         return createTimestamp;
-    }
-
-    public void run() {
-        try {
-            SelectionKey selectionKey = socketChannel.keyFor(selector);
-
-            if(selectionKey.isReadable())
-                read(selectionKey);
-            else if(selectionKey.isWritable())
-                write(selectionKey);
-            else if(!selectionKey.isValid())
-                throw new IllegalStateException("Selection key not valid for "
-                                                + socketChannel.socket());
-            else
-                throw new IllegalStateException("Unknown state, not readable, writable, or valid for "
-                                                + socketChannel.socket());
-        } catch(ClosedByInterruptException e) {
-            close();
-        } catch(CancelledKeyException e) {
-            close();
-        } catch(EOFException e) {
-            close();
-        } catch(Throwable t) {
-            if(logger.isEnabledFor(Level.ERROR))
-                logger.error(t.getMessage(), t);
-
-            close();
-        }
     }
 
     public void close() {
@@ -146,17 +222,8 @@ public abstract class SelectorManagerWorker implements Runnable {
             if(logger.isEnabledFor(Level.WARN))
                 logger.warn(e.getMessage(), e);
         }
-
-        SelectionKey selectionKey = socketChannel.keyFor(selector);
-
-        if(selectionKey != null) {
-            try {
-                selectionKey.attach(null);
-                selectionKey.cancel();
-            } catch(Exception e) {
-                if(logger.isEnabledFor(Level.WARN))
-                    logger.warn(e.getMessage(), e);
-            }
+        if(socketChannel.isRegistered()) {
+            manager.markForClose(socketChannel);
         }
     }
 
@@ -170,49 +237,56 @@ public abstract class SelectorManagerWorker implements Runnable {
      * @param selectionKey
      */
 
-    protected void prepForWrite(SelectionKey selectionKey) {
+    protected void resetInputBuffer() {
+        ByteBuffer inputBuffer = inputStream.getBuffer();
         if(logger.isTraceEnabled())
-            traceInputBufferState("About to clear read buffer");
+            traceInputBufferState(inputBuffer, "About to clear read buffer");
 
-        if(inputStream.getBuffer().capacity() >= resizeThreshold)
+        if(inputBuffer.capacity() >= resizeThreshold) {
             inputStream.setBuffer(ByteBuffer.allocate(socketBufferSize));
-        else
-            inputStream.getBuffer().clear();
-
+        } else {
+            inputBuffer.clear();
+        }
         if(logger.isTraceEnabled())
-            traceInputBufferState("Cleared read buffer");
-
-        outputStream.getBuffer().flip();
-        selectionKey.interestOps(SelectionKey.OP_WRITE);
+            traceInputBufferState(inputStream.getBuffer(), "Cleared read buffer");
     }
 
-    protected void handleIncompleteRequest(int newPosition) {
+    protected void prepareOutputBuffer() {
+        resetInputBuffer();
+
+        outputStream.getBuffer().flip();
+    }
+
+    protected int getRecommendedRequestCapacity(ByteBuffer inputBuffer) {
+        return inputBuffer.capacity() * 2;
+    }
+
+    protected void handleIncompleteRequest(ByteBuffer inputBuffer, int newPosition) {
         if(logger.isTraceEnabled())
-            traceInputBufferState("Incomplete read request detected, before update");
+            traceInputBufferState(inputBuffer, "Incomplete read request detected, before update");
 
-        inputStream.getBuffer().position(newPosition);
-        inputStream.getBuffer().limit(inputStream.getBuffer().capacity());
+        inputBuffer.position(newPosition);
+        inputBuffer.limit(inputBuffer.capacity());
 
         if(logger.isTraceEnabled())
-            traceInputBufferState("Incomplete read request detected, after update");
+            traceInputBufferState(inputBuffer, "Incomplete read request detected, after update");
 
-        if(!inputStream.getBuffer().hasRemaining()) {
+        if(!inputBuffer.hasRemaining()) {
             // We haven't read all the data needed for the request AND we
             // don't have enough data in our buffer. So expand it. Note:
             // doubling the current buffer size is arbitrary.
             inputStream.setBuffer(ByteUtils.expand(inputStream.getBuffer(),
-                                                   inputStream.getBuffer().capacity() * 2));
+                                                   getRecommendedRequestCapacity(inputBuffer)));
 
             if(logger.isTraceEnabled())
-                traceInputBufferState("Expanded input buffer");
+                traceInputBufferState(inputStream.getBuffer(), "Expanded input buffer");
         }
     }
 
-    protected void traceInputBufferState(String preamble) {
-        logger.trace(preamble + " - position: " + inputStream.getBuffer().position() + ", limit: "
-                     + inputStream.getBuffer().limit() + ", remaining: "
-                     + inputStream.getBuffer().remaining() + ", capacity: "
-                     + inputStream.getBuffer().capacity() + " - for " + socketChannel.socket());
+    protected void traceInputBufferState(ByteBuffer inputBuffer, String preamble) {
+        logger.trace(preamble + " - position: " + inputBuffer.position() + ", limit: "
+                     + inputBuffer.limit() + ", remaining: " + inputBuffer.remaining()
+                     + ", capacity: " + inputBuffer.capacity() + " - for " + socketChannel.socket());
     }
 
 }

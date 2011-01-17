@@ -164,21 +164,21 @@ public class ServerTestUtils {
                                                          int maxConnections,
                                                          int bufferSize) {
         AbstractSocketService socketService = null;
-        ThreadPoolExecutor threadPool = new ThreadPoolExecutor(coreConnections,
-                                                               maxConnections,
-                                                               0,
-                                                               TimeUnit.MILLISECONDS,
-                                                               new SynchronousQueue<Runnable>());
         if(useNio) {
             socketService = new NioSocketService(requestHandlerFactory,
                                                  port,
-                                                 bufferSize,
                                                  2,
+                                                 bufferSize,
                                                  coreConnections,
                                                  50,
                                                  "client-request-service",
                                                  false);
         } else {
+            ThreadPoolExecutor threadPool = new ThreadPoolExecutor(coreConnections,
+                                                                   maxConnections,
+                                                                   0,
+                                                                   TimeUnit.MILLISECONDS,
+                                                                   new SynchronousQueue<Runnable>());
             socketService = new SocketService(requestHandlerFactory,
                                               threadPool,
                                               port,
@@ -246,7 +246,7 @@ public class ServerTestUtils {
                              "localhost",
                              port,
                              new HttpClient(),
-                             new RequestFormatFactory().getRequestFormat(format),
+                             RequestFormatFactory.getRequestFormat(format),
                              false);
     }
 

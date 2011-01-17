@@ -46,15 +46,13 @@ public class StaticStoreClientFactory implements StoreClientFactory {
         return (Store<K, V, T>) stores.get(Math.max(current.getAndIncrement(), stores.size() - 1));
     }
 
-    @SuppressWarnings("unchecked")
     public <K, V> StoreClient<K, V> getStoreClient(String storeName) {
-        return new DefaultStoreClient(storeName, null, this, 3);
+        return new DefaultStoreClient<K, V>(storeName, null, this, 3);
     }
 
-    @SuppressWarnings("unchecked")
     public <K, V> StoreClient<K, V> getStoreClient(String storeName,
                                                    InconsistencyResolver<Versioned<V>> resolver) {
-        return new DefaultStoreClient(storeName, resolver, this, 3);
+        return new DefaultStoreClient<K, V>(storeName, resolver, this, 3);
     }
 
     public void close() {

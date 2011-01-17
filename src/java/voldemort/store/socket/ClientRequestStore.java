@@ -18,9 +18,6 @@ package voldemort.store.socket;
 import java.util.List;
 import java.util.Map;
 
-import voldemort.client.protocol.RequestFormat;
-import voldemort.client.protocol.RequestFormatFactory;
-import voldemort.client.protocol.RequestFormatType;
 import voldemort.server.RequestRoutingType;
 import voldemort.store.NoSuchCapabilityException;
 import voldemort.store.StoreCapabilityType;
@@ -39,65 +36,42 @@ import voldemort.versioning.Versioned;
 
 public class ClientRequestStore implements CallableStore<ByteArray, byte[], byte[]> {
 
-    private static final RequestFormatFactory requestFormatFactory = new RequestFormatFactory();
-
     private final String storeName;
-    private final RequestFormat requestFormat;
-    private final RequestRoutingType requestRoutingType;
+    private final RequestRoutingType routingType;
 
-    public ClientRequestStore(String storeName,
-                              RequestRoutingType requestRoutingType,
-                              RequestFormatType requestFormatType) {
-        this(storeName,
-             requestRoutingType,
-             requestFormatFactory.getRequestFormat(requestFormatType));
-    }
-
-    public ClientRequestStore(String storeName,
-                              RequestRoutingType requestRoutingType,
-                              RequestFormat requestFormat) {
+    public ClientRequestStore(String storeName, RequestRoutingType requestRoutingType) {
         this.storeName = Utils.notNull(storeName);
-        this.requestFormat = requestFormat;
-        this.requestRoutingType = requestRoutingType;
+        this.routingType = requestRoutingType;
     }
 
     public ClientRequest<Boolean> callDelete(ByteArray key, Version version) {
         StoreUtils.assertValidKey(key);
-        return new DeleteClientRequest(storeName, requestFormat, requestRoutingType, key, version);
+        return new DeleteClientRequest(storeName, key, version, routingType);
     }
 
     public ClientRequest<List<Versioned<byte[]>>> callGet(ByteArray key, byte[] transform) {
         StoreUtils.assertValidKey(key);
-        return new GetClientRequest(storeName, requestFormat, requestRoutingType, key, transform);
+        return new GetClientRequest(storeName, key, transform, routingType);
     }
 
     public ClientRequest<Map<ByteArray, List<Versioned<byte[]>>>> callGetAll(Iterable<ByteArray> keys,
                                                                              Map<ByteArray, byte[]> transforms) {
         StoreUtils.assertValidKeys(keys);
-        return new GetAllClientRequest(storeName,
-                                       requestFormat,
-                                       requestRoutingType,
-                                       keys,
-                                       transforms);
+        return new GetAllClientRequest(storeName, keys, transforms, routingType);
     }
 
     public ClientRequest<List<Version>> callGetVersions(ByteArray key) {
         StoreUtils.assertValidKey(key);
-        return new GetVersionsClientRequest(storeName, requestFormat, requestRoutingType, key);
+        return new GetVersionsClientRequest(storeName, key, routingType);
     }
 
     public ClientRequest<Version> callPut(ByteArray key, Versioned<byte[]> value, byte[] transform) {
         StoreUtils.assertValidKey(key);
-        return new PutClientRequest(storeName,
-                                    requestFormat,
-                                    requestRoutingType,
-                                    key,
-                                    value,
-                                    transform);
+        return new PutClientRequest(storeName, key, value, transform, routingType);
     }
 
     public void close() {
-    // Do nothing
+        // Do nothing
     }
 
     public String getName() {

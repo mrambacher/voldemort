@@ -28,6 +28,7 @@ import java.util.Map;
 import org.apache.log4j.Logger;
 
 import voldemort.VoldemortException;
+import voldemort.client.protocol.ClientRequestFormat;
 import voldemort.client.protocol.RequestFormat;
 import voldemort.client.protocol.RequestFormatType;
 import voldemort.protocol.vold.VoldemortNativeProtocol;
@@ -57,22 +58,130 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
         mapper = new ErrorCodeMapper();
     }
 
+    public ClientRequestFormat<List<Versioned<byte[]>>> createGetRequest(final String storeName,
+                                                                         final ByteArray key,
+                                                                         final byte[] transforms,
+                                                                         final RequestRoutingType routing) {
+        return new ClientRequestFormat<List<Versioned<byte[]>>>() {
+
+            public boolean writeRequest(DataOutputStream outputStream) throws IOException {
+                writeGetRequest(outputStream, storeName, key, transforms, routing);
+                return true;
+            }
+
+            public boolean isCompleteResponse(ByteBuffer buffer) {
+                return isCompleteGetResponse(buffer);
+            }
+
+            public List<Versioned<byte[]>> readResponse(DataInputStream inputStream)
+                    throws IOException {
+                return readGetResponse(inputStream);
+            }
+        };
+    }
+
+    public ClientRequestFormat<Map<ByteArray, List<Versioned<byte[]>>>> createGetAllRequest(final String storeName,
+                                                                                            final Iterable<ByteArray> key,
+                                                                                            final Map<ByteArray, byte[]> transforms,
+                                                                                            final RequestRoutingType routing) {
+        return new ClientRequestFormat<Map<ByteArray, List<Versioned<byte[]>>>>() {
+
+            public boolean writeRequest(DataOutputStream outputStream) throws IOException {
+                writeGetAllRequest(outputStream, storeName, key, transforms, routing);
+                return true;
+            }
+
+            public boolean isCompleteResponse(ByteBuffer buffer) {
+                return isCompleteGetAllResponse(buffer);
+            }
+
+            public Map<ByteArray, List<Versioned<byte[]>>> readResponse(DataInputStream inputStream)
+                    throws IOException {
+                return readGetAllResponse(inputStream);
+            }
+        };
+    }
+
+    public ClientRequestFormat<List<Version>> createGetVersionsRequest(final String storeName,
+                                                                       final ByteArray key,
+                                                                       final RequestRoutingType routing) {
+        return new ClientRequestFormat<List<Version>>() {
+
+            public boolean writeRequest(DataOutputStream outputStream) throws IOException {
+                writeGetVersionRequest(outputStream, storeName, key, routing);
+                return true;
+            }
+
+            public boolean isCompleteResponse(ByteBuffer buffer) {
+                return isCompleteGetVersionResponse(buffer);
+            }
+
+            public List<Version> readResponse(DataInputStream inputStream) throws IOException {
+                return readGetVersionResponse(inputStream);
+            }
+        };
+    }
+
+    public ClientRequestFormat<Boolean> createDeleteRequest(final String storeName,
+                                                            final ByteArray key,
+                                                            final Version version,
+                                                            final RequestRoutingType routing) {
+        return new ClientRequestFormat<Boolean>() {
+
+            public boolean writeRequest(DataOutputStream outputStream) throws IOException {
+                writeDeleteRequest(outputStream, storeName, key, version, routing);
+                return true;
+            }
+
+            public boolean isCompleteResponse(ByteBuffer buffer) {
+                return isCompleteDeleteResponse(buffer);
+            }
+
+            public Boolean readResponse(DataInputStream inputStream) throws IOException {
+                return readDeleteResponse(inputStream);
+            }
+        };
+    }
+
+    public ClientRequestFormat<Version> createPutRequest(final String storeName,
+                                                         final ByteArray key,
+                                                         final Versioned<byte[]> value,
+                                                         final byte[] transforms,
+                                                         final RequestRoutingType routing) {
+        return new ClientRequestFormat<Version>() {
+
+            public boolean writeRequest(DataOutputStream outputStream) throws IOException {
+                writePutRequest(outputStream, storeName, key, value, transforms, routing);
+                return true;
+            }
+
+            public boolean isCompleteResponse(ByteBuffer buffer) {
+                return isCompletePutResponse(buffer);
+            }
+
+            public Version readResponse(DataInputStream inputStream) throws IOException {
+                return readPutResponse(inputStream);
+            }
+        };
+    }
+
     protected RequestFormatType getProtocol() {
         return RequestFormatType.VOLDEMORT_V1;
     }
 
     protected void writeMessageHeader(DataOutputStream outputStream,
-                                      byte operation,
+                                      VoldemortOpCode operation,
                                       String storeName,
                                       RequestRoutingType routingType) throws IOException {
-        outputStream.writeByte(operation);
+        outputStream.writeByte(operation.asCode());
         outputStream.writeUTF(storeName);
         outputStream.writeBoolean(routingType.equals(RequestRoutingType.ROUTED));
     }
 
     @SuppressWarnings("unused")
-    protected int getHeaderSize(byte operation, String storeName, RequestRoutingType routingType)
-            throws IOException {
+    protected int getHeaderSize(VoldemortOpCode operation,
+                                String storeName,
+                                RequestRoutingType routingType) throws IOException {
         int headerSize = 1 + // Operation is a byte
         VoldemortNativeProtocol.getStringRequestSize(storeName) + 1; // Size of
         // boolean
@@ -85,7 +194,7 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
                                    Version version,
                                    RequestRoutingType routingType) throws IOException {
         StoreUtils.assertValidKey(key);
-        writeMessageHeader(outputStream, VoldemortOpCode.DELETE_OP_CODE, storeName, routingType);
+        writeMessageHeader(outputStream, VoldemortOpCode.DELETE, storeName, routingType);
         VoldemortNativeProtocol.writeKey(outputStream, key);
 
         // Unlike other methods, delete used shorts not ints
@@ -94,7 +203,7 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
     }
 
     public boolean isCompleteDeleteResponse(ByteBuffer buffer) {
-        return isCompleteResponse(buffer, VoldemortOpCode.DELETE_OP_CODE);
+        return isCompleteResponse(buffer, VoldemortOpCode.DELETE);
     }
 
     public boolean readDeleteResponse(DataInputStream inputStream) throws IOException {
@@ -140,13 +249,14 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
         outputStream.write(bytes);
     }
 
+    @SuppressWarnings("unused")
     public void writeGetRequest(DataOutputStream outputStream,
                                 String storeName,
                                 ByteArray key,
                                 byte[] transforms,
                                 RequestRoutingType routingType) throws IOException {
         StoreUtils.assertValidKey(key);
-        writeMessageHeader(outputStream, VoldemortOpCode.GET_OP_CODE, storeName, routingType);
+        writeMessageHeader(outputStream, VoldemortOpCode.GET, storeName, routingType);
         VoldemortNativeProtocol.writeKey(outputStream, key);
     }
 
@@ -156,7 +266,7 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
     }
 
     public boolean isCompleteGetResponse(ByteBuffer buffer) {
-        return isCompleteResponse(buffer, VoldemortOpCode.GET_OP_CODE);
+        return isCompleteResponse(buffer, VoldemortOpCode.GET);
     }
 
     public void writeGetAllRequest(DataOutputStream output,
@@ -179,7 +289,7 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
                                       List<ByteArray> keys,
                                       Map<ByteArray, byte[]> transforms,
                                       RequestRoutingType routingType) throws IOException {
-        this.writeMessageHeader(output, VoldemortOpCode.GET_ALL_OP_CODE, storeName, routingType);
+        this.writeMessageHeader(output, VoldemortOpCode.GET_ALL, storeName, routingType);
         output.writeInt(keys.size());
         for(ByteArray key: keys) {
             VoldemortNativeProtocol.writeKey(output, key);
@@ -187,7 +297,7 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
     }
 
     public boolean isCompleteGetAllResponse(ByteBuffer buffer) {
-        return isCompleteResponse(buffer, VoldemortOpCode.GET_ALL_OP_CODE);
+        return isCompleteResponse(buffer, VoldemortOpCode.GET_ALL);
     }
 
     public Map<ByteArray, List<Versioned<byte[]>>> readGetAllResponse(DataInputStream stream)
@@ -202,6 +312,7 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
         return results;
     }
 
+    @SuppressWarnings("unused")
     public void writePutRequest(DataOutputStream outputStream,
                                 String storeName,
                                 ByteArray key,
@@ -209,13 +320,13 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
                                 byte[] transforms,
                                 RequestRoutingType routingType) throws IOException {
         StoreUtils.assertValidKey(key);
-        this.writeMessageHeader(outputStream, VoldemortOpCode.PUT_OP_CODE, storeName, routingType);
+        this.writeMessageHeader(outputStream, VoldemortOpCode.PUT, storeName, routingType);
         VoldemortNativeProtocol.writeKey(outputStream, key);
         writeVersioned(outputStream, versioned);
     }
 
     public boolean isCompletePutResponse(ByteBuffer buffer) {
-        return isCompleteResponse(buffer, VoldemortOpCode.PUT_OP_CODE);
+        return isCompleteResponse(buffer, VoldemortOpCode.PUT);
     }
 
     public Version readPutResponse(DataInputStream inputStream) throws IOException {
@@ -244,7 +355,7 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
     }
 
     public boolean isCompleteGetVersionResponse(ByteBuffer buffer) {
-        return isCompleteResponse(buffer, VoldemortOpCode.GET_VERSION_OP_CODE);
+        return isCompleteResponse(buffer, VoldemortOpCode.GET_VERSION);
     }
 
     public List<Version> readGetVersionResponse(DataInputStream stream) throws IOException {
@@ -262,35 +373,37 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
                                        ByteArray key,
                                        RequestRoutingType routingType) throws IOException {
         StoreUtils.assertValidKey(key);
-        this.writeMessageHeader(output, VoldemortOpCode.GET_VERSION_OP_CODE, storeName, routingType);
+        this.writeMessageHeader(output, VoldemortOpCode.GET_VERSION, storeName, routingType);
         VoldemortNativeProtocol.writeKey(output, key);
     }
 
-    private boolean isCompleteResponse(ByteBuffer buffer, byte opCode) {
+    private boolean isCompleteResponse(ByteBuffer buffer, VoldemortOpCode operation) {
         DataInputStream inputStream = new DataInputStream(new ByteBufferBackedInputStream(buffer));
 
         try {
             try {
-                switch(opCode) {
-                    case VoldemortOpCode.GET_OP_CODE:
+                switch(operation) {
+                    case GET:
                         readGetResponse(inputStream);
                         break;
 
-                    case VoldemortOpCode.GET_VERSION_OP_CODE:
+                    case GET_VERSION:
                         readGetVersionResponse(inputStream);
                         break;
 
-                    case VoldemortOpCode.GET_ALL_OP_CODE:
+                    case GET_ALL:
                         readGetAllResponse(inputStream);
                         break;
 
-                    case VoldemortOpCode.DELETE_OP_CODE:
+                    case DELETE:
                         readDeleteResponse(inputStream);
                         break;
 
-                    case VoldemortOpCode.PUT_OP_CODE:
+                    case PUT:
                         readPutResponse(inputStream);
                         break;
+                    default:
+                        throw new VoldemortException("Unexpected response code " + operation);
                 }
             } catch(VoldemortException e) {
                 // Ignore application-level exceptions

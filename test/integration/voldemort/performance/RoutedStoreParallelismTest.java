@@ -104,7 +104,9 @@ public class RoutedStoreParallelismTest {
               .ofType(Integer.class);
         parser.accepts("num-clients",
                        "The number of threads to make requests concurrently  Default = "
-                               + DEFAULT_NUM_CLIENTS).withRequiredArg().ofType(Integer.class);
+                               + DEFAULT_NUM_CLIENTS)
+              .withRequiredArg()
+              .ofType(Integer.class);
         parser.accepts("routed-store-type",
                        "Type of routed store, either \"" + THREAD_POOL_ROUTED_STORE + "\" or \""
                                + PIPELINE_ROUTED_STORE + "\"  Default = "
@@ -211,7 +213,6 @@ public class RoutedStoreParallelismTest {
                                                                   DistributedStoreFactory.create(stores,
                                                                                                  storeDefinition,
                                                                                                  cluster,
-                                                                                                 failureDetector,
                                                                                                  0));
 
         ExecutorService runner = Executors.newFixedThreadPool(numClients);
@@ -228,7 +229,7 @@ public class RoutedStoreParallelismTest {
                             try {
                                 routedStore.get(key, null);
                             } catch(VoldemortException e) {
-                                // 
+                                //
                             }
                         }
                     }

@@ -1,6 +1,8 @@
 /*
  * Copyright 2009 Mustard Grain, Inc., 2009-2010 LinkedIn, Inc.
  * 
+ * Portion Copyright 2010 Nokia Corporation. All rights reserved.
+ * 
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
  * the License at
@@ -16,11 +18,17 @@
 
 package voldemort.utils;
 
+import java.io.EOFException;
 import java.io.IOException;
+import java.nio.channels.AsynchronousCloseException;
+import java.nio.channels.CancelledKeyException;
 import java.nio.channels.ClosedSelectorException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
 import java.util.Iterator;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.log4j.Level;
@@ -90,11 +98,16 @@ import voldemort.VoldemortException;
 
 public class SelectorManager implements Runnable {
 
+    public static final int SELECT_OP_CLOSE = -1;
     public static final int SELECTOR_POLL_MS = 500;
 
     protected final Selector selector;
 
     protected final AtomicBoolean isClosed;
+
+    private long myThreadId;
+
+    private final ConcurrentMap<SocketChannel, Integer> pendingSelectors;
 
     protected final Logger logger = Logger.getLogger(getClass());
 
@@ -105,40 +118,41 @@ public class SelectorManager implements Runnable {
             throw new VoldemortException(e);
         }
 
+        this.pendingSelectors = new ConcurrentHashMap<SocketChannel, Integer>();
         this.isClosed = new AtomicBoolean(false);
     }
 
-    public void close() {
-        // Attempt to close, but if already closed, then we've been beaten to
-        // the punch...
-        if(!isClosed.compareAndSet(false, true))
-            return;
+    public boolean isOpen() {
+        return !isClosed.get();
+    }
 
+    protected void processClose() {
         try {
-            for(SelectionKey sk: selector.keys()) {
-                try {
-                    if(logger.isTraceEnabled())
-                        logger.trace("Closing SelectionKey's channel");
+            if(selector.isOpen()) {
+                for(SelectionKey sk: selector.keys()) {
+                    try {
+                        if(logger.isTraceEnabled())
+                            logger.trace("Closing SelectionKey's channel");
+                        sk.channel().close();
+                    } catch(Exception e) {
+                        if(logger.isEnabledFor(Level.WARN))
+                            logger.warn(e.getMessage(), e);
+                    }
 
-                    sk.channel().close();
-                } catch(Exception e) {
-                    if(logger.isEnabledFor(Level.WARN))
-                        logger.warn(e.getMessage(), e);
-                }
+                    try {
+                        if(logger.isTraceEnabled())
+                            logger.trace("Cancelling SelectionKey");
 
-                try {
-                    if(logger.isTraceEnabled())
-                        logger.trace("Cancelling SelectionKey");
-
-                    sk.cancel();
-                } catch(Exception e) {
-                    if(logger.isEnabledFor(Level.WARN))
-                        logger.warn(e.getMessage(), e);
+                        sk.cancel();
+                    } catch(Exception e) {
+                        if(logger.isEnabledFor(Level.WARN))
+                            logger.warn(e.getMessage(), e);
+                    }
                 }
             }
         } catch(Exception e) {
             if(logger.isEnabledFor(Level.WARN))
-                logger.warn(e.getMessage(), e);
+                logger.warn(e.getMessage() + myThreadId, e);
         }
 
         try {
@@ -149,32 +163,98 @@ public class SelectorManager implements Runnable {
         }
     }
 
+    public void close() {
+        // Attempt to close, but if already closed, then we've been beaten to
+        // the punch...
+        if(!isClosed.compareAndSet(false, true)) {
+            return;
+        }
+        while(selector.isOpen()) {
+            try {
+                selector.wakeup();
+                if(logger.isEnabledFor(Level.INFO))
+                    logger.info("Waiting for selector to close");
+                Thread.sleep(100);
+            } catch(InterruptedException e) {
+
+            }
+        }
+    }
+
     /**
-     * This is a stub method to process any "events" before we go back to
-     * select-ing again. This is the place to process queues for registering new
-     * Channel instances, for example.
+     * This method toggles the state of the pending socket select operations.
+     * This method runs through the pending socket select operators and updates
+     * the state of the selection key. This method is run by the Selector
+     * thread.
      */
 
     protected void processEvents() {
+        for(SocketChannel socketChannel: pendingSelectors.keySet()) {
+            int operation = pendingSelectors.get(socketChannel);
+            if(this.markForOperation(socketChannel, operation)) {
+                pendingSelectors.remove(socketChannel, operation);
+            }
+        }
+    }
+
+    protected void processRequest(SelectionKey selectionKey, SelectorManagerWorker worker)
+            throws Exception {
+        if(selectionKey.isReadable()) {
+            if(worker.read()) {
+                worker.run();
+            }
+        } else if(selectionKey.isWritable()) {
+            if(worker.write()) {
+                SocketChannel socketChannel = (SocketChannel) selectionKey.channel();
+                this.markForRead(socketChannel);
+            }
+        } else if(!selectionKey.isValid()) {
+            worker.close();
+        }
+    }
+
+    protected void processSelectionKey(SelectionKey selectionKey) {
+        SelectorManagerWorker worker = (SelectorManagerWorker) selectionKey.attachment();
+        try {
+            processRequest(selectionKey, worker);
+        } catch(AsynchronousCloseException e) {
+            worker.close();
+        } catch(CancelledKeyException e) {
+            worker.close();
+        } catch(EOFException e) {
+            worker.close();
+        } catch(Throwable t) {
+            if(logger.isEnabledFor(Level.ERROR))
+                logger.error(t.getMessage(), t);
+
+            worker.close();
+        }
 
     }
 
+    /**
+     * The main thread method for the SelectorManager. Loops until an error
+     * occurs or until it is closed processing requests from the selector.
+     */
     public void run() {
+        myThreadId = Thread.currentThread().getId();
         try {
             while(true) {
                 if(isClosed.get()) {
                     if(logger.isInfoEnabled())
                         logger.info("Closed, exiting");
-
                     break;
                 }
 
+                // Update any events waiting for this selector
                 processEvents();
 
                 try {
+                    // Perform a select.
                     int selected = selector.select(SELECTOR_POLL_MS);
 
                     if(isClosed.get()) {
+                        // Break out if the selector was closed
                         if(logger.isInfoEnabled())
                             logger.info("Closed, exiting");
 
@@ -184,14 +264,12 @@ public class SelectorManager implements Runnable {
                     if(selected > 0) {
                         Iterator<SelectionKey> i = selector.selectedKeys().iterator();
 
-                        while(i.hasNext()) {
+                        // Loop through each selected key and process its
+                        // actions
+                        while(isOpen() && i.hasNext()) {
                             SelectionKey selectionKey = i.next();
                             i.remove();
-
-                            if(selectionKey.isReadable() || selectionKey.isWritable()) {
-                                Runnable worker = (Runnable) selectionKey.attachment();
-                                worker.run();
-                            }
+                            this.processSelectionKey(selectionKey);
                         }
                     }
                 } catch(ClosedSelectorException e) {
@@ -209,12 +287,95 @@ public class SelectorManager implements Runnable {
                 logger.error(t.getMessage(), t);
         } finally {
             try {
-                close();
+                if(logger.isEnabledFor(Level.DEBUG))
+                    logger.debug("Closing select manager");
+                processClose();
             } catch(Exception e) {
                 if(logger.isEnabledFor(Level.ERROR))
                     logger.error(e.getMessage(), e);
             }
         }
+        if(logger.isEnabledFor(Level.DEBUG))
+            logger.debug("Select manager is exiting");
     }
 
+    /**
+     * Marks the socket channel as available for read
+     * 
+     * @param socketChannel The socket channel being updated
+     * @return
+     */
+    public boolean markForRead(SocketChannel socketChannel) {
+        return markForOperation(socketChannel, SelectionKey.OP_READ);
+    }
+
+    /**
+     * Marks the socket channel as available for write
+     * 
+     * @param socketChannel The socket channel being updated
+     * @return
+     */
+    public boolean markForWrite(SocketChannel socketChannel) {
+        return markForOperation(socketChannel, SelectionKey.OP_WRITE);
+    }
+
+    /**
+     * Marks the socket channel as available for close
+     * 
+     * @param socketChannel The socket channel being updated
+     * @return
+     */
+    public boolean markForClose(SocketChannel socketChannel) {
+        return markForOperation(socketChannel, SELECT_OP_CLOSE);
+    }
+
+    /**
+     * Updates the state of the channel with the selector
+     * 
+     * @param operation The operation for the selector for this channel.
+     * @param socketChannel The socket channel being updated
+     * @return
+     */
+    public boolean markForOperation(SocketChannel socketChannel, int operation) {
+        // If the selector is already closed, just return immediately
+        if(isClosed.get()) {
+            if(logger.isInfoEnabled())
+                logger.info("Skipping mark for " + socketChannel.socket() + " on closed selector");
+            return true;
+        } else if(this.myThreadId != Thread.currentThread().getId()) {
+            // If the operation is not being performed by the selector thread,
+            // add it to the queue
+            // and kick the selector.
+            this.pendingSelectors.put(socketChannel, operation);
+            this.selector.wakeup();
+            return true;
+        } else {
+            // The operation is being performed by the selector thread,
+            // Update the selection key.
+            // Because of the non-thread-safe nature of selectors and keys, this
+            // work must be done
+            // by the selector thread.
+            try {
+                SelectionKey selectionKey = socketChannel.keyFor(selector);
+                if(selectionKey != null) {
+                    // On close, detach the key from the selector and cancel
+                    // events
+                    if(operation == SELECT_OP_CLOSE) {
+                        selectionKey.attach(null);
+                        selectionKey.cancel();
+                    } else {
+                        // Not close, just flip the interested operations
+                        selectionKey.interestOps(operation);
+                    }
+                    return true;
+                }
+            } catch(CancelledKeyException e) {
+
+            } catch(Exception e) {
+                if(logger.isEnabledFor(Level.WARN))
+                    logger.warn(e.getMessage(), e);
+            }
+            return false;
+        }
+    }
 }

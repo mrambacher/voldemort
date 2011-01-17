@@ -30,9 +30,14 @@ import voldemort.client.protocol.vold.VoldemortNativeClientRequestFormatV4;
  */
 public class RequestFormatFactory {
 
-    public RequestFormatFactory() {}
-
-    public RequestFormat getRequestFormat(RequestFormatType type) {
+    /**
+     * Returns a request format object of the appropriate type for the input
+     * type
+     * 
+     * @param type The type of the request to return
+     * @return The request object represented by that type
+     */
+    public static RequestFormat getRequestFormat(RequestFormatType type) {
         switch(type) {
             case VOLDEMORT_V1:
                 return new VoldemortNativeClientRequestFormat();

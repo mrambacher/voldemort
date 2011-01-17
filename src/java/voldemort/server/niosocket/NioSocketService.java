@@ -23,6 +23,7 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -37,6 +38,7 @@ import voldemort.server.StatusManager;
 import voldemort.server.VoldemortConfig;
 import voldemort.server.protocol.RequestHandlerFactory;
 import voldemort.utils.DaemonThreadFactory;
+import voldemort.utils.SelectorManagerWorker;
 
 /**
  * NioSocketService is an NIO-based socket service, comparable to the
@@ -59,6 +61,7 @@ import voldemort.utils.DaemonThreadFactory;
 public class NioSocketService extends AbstractSocketService {
 
     private static final int SHUTDOWN_TIMEOUT_MS = 15000;
+    private static final long REQUEST_TIMEOUT_MS = 1000;
 
     private final RequestHandlerFactory requestHandlerFactory;
 
@@ -74,18 +77,26 @@ public class NioSocketService extends AbstractSocketService {
 
     private final StatusManager statusManager;
 
+    private final int socketListenQueueLength;
+
+    private final int workers;
+
+    private final ExecutorService workerThreads;
+
+    private LinkedBlockingQueue<SelectorManagerWorker> pendingRequests;
     private final Thread acceptorThread;
 
     private final Logger logger = Logger.getLogger(getClass());
 
     public NioSocketService(RequestHandlerFactory requestHandlerFactory,
                             int port,
+                            int selectors,
                             String serviceName,
                             VoldemortConfig config) {
         this(requestHandlerFactory,
              port,
+             selectors,
              config.getSocketBufferSize(),
-             config.getNioConnectorSelectors(),
              config.getNioWorkerThreads(),
              config.getSocketListenQueueLength(),
              serviceName,
@@ -94,10 +105,10 @@ public class NioSocketService extends AbstractSocketService {
 
     public NioSocketService(RequestHandlerFactory requestHandlerFactory,
                             int port,
-                            int socketBufferSize,
                             int selectors,
-                            int workerThreads,
-                            int listenQueueLength,
+                            int socketBufferSize,
+                            int workers,
+                            int socketListenQueueLength,
                             String serviceName,
                             boolean enableJmx) {
         super(ServiceType.SOCKET, port, serviceName, enableJmx);
@@ -117,6 +128,16 @@ public class NioSocketService extends AbstractSocketService {
                                                                       new DaemonThreadFactory("voldemort-niosocket-server"));
         this.statusManager = new StatusManager((ThreadPoolExecutor) this.selectorManagerThreadPool);
         this.acceptorThread = new Thread(new Acceptor(), "NioSocketService.Acceptor");
+        this.workers = workers;
+        if(workers > 0) {
+            this.workerThreads = Executors.newFixedThreadPool(workers,
+                                                              new DaemonThreadFactory("voldemort-niosocket-worker"));
+            this.pendingRequests = new LinkedBlockingQueue<SelectorManagerWorker>();
+        } else {
+            pendingRequests = null;
+            workerThreads = null;
+        }
+        this.socketListenQueueLength = socketListenQueueLength;
     }
 
     @Override
@@ -131,14 +152,23 @@ public class NioSocketService extends AbstractSocketService {
                         + port);
 
         try {
+            for(int i = 0; i < workers; i++) {
+                this.workerThreads.execute(new NioWorkerThread(this.pendingRequests));
+            }
             for(int i = 0; i < selectorManagers.length; i++) {
-                selectorManagers[i] = new NioSelectorManager(endpoint,
-                                                             requestHandlerFactory,
-                                                             socketBufferSize);
+                selectorManagers[i] = new NioSelectorManager(requestHandlerFactory,
+                                                             socketBufferSize,
+                                                             REQUEST_TIMEOUT_MS,
+                                                             pendingRequests);
                 selectorManagerThreadPool.execute(selectorManagers[i]);
             }
 
-            serverSocketChannel.socket().bind(endpoint);
+            if(socketListenQueueLength > 0) {
+                serverSocketChannel.socket().bind(endpoint, socketListenQueueLength);
+            } else {
+                // let jdk default kick in for queue length
+                serverSocketChannel.socket().bind(endpoint);
+            }
             serverSocketChannel.socket().setReceiveBufferSize(socketBufferSize);
             serverSocketChannel.socket().setReuseAddress(true);
 
@@ -175,6 +205,9 @@ public class NioSocketService extends AbstractSocketService {
                 logger.warn(e.getMessage(), e);
         }
 
+        if(workerThreads != null) {
+            this.workerThreads.shutdown();
+        }
         try {
             // We close instead of interrupting the thread pool. Why? Because as
             // of 0.70, the SelectorManager services RequestHandler in the same

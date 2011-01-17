@@ -11,6 +11,7 @@ import voldemort.cluster.failuredetector.FailureDetector;
 import voldemort.serialization.IdentitySerializer;
 import voldemort.serialization.Serializer;
 import voldemort.serialization.SlopSerializer;
+import voldemort.serialization.VoldemortOpCode;
 import voldemort.store.StoreDefinition;
 import voldemort.store.async.AsynchronousStore;
 import voldemort.store.async.StoreFuture;
@@ -110,7 +111,7 @@ public class HintedHandoffStore extends
         // **TODO: This is what it should be:
         // byte[] data = VersionFactory.toBytes(value, serializer);
         byte[] data = value.getValue();
-        return new HintedHandoffFuture<Version>(AsynchronousStore.Operations.PUT.name(),
+        return new HintedHandoffFuture<Version>(VoldemortOpCode.PUT.getMethodName(),
                                                 future,
                                                 putBuilder,
                                                 Slop.Operation.PUT,
@@ -133,7 +134,7 @@ public class HintedHandoffStore extends
                                                                      nodes,
                                                                      preferred,
                                                                      required);
-        return new HintedHandoffFuture<Boolean>(AsynchronousStore.Operations.DELETE.name(),
+        return new HintedHandoffFuture<Boolean>(VoldemortOpCode.DELETE.getMethodName(),
                                                 future,
                                                 deleteBuilder,
                                                 Slop.Operation.DELETE,

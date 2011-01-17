@@ -19,6 +19,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
+import voldemort.serialization.VoldemortOpCode;
 import voldemort.store.StoreDefinition;
 import voldemort.store.async.AsynchronousStore;
 import voldemort.store.async.StoreFuture;
@@ -45,13 +46,13 @@ public class DistributedParallelStore<N, K, V, T> extends AbstractDistributedSto
         super(stores, storeDef, unique);
     }
 
-    protected <R> DistributedFutureTask<N, R> submit(AsynchronousStore.Operations operation,
+    protected <R> DistributedFutureTask<N, R> submit(VoldemortOpCode operation,
                                                      Map<N, StoreFuture<R>> futures,
                                                      ResultsBuilder<N, R> builder,
                                                      int available,
                                                      int preferred,
                                                      int required) {
-        return new DistributedFutureTask<N, R>(operation.name(),
+        return new DistributedFutureTask<N, R>(operation.getMethodName(),
                                                futures,
                                                builder,
                                                available,
@@ -59,7 +60,7 @@ public class DistributedParallelStore<N, K, V, T> extends AbstractDistributedSto
                                                required);
     }
 
-    protected <R> DistributedFutureTask<N, R> submit(AsynchronousStore.Operations operation,
+    protected <R> DistributedFutureTask<N, R> submit(VoldemortOpCode operation,
                                                      Map<N, StoreFuture<R>> futures,
                                                      ResultsBuilder<N, R> builder,
                                                      int preferred,
@@ -77,7 +78,7 @@ public class DistributedParallelStore<N, K, V, T> extends AbstractDistributedSto
         for(N node: nodes) {
             futures.put(node, submitGet(node, key, transform));
         }
-        return submit(AsynchronousStore.Operations.GET, futures, getBuilder, preferred, required);
+        return submit(VoldemortOpCode.GET, futures, getBuilder, preferred, required);
     }
 
     @Override
@@ -92,11 +93,7 @@ public class DistributedParallelStore<N, K, V, T> extends AbstractDistributedSto
         ResultsBuilder<N, Map<K, List<Versioned<V>>>> getAllBuilder = DistributedStoreFactory.GetAllBuilder(nodesToKeys,
                                                                                                             required,
                                                                                                             makeUnique);
-        return submit(AsynchronousStore.Operations.GETALL,
-                      futures,
-                      getAllBuilder,
-                      nodesToKeys.size(),
-                      1);
+        return submit(VoldemortOpCode.GET_ALL, futures, getAllBuilder, nodesToKeys.size(), 1);
     }
 
     @Override
@@ -110,11 +107,7 @@ public class DistributedParallelStore<N, K, V, T> extends AbstractDistributedSto
         for(N node: nodes) {
             futures.put(node, submitPut(node, key, value, transform));
         }
-        return submit(AsynchronousStore.Operations.PUT,
-                      futures,
-                      this.putBuilder,
-                      preferred,
-                      required);
+        return submit(VoldemortOpCode.PUT, futures, this.putBuilder, preferred, required);
     }
 
     @Override
@@ -127,11 +120,7 @@ public class DistributedParallelStore<N, K, V, T> extends AbstractDistributedSto
         for(N node: nodes) {
             futures.put(node, submitDelete(node, key, version));
         }
-        return submit(AsynchronousStore.Operations.DELETE,
-                      futures,
-                      this.deleteBuilder,
-                      preferred,
-                      required);
+        return submit(VoldemortOpCode.DELETE, futures, this.deleteBuilder, preferred, required);
     }
 
     @Override
@@ -143,7 +132,7 @@ public class DistributedParallelStore<N, K, V, T> extends AbstractDistributedSto
         for(N node: nodes) {
             futures.put(node, submitGetVersions(node, key));
         }
-        return submit(AsynchronousStore.Operations.GETVERSIONS,
+        return submit(VoldemortOpCode.GET_VERSION,
                       futures,
                       this.versionsBuilder,
                       preferred,

@@ -65,7 +65,7 @@ public class ClientRequestExecutorPool implements SocketStoreFactory {
         ResourcePoolConfig config = new ResourcePoolConfig().setIsFair(true)
                                                             .setMaxPoolSize(maxConnectionsPerNode)
                                                             .setMaxInvalidAttempts(maxConnectionsPerNode)
-                                                            .setTimeout(connectionTimeoutMs,
+                                                            .setTimeout(soTimeoutMs,
                                                                         TimeUnit.MILLISECONDS);
         this.factory = new ClientRequestExecutorFactory(selectors,
                                                         connectionTimeoutMs,
@@ -99,6 +99,10 @@ public class ClientRequestExecutorPool implements SocketStoreFactory {
                                                        port,
                                                        requestFormatType);
         return new SocketStore(Utils.notNull(storeName), dest, this, requestRoutingType);
+    }
+
+    public long getSocketTimeout() {
+        return factory.getTimeout();
     }
 
     /**

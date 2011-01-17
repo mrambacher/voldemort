@@ -23,11 +23,13 @@ import java.util.List;
 import java.util.Properties;
 
 import voldemort.client.protocol.RequestFormatType;
+import voldemort.cluster.Cluster;
 import voldemort.cluster.failuredetector.FailureDetectorConfig;
 import voldemort.server.scheduler.slop.StreamingSlopPusherJob;
 import voldemort.store.bdb.BdbStorageConfiguration;
 import voldemort.store.memory.CacheStorageConfiguration;
 import voldemort.store.memory.InMemoryStorageConfiguration;
+import voldemort.store.metadata.MetadataStore;
 import voldemort.store.mysql.MysqlStorageConfiguration;
 import voldemort.store.readonly.BinarySearchStrategy;
 import voldemort.store.readonly.ReadOnlyStorageConfiguration;
@@ -52,7 +54,7 @@ public class VoldemortConfig implements Serializable {
     public static int VOLDEMORT_DEFAULT_ADMIN_PORT = 6660;
 
     private int nodeId;
-
+    private MetadataStore metadata;
     private String voldemortHome;
     private String dataDirectory;
     private String metadataDirectory;
@@ -226,6 +228,7 @@ public class VoldemortConfig implements Serializable {
 
         this.socketTimeoutMs = props.getInt("socket.timeout.ms", 4000);
         this.socketBufferSize = (int) props.getBytes("socket.buffer.size", 32 * 1024);
+        this.socketListenQueueLength = props.getInt("socket.listen.queue.length", 0);
         this.socketKeepAlive = props.getBoolean("socket.keepalive", false);
 
         this.useNioConnector = props.getBoolean("enable.nio.connector", false);
@@ -1256,5 +1259,21 @@ public class VoldemortConfig implements Serializable {
             }
         }
         return result;
+    }
+
+    public MetadataStore getMetadataStore() {
+        if(metadata == null) {
+            synchronized(this) {
+                if(metadata == null) {
+                    this.metadata = MetadataStore.readFromDirectory(new File(this.getMetadataDirectory()),
+                                                                    getNodeId());
+                }
+            }
+        }
+        return metadata;
+    }
+
+    public Cluster getCluster() {
+        return getMetadataStore().getCluster();
     }
 }

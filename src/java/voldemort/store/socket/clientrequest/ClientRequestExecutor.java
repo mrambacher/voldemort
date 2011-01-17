@@ -1,6 +1,8 @@
 /*
  * Copyright 2008-2010 LinkedIn, Inc
  * 
+ * Portion Copyright 2010 Nokia Corporation. All rights reserved.
+ * 
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
  * the License at
@@ -18,19 +20,20 @@ package voldemort.store.socket.clientrequest;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
-import java.io.EOFException;
 import java.io.IOException;
 import java.net.Socket;
 import java.nio.ByteBuffer;
-import java.nio.channels.SelectionKey;
-import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 
 import org.apache.log4j.Level;
 
+import voldemort.VoldemortException;
+import voldemort.client.protocol.RequestFormat;
+import voldemort.client.protocol.RequestFormatFactory;
+import voldemort.client.protocol.RequestFormatType;
+import voldemort.utils.ByteUtils;
 import voldemort.utils.SelectorManager;
 import voldemort.utils.SelectorManagerWorker;
-import voldemort.utils.Time;
 
 /**
  * ClientRequestExecutor represents a persistent link between a client and
@@ -48,149 +51,245 @@ import voldemort.utils.Time;
 
 public class ClientRequestExecutor extends SelectorManagerWorker {
 
-    private ClientRequest<?> clientRequest;
+    private ClientRequest<?> currentRequest;
+    private RequestFormat requestFormat = null;
+    private final RequestFormatType requestFormatType;
 
-    private long expiration;
-
-    public ClientRequestExecutor(Selector selector,
+    public ClientRequestExecutor(SelectorManager manager,
                                  SocketChannel socketChannel,
-                                 int socketBufferSize) {
-        super(selector, socketChannel, socketBufferSize);
+                                 int socketBufferSize,
+                                 long socketTimeoutMs,
+                                 RequestFormatType formatType) {
+        super(manager, socketChannel, socketBufferSize, socketTimeoutMs);
+        this.requestFormatType = formatType;
+        this.requestFormat = null;
+        currentRequest = null;
     }
 
+    /**
+     * Returns the socket channel associated with this request
+     * 
+     * @return
+     */
     public SocketChannel getSocketChannel() {
         return socketChannel;
     }
 
+    /**
+     * Returns whether or not the requestor is still valid. A requestor is still
+     * valid if the socket is not closed and if it is connected or pending
+     * connection.
+     * 
+     * @return true if the connection is still valid and false otherwise
+     */
     public boolean isValid() {
-        if(isClosed())
+        if(isClosed()) {
             return false;
-
-        Socket s = socketChannel.socket();
-        return !s.isClosed() && s.isBound() && s.isConnected();
-    }
-
-    public synchronized boolean checkTimeout(SelectionKey selectionKey) {
-        if(expiration <= 0)
-            return true;
-
-        if(System.nanoTime() <= expiration)
-            return true;
-
-        if(logger.isEnabledFor(Level.WARN))
-            logger.warn("Client request associated with " + socketChannel.socket() + " timed out");
-
-        completeClientRequest();
-        selectionKey.interestOps(0);
-
-        return false;
-    }
-
-    public synchronized void addClientRequest(ClientRequest<?> clientRequest) {
-        addClientRequest(clientRequest, -1);
-    }
-
-    public synchronized void addClientRequest(ClientRequest<?> clientRequest, long timeoutMs) {
-        if(logger.isTraceEnabled())
-            logger.trace("Associating client with " + socketChannel.socket());
-
-        this.clientRequest = clientRequest;
-
-        if(timeoutMs == -1) {
-            this.expiration = -1;
-        } else {
-            timeoutMs -= SelectorManager.SELECTOR_POLL_MS;
-            this.expiration = System.nanoTime() + (Time.NS_PER_MS * timeoutMs);
-
-            if(this.expiration < System.nanoTime())
-                throw new IllegalArgumentException("timeout " + timeoutMs + " not valid");
         }
 
+        Socket s = socketChannel.socket();
+        if(socketChannel.isConnectionPending()) {
+            return !s.isClosed();
+        } else {
+            return !s.isClosed() && s.isBound() && s.isConnected();
+        }
+    }
+
+    /**
+     * Starts the protocol negotiation with the server.
+     */
+    public void startNegotiateProtocol() {
+        addCheckpoint("Negotiating Protocol");
+        this.writeClientRequest();
+    }
+
+    /**
+     * Completes the protocol negotiation with the server.
+     * 
+     * @param inputStream The stream containing the server response
+     * @throws IOException If there was an error reading from the stream.
+     */
+    public void finishNegotiateProtocol(DataInputStream inputStream) throws IOException {
+        byte[] responseBytes = new byte[2];
+        inputStream.readFully(responseBytes);
+        String result = ByteUtils.getString(responseBytes, "UTF-8");
+        addCheckpoint("Negotiation Complete");
+        if(result.equals("ok")) {
+            this.requestFormat = RequestFormatFactory.getRequestFormat(requestFormatType);
+        } else if(result.equals("no")) {
+            throw new VoldemortException(requestFormatType.getDisplayName()
+                                         + " is not an acceptable protcol for the server.");
+        } else {
+            throw new VoldemortException("Unknown server response: " + result);
+        }
+        if(this.currentRequest != null) {
+            this.writeClientRequest();
+        }
+    }
+
+    private boolean timeoutHasExpired() {
+        boolean hasExpired = currentRequest != null && currentRequest.hasExpired();
+        if(hasExpired) {
+            if(logger.isEnabledFor(Level.WARN))
+                logger.warn("Client request associated with " + socketChannel.socket()
+                            + " timed out");
+        }
+        return hasExpired;
+    }
+
+    /**
+     * Attempt to complete the socket connection.
+     * 
+     * @return true if the socket is now connected, false otherwise
+     * @throws IOException If an error occurs on the socket
+     */
+    public boolean finishConnect() throws IOException {
+        try {
+            SocketChannel socketChannel = getSocketChannel();
+            boolean connected;
+            if(socketChannel.isConnected()) {
+                connected = true;
+                if(logger.isDebugEnabled())
+                    logger.debug("Finishing connect on a socket that is already connected ("
+                                 + socketChannel.isConnectionPending() + ")"
+                                 + socketChannel.socket());
+            } else if(socketChannel.isConnectionPending()) {
+                connected = socketChannel.finishConnect();
+            } else {
+                connected = false;
+                if(logger.isDebugEnabled())
+                    logger.debug("Not connected or pending " + socketChannel.socket());
+            }
+            if(connected) {
+                addCheckpoint("Socket Connected");
+                if(logger.isDebugEnabled())
+                    logger.debug("Connected socket to "
+                                 + socketChannel.socket().getRemoteSocketAddress());
+
+                // check buffer sizes--you often don't get out what you put
+                // in!
+                if(socketChannel.socket().getReceiveBufferSize() != socketBufferSize)
+                    logger.debug("Requested socket receive buffer size was " + socketBufferSize
+                                 + " bytes but actual size is "
+                                 + socketChannel.socket().getReceiveBufferSize() + " bytes.");
+
+                if(socketChannel.socket().getSendBufferSize() != socketBufferSize)
+                    logger.debug("Requested socket send buffer size was " + socketBufferSize
+                                 + " bytes but actual size is "
+                                 + socketChannel.socket().getSendBufferSize() + " bytes.");
+            }
+            return connected;
+        } catch(IOException e) {
+            logger.error("Failed to connect socket " + socketChannel.socket() + " after "
+                         + getDuration() + " ms - " + e.getMessage(), e);
+            this.completeClientRequest(e);
+            close();
+            throw e;
+        }
+    }
+
+    /**
+     * Writes the client request to the socket. This method sends either the
+     * protocol negotiation or client message to the server. This method puts
+     * the output request into a buffer and writes it to the server. Upon
+     * completion, the selector is put into the correct state to either complete
+     * the request or read the response
+     * 
+     * @return True if the message was successfully built and sent, false
+     *         otherwise.
+     */
+    protected boolean writeClientRequest() {
         outputStream.getBuffer().clear();
 
-        boolean wasSuccessful = clientRequest.formatRequest(new DataOutputStream(outputStream));
-
-        if(logger.isTraceEnabled())
-            traceInputBufferState("About to clear read buffer");
-
-        if(inputStream.getBuffer().capacity() >= resizeThreshold)
-            inputStream.setBuffer(ByteBuffer.allocate(socketBufferSize));
-        else
-            inputStream.getBuffer().clear();
-
-        if(logger.isTraceEnabled())
-            traceInputBufferState("Cleared read buffer");
+        boolean wasSuccessful = true;
+        if(requestFormat == null) {
+            try {
+                DataOutputStream dos = new DataOutputStream(outputStream);
+                dos.write(ByteUtils.getBytes(requestFormatType.getCode(), "UTF-8"));
+            } catch(IOException e) {
+                wasSuccessful = false;
+            }
+        } else {
+            wasSuccessful = currentRequest.formatRequest(requestFormat,
+                                                         new DataOutputStream(outputStream));
+        }
+        this.resetInputBuffer();
 
         outputStream.getBuffer().flip();
 
         if(wasSuccessful) {
-            SelectionKey selectionKey = socketChannel.keyFor(selector);
+            try {
+                if(write()) {
+                    // If the write is complete, mark the channel for read
+                    manager.markForRead(this.socketChannel);
+                } else {
+                    // If the write is not done, mark the channel for write
+                    manager.markForWrite(this.socketChannel);
+                }
+            } catch(IOException e) {
 
-            if(selectionKey != null) {
-                selectionKey.interestOps(SelectionKey.OP_WRITE);
-
-                // This wakeup is required because it's invoked by the calling
-                // code in a different thread than the SelectorManager.
-                selector.wakeup();
-            } else {
-                if(logger.isDebugEnabled())
-                    logger.debug("Client associated with " + socketChannel.socket()
-                                 + " was not registered with Selector " + selector
-                                 + ", assuming initial protocol negotiation");
             }
         } else {
             if(logger.isEnabledFor(Level.WARN))
                 logger.warn("Client associated with " + socketChannel.socket()
                             + " did not successfully buffer output for request");
 
-            completeClientRequest();
+            completeClientRequest(null);
+        }
+        return wasSuccessful;
+    }
+
+    /**
+     * Sets the client request currently associated with this executor.
+     * 
+     * @param clientRequest The client request to send to the server.
+     * @param started The time at which the server request is starting
+     * @param expiration How long (in milliseconds) the request is allowed to
+     *        take.
+     */
+    public synchronized void addClientRequest(ClientRequest<?> clientRequest,
+                                              long started,
+                                              long expiration) {
+        if(logger.isTraceEnabled())
+            logger.trace("Associating client with " + socketChannel.socket());
+
+        timer.reset(started);
+        timer.setExpiration(expiration);
+        timer.setName(clientRequest.toString());
+        currentRequest = clientRequest;
+        if(this.requestFormat != null) {
+            // If protocol negotiation is complete, send the request now.
+            writeClientRequest();
         }
     }
 
     @Override
-    public void close() {
-        // Due to certain code paths, close may be called in a recursive
-        // fashion. Rather than trying to handle all of the cases, simply keep
-        // track of whether we've been called before and only perform the logic
-        // once.
-        if(!isClosed.compareAndSet(false, true))
-            return;
-
-        completeClientRequest();
-        closeInternal();
+    protected void closeInternal() {
+        completeClientRequest(null);
+        super.closeInternal();
     }
 
     @Override
-    protected void read(SelectionKey selectionKey) throws IOException {
-        if(!checkTimeout(selectionKey))
-            return;
-
-        int count = 0;
-
-        if((count = socketChannel.read(inputStream.getBuffer())) == -1)
-            throw new EOFException("EOF for " + socketChannel.socket());
-
-        if(logger.isTraceEnabled())
-            traceInputBufferState("Read " + count + " bytes");
-
-        if(count == 0)
-            return;
-
-        // Take note of the position after we read the bytes. We'll need it in
-        // case of incomplete reads later on down the method.
-        final int position = inputStream.getBuffer().position();
-
-        // Flip the buffer, set our limit to the current position and then set
-        // the position to 0 in preparation for reading in the RequestHandler.
-        inputStream.getBuffer().flip();
-
-        if(!clientRequest.isCompleteResponse(inputStream.getBuffer())) {
+    protected boolean isCompleteRequest(ByteBuffer inputBuffer, int position) throws IOException {
+        if(this.requestFormat == null) {
+            return true;
+        } else if(timeoutHasExpired()) {
+            return true;
+        } else if(currentRequest.isCompleteResponse(inputBuffer)) {
+            return true;
+        } else {
             // Ouch - we're missing some data for a full request, so handle that
             // and return.
-            handleIncompleteRequest(position);
-            return;
+            handleIncompleteRequest(inputBuffer, position);
+            return false;
         }
+    }
 
+    @Override
+    protected void runRequest() throws IOException {
+        if(timeoutHasExpired()) {
+
+        }
         // At this point we have the full request (and it's not streaming), so
         // rewind the buffer for reading and execute the request.
         inputStream.getBuffer().rewind();
@@ -198,51 +297,21 @@ public class ClientRequestExecutor extends SelectorManagerWorker {
         if(logger.isTraceEnabled())
             logger.trace("Starting read for " + socketChannel.socket());
 
-        clientRequest.parseResponse(new DataInputStream(inputStream));
-
-        // At this point we've completed a full stand-alone request. So clear
-        // our input buffer and prepare for outputting back to the client.
-        if(logger.isTraceEnabled())
-            logger.trace("Finished read for " + socketChannel.socket());
-
-        selectionKey.interestOps(0);
-        completeClientRequest();
-    }
-
-    @Override
-    protected void write(SelectionKey selectionKey) throws IOException {
-        if(!checkTimeout(selectionKey))
-            return;
-
-        if(outputStream.getBuffer().hasRemaining()) {
-            // If we have data, write what we can now...
-            int count = socketChannel.write(outputStream.getBuffer());
-
-            if(logger.isTraceEnabled())
-                logger.trace("Wrote " + count + " bytes, remaining: "
-                             + outputStream.getBuffer().remaining() + " for "
-                             + socketChannel.socket());
+        if(this.requestFormat == null) {
+            finishNegotiateProtocol(new DataInputStream(inputStream));
         } else {
+            currentRequest.parseResponse(new DataInputStream(inputStream));
+
+            // At this point we've completed a full stand-alone request. So
+            // clear
+            // our input buffer and prepare for outputting back to the client.
             if(logger.isTraceEnabled())
-                logger.trace("Wrote no bytes for " + socketChannel.socket());
+                logger.trace("Finished read for " + socketChannel.socket());
+            this.manager.markForOperation(socketChannel, 0); // Mark the socket
+                                                             // as
+            // not in use
+            completeClientRequest(null);
         }
-
-        // If there's more to write but we didn't write it, we'll take that to
-        // mean that we're done here. We don't clear or reset anything. We leave
-        // our buffer state where it is and try our luck next time.
-        if(outputStream.getBuffer().hasRemaining())
-            return;
-
-        // If we don't have anything else to write, that means we're done with
-        // the request! So clear the buffers (resizing if necessary).
-        if(outputStream.getBuffer().capacity() >= resizeThreshold)
-            outputStream.setBuffer(ByteBuffer.allocate(socketBufferSize));
-        else
-            outputStream.getBuffer().clear();
-
-        // If we're not streaming writes, signal the Selector that we're
-        // ready to read the next request.
-        selectionKey.interestOps(SelectionKey.OP_READ);
     }
 
     /**
@@ -254,23 +323,22 @@ public class ClientRequestExecutor extends SelectorManagerWorker {
      * maintenance.
      */
 
-    private synchronized void completeClientRequest() {
-        if(clientRequest == null) {
-            if(logger.isEnabledFor(Level.WARN))
-                logger.warn("No client associated with " + socketChannel.socket());
-
+    private synchronized void completeClientRequest(Exception ex) {
+        if(currentRequest == null) {
+            if(socketChannel.isConnected()) {
+                if(logger.isEnabledFor(Level.WARN))
+                    logger.warn("No client associated with " + socketChannel.socket());
+            }
             return;
         }
 
         // Sorry about this - please see the method comments...
-        ClientRequest<?> local = clientRequest;
-        clientRequest = null;
-        expiration = 0;
+        ClientRequest<?> local = currentRequest;
+        currentRequest = null;
 
-        local.complete();
-
+        super.markCompleted(local.getName());
+        local.markCompleted(ex);
         if(logger.isTraceEnabled())
             logger.trace("Marked client associated with " + socketChannel.socket() + " as complete");
     }
-
 }

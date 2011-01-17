@@ -31,26 +31,6 @@ import voldemort.versioning.Versioned;
  */
 public interface AsynchronousStore<K, V, T> {
 
-    public enum Operations {
-        GET("GET"),
-        GETALL("GETALL"),
-        PUT("PUT"),
-        DELETE("DELETE"),
-        GETVERSIONS("GETVERSIONS");
-
-        private String name;
-
-        private Operations(String name) {
-            this.name = name;
-        }
-
-        @Override
-        public String toString() {
-            return this.name;
-        }
-
-    }
-
     /**
      * Get the value associated with the given key
      * 

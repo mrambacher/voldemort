@@ -21,8 +21,10 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.concurrent.TimeUnit;
 
 import voldemort.VoldemortException;
+import voldemort.client.protocol.RequestFormat;
 import voldemort.store.UnreachableStoreException;
 import voldemort.store.async.StoreFutureTask;
 import voldemort.store.socket.clientrequest.ClientRequest;
@@ -34,7 +36,6 @@ public class SocketStoreFuture<V> extends StoreFutureTask<V> implements ClientRe
     private final SocketDestination destination;
     private final ClientRequestExecutorPool pool;
     private Thread thread;
-
     private V result;
     private VoldemortException exception;
     private boolean cancelled = false;
@@ -47,22 +48,23 @@ public class SocketStoreFuture<V> extends StoreFutureTask<V> implements ClientRe
                              SocketDestination destination,
                              ClientRequestExecutorPool pool) {
         super(operation);
-
         this.clientRequest = clientRequest;
         this.destination = destination;
         this.pool = pool;
         this.result = null;
         this.exception = null;
         this.thread = Thread.currentThread();
-
+        long started = System.currentTimeMillis();
         try {
             this.clientRequestExecutor = pool.checkout(destination);
             this.started = System.nanoTime();
         } catch(VoldemortException ex) {
+            this.exception = ex;
             this.markAsFailed(ex);
         }
         if(clientRequestExecutor != null) {
-            clientRequestExecutor.addClientRequest(this);
+            clientRequestExecutor.addCheckpoint("Checkout complete");
+            clientRequestExecutor.addClientRequest(this, started, pool.getSocketTimeout());
         }
     }
 
@@ -86,9 +88,9 @@ public class SocketStoreFuture<V> extends StoreFutureTask<V> implements ClientRe
         return isCancelled() || isDone();
     }
 
-    public void complete() {
+    public void markCompleted(Exception reason) {
         try {
-            clientRequest.complete();
+            clientRequest.markCompleted(reason);
             result = call();
             super.markAsCompleted(result);
         } catch(VoldemortException ex) {
@@ -105,12 +107,16 @@ public class SocketStoreFuture<V> extends StoreFutureTask<V> implements ClientRe
         }
     }
 
+    public String getName() {
+        return clientRequest.getName();
+    }
+
     public V call() throws VoldemortException, IOException {
         return clientRequest.call();
     }
 
-    public boolean formatRequest(DataOutputStream outputStream) {
-        return clientRequest.formatRequest(outputStream);
+    public boolean formatRequest(RequestFormat formatter, DataOutputStream outputStream) {
+        return clientRequest.formatRequest(formatter, outputStream);
     }
 
     @Override
@@ -128,5 +134,13 @@ public class SocketStoreFuture<V> extends StoreFutureTask<V> implements ClientRe
 
     public void parseResponse(DataInputStream inputStream) {
         clientRequest.parseResponse(inputStream);
+    }
+
+    public boolean hasExpired() {
+        return clientRequest.hasExpired();
+    }
+
+    public void setExpirationTime(long timeout, TimeUnit units) {
+        clientRequest.setExpirationTime(timeout, units);
     }
 }

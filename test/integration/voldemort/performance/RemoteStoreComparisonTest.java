@@ -174,7 +174,7 @@ public class RemoteStoreComparisonTest {
                                                   "localhost",
                                                   8080,
                                                   httpClient,
-                                                  new RequestFormatFactory().getRequestFormat(RequestFormatType.VOLDEMORT_V0),
+                                                  RequestFormatFactory.getRequestFormat(RequestFormatType.VOLDEMORT_V0),
                                                   false);
         Thread.sleep(400);
 

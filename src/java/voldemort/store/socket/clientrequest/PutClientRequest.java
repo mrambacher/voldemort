@@ -17,11 +17,11 @@
 package voldemort.store.socket.clientrequest;
 
 import java.io.DataInputStream;
-import java.io.DataOutputStream;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 
+import voldemort.client.protocol.ClientRequestFormat;
 import voldemort.client.protocol.RequestFormat;
+import voldemort.serialization.VoldemortOpCode;
 import voldemort.server.RequestRoutingType;
 import voldemort.utils.ByteArray;
 import voldemort.versioning.Version;
@@ -36,39 +36,33 @@ public class PutClientRequest extends AbstractStoreClientRequest<Version> {
     private final byte[] transforms;
 
     public PutClientRequest(String storeName,
-                            RequestFormat requestFormat,
-                            RequestRoutingType requestRoutingType,
                             ByteArray key,
                             Versioned<byte[]> versioned,
-                            byte[] transforms) {
-        super(storeName, requestFormat, requestRoutingType);
+                            byte[] transforms,
+                            RequestRoutingType routingType) {
+        super(VoldemortOpCode.PUT, storeName, routingType);
         this.key = key;
         this.versioned = versioned;
         this.transforms = transforms;
     }
 
-    public boolean isCompleteResponse(ByteBuffer buffer) {
-        return requestFormat.isCompletePutResponse(buffer);
+    @Override
+    public String toString() {
+        return "Request[" + name + "/" + storeName + "(" + new String(key.get()) + ")]";
     }
 
     @Override
-    protected void formatRequestInternal(DataOutputStream outputStream) throws IOException {
-        requestFormat.writePutRequest(outputStream,
-                                      storeName,
-                                      key,
-                                      versioned,
-                                      transforms,
-                                      requestRoutingType);
+    protected ClientRequestFormat<Version> getRequest(RequestFormat format) {
+        return format.createPutRequest(storeName, key, versioned, transforms, routingType);
     }
 
     @Override
     protected Version parseResponseInternal(DataInputStream inputStream) throws IOException {
-        Version result = requestFormat.readPutResponse(inputStream);
+        Version result = super.parseResponseInternal(inputStream);
         if(result != null) {
             return result;
         } else {
             return versioned.getVersion();
         }
     }
-
 }
