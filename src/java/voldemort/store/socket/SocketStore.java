@@ -19,10 +19,10 @@ package voldemort.store.socket;
 import java.util.concurrent.Callable;
 
 import voldemort.VoldemortException;
+import voldemort.serialization.VoldemortOpCode;
 import voldemort.server.RequestRoutingType;
 import voldemort.store.StoreCapabilityType;
 import voldemort.store.async.AsynchronousCallableStore;
-import voldemort.store.async.AsynchronousStore;
 import voldemort.store.async.StoreFuture;
 import voldemort.store.socket.clientrequest.ClientRequest;
 import voldemort.store.socket.clientrequest.ClientRequestExecutor;
@@ -52,7 +52,7 @@ public class SocketStore extends AsynchronousCallableStore<ByteArray, byte[], by
                        SocketDestination dest,
                        ClientRequestExecutorPool pool,
                        RequestRoutingType requestRoutingType) {
-        super(new ClientRequestStore(storeName, requestRoutingType, dest.getRequestFormatType()));
+        super(new ClientRequestStore(storeName, requestRoutingType));
         this.pool = Utils.notNull(pool);
         this.destination = dest;
     }
@@ -67,13 +67,13 @@ public class SocketStore extends AsynchronousCallableStore<ByteArray, byte[], by
 
     @Override
     public void close() throws VoldemortException {
-    // don't close the socket pool, it is shared
+        // don't close the socket pool, it is shared
     }
 
     @Override
-    protected <R> StoreFuture<R> submit(AsynchronousStore.Operations operation, Callable<R> task) {
+    protected <R> StoreFuture<R> submit(VoldemortOpCode operation, Callable<R> task) {
         ClientRequest<R> delegate = (ClientRequest<R>) task;
-        SocketStoreFuture<R> socketFuture = new SocketStoreFuture<R>(operation.name(),
+        SocketStoreFuture<R> socketFuture = new SocketStoreFuture<R>(operation.getMethodName(),
                                                                      delegate,
                                                                      destination,
                                                                      pool);
