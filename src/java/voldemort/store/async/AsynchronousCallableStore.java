@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 
 import voldemort.VoldemortException;
+import voldemort.serialization.VoldemortOpCode;
 import voldemort.store.NoSuchCapabilityException;
 import voldemort.store.StoreCapabilityType;
 import voldemort.versioning.Version;
@@ -52,13 +53,12 @@ abstract public class AsynchronousCallableStore<K, V, T> implements Asynchronous
      * @param callable The task to invoke
      * @return The store future representing this task.
      */
-    abstract protected <R> StoreFuture<R> submit(AsynchronousStore.Operations operation,
-                                                 Callable<R> callable);
+    abstract protected <R> StoreFuture<R> submit(VoldemortOpCode operation, Callable<R> callable);
 
     public StoreFuture<List<Versioned<V>>> submitGet(final K key, final T transform)
             throws VoldemortException {
         Callable<List<Versioned<V>>> callable = inner.callGet(key, transform);
-        return submit(AsynchronousStore.Operations.GET, callable);
+        return submit(VoldemortOpCode.GET, callable);
     }
 
     /**
@@ -75,7 +75,7 @@ abstract public class AsynchronousCallableStore<K, V, T> implements Asynchronous
                                                                 final Map<K, T> transforms)
             throws VoldemortException {
         Callable<Map<K, List<Versioned<V>>>> callable = inner.callGetAll(keys, transforms);
-        return submit(AsynchronousStore.Operations.GETALL, callable);
+        return submit(VoldemortOpCode.GET_ALL, callable);
     }
 
     /**
@@ -87,7 +87,7 @@ abstract public class AsynchronousCallableStore<K, V, T> implements Asynchronous
     public StoreFuture<Version> submitPut(K key, Versioned<V> value, final T transform)
             throws VoldemortException {
         Callable<Version> callable = inner.callPut(key, value, transform);
-        return submit(AsynchronousStore.Operations.PUT, callable);
+        return submit(VoldemortOpCode.PUT, callable);
     }
 
     /**
@@ -99,12 +99,12 @@ abstract public class AsynchronousCallableStore<K, V, T> implements Asynchronous
      */
     public StoreFuture<Boolean> submitDelete(K key, Version version) throws VoldemortException {
         Callable<Boolean> callable = inner.callDelete(key, version);
-        return submit(AsynchronousStore.Operations.DELETE, callable);
+        return submit(VoldemortOpCode.DELETE, callable);
     }
 
     public StoreFuture<List<Version>> submitGetVersions(K key) throws VoldemortException {
         Callable<List<Version>> callable = inner.callGetVersions(key);
-        return submit(AsynchronousStore.Operations.GETVERSIONS, callable);
+        return submit(VoldemortOpCode.GET_VERSION, callable);
     }
 
     public String getName() {

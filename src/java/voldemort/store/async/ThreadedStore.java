@@ -19,6 +19,7 @@ package voldemort.store.async;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 
+import voldemort.serialization.VoldemortOpCode;
 import voldemort.store.Store;
 
 /**
@@ -72,8 +73,8 @@ public class ThreadedStore<K, V, T> extends AsynchronousCallableStore<K, V, T> {
      * @return The store future representing this asynchronous task.
      */
     @Override
-    protected <R> StoreFuture<R> submit(AsynchronousStore.Operations operation, Callable<R> callable) {
-        RunnableFutureTask<R> task = new RunnableFutureTask<R>(operation.name(), callable);
+    protected <R> StoreFuture<R> submit(VoldemortOpCode operation, Callable<R> callable) {
+        RunnableFutureTask<R> task = new RunnableFutureTask<R>(operation.getMethodName(), callable);
         executor.execute(task);
         return task;
     }

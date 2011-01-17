@@ -18,6 +18,8 @@ package voldemort.store.async;
 
 import java.util.concurrent.Callable;
 
+import voldemort.serialization.VoldemortOpCode;
+
 /**
  * Nonblocking stores allow a Callable store to treated as an asynchronous
  * store.
@@ -32,7 +34,7 @@ public class NonblockingStore<K, V, T> extends AsynchronousCallableStore<K, V, T
      * Creates a callable (inline) future for this task.
      */
     @Override
-    protected <R> StoreFuture<R> submit(AsynchronousStore.Operations operation, Callable<R> task) {
-        return new CallableFuture<R>(operation.name(), task);
+    protected <R> StoreFuture<R> submit(VoldemortOpCode operation, Callable<R> task) {
+        return new CallableFuture<R>(operation.getMethodName(), task);
     }
 }

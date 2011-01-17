@@ -23,8 +23,8 @@ import voldemort.VoldemortException;
 import voldemort.cluster.Cluster;
 import voldemort.cluster.Node;
 import voldemort.cluster.Zone;
+import voldemort.serialization.VoldemortOpCode;
 import voldemort.store.StoreDefinition;
-import voldemort.store.async.AsynchronousStore;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
@@ -107,7 +107,7 @@ public class DistributedZoneStore<K, V, T> extends DelegatingDistributedStore<No
                                                                                  1);
             futures.add(future);
         }
-        return new ZoneFutureTask<Node, List<Versioned<V>>>(AsynchronousStore.Operations.GET.name(),
+        return new ZoneFutureTask<Node, List<Versioned<V>>>(VoldemortOpCode.GET.getMethodName(),
                                                             futures,
                                                             this.getBuilder,
                                                             storeDef.getZoneCountReads(),
@@ -134,7 +134,7 @@ public class DistributedZoneStore<K, V, T> extends DelegatingDistributedStore<No
                                                                                     1);
             futures.add(future);
         }
-        return new ZoneFutureTask<Node, List<Version>>(AsynchronousStore.Operations.GETVERSIONS.name(),
+        return new ZoneFutureTask<Node, List<Version>>(VoldemortOpCode.GET_VERSION.getMethodName(),
                                                        futures,
                                                        this.versionsBuilder,
                                                        storeDef.getZoneCountReads(),
@@ -162,7 +162,7 @@ public class DistributedZoneStore<K, V, T> extends DelegatingDistributedStore<No
                                                                          1);
             futures.add(future);
         }
-        return new ZoneFutureTask<Node, Boolean>(AsynchronousStore.Operations.DELETE.name(),
+        return new ZoneFutureTask<Node, Boolean>(VoldemortOpCode.DELETE.getMethodName(),
                                                  futures,
                                                  deleteBuilder,
                                                  storeDef.getZoneCountWrites(),
@@ -192,7 +192,7 @@ public class DistributedZoneStore<K, V, T> extends DelegatingDistributedStore<No
                                                                       1);
             futures.add(future);
         }
-        return new ZoneFutureTask<Node, Version>(AsynchronousStore.Operations.PUT.name(),
+        return new ZoneFutureTask<Node, Version>(VoldemortOpCode.PUT.getMethodName(),
                                                  futures,
                                                  putBuilder,
                                                  storeDef.getZoneCountWrites(),

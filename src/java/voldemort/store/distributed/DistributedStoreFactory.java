@@ -23,15 +23,13 @@ import java.util.Map;
 import java.util.Set;
 
 import voldemort.VoldemortException;
-import voldemort.client.AbstractStoreClientFactory;
+import voldemort.client.StoreFactory;
 import voldemort.cluster.Cluster;
 import voldemort.cluster.Node;
 import voldemort.cluster.failuredetector.FailureDetector;
 import voldemort.store.InsufficientOperationalNodesException;
 import voldemort.store.StoreDefinition;
 import voldemort.store.async.AsynchronousStore;
-import voldemort.store.failuredetector.FailureDetectingStore;
-import voldemort.store.logging.LoggingStore;
 import voldemort.store.routed.ReadRepairStore;
 import voldemort.store.slop.HintedHandoffStore;
 import voldemort.utils.ByteArray;
@@ -58,24 +56,7 @@ public class DistributedStoreFactory {
         return new AsynchronousDistributedStore<N, K, V, T>(storeDef, distributor);
     }
 
-    public static Map<Node, AsynchronousStore<ByteArray, byte[], byte[]>> createNodeStores(AbstractStoreClientFactory factory,
-                                                                                           StoreDefinition storeDef,
-                                                                                           Cluster cluster,
-                                                                                           FailureDetector detector) {
-        Map<Node, AsynchronousStore<ByteArray, byte[], byte[]>> nodeStores = Maps.newHashMap();
-        for(Node node: cluster.getNodes()) {
-            AsynchronousStore<ByteArray, byte[], byte[]> async = factory.getAsyncStore(storeDef,
-                                                                                       node);
-            AsynchronousStore<ByteArray, byte[], byte[]> logging = LoggingStore.create(async);
-            AsynchronousStore<ByteArray, byte[], byte[]> failure = FailureDetectingStore.create(node,
-                                                                                                detector,
-                                                                                                logging);
-            nodeStores.put(node, failure);
-        }
-        return nodeStores;
-    }
-
-    public static DistributedStore<Node, ByteArray, byte[], byte[]> create(AbstractStoreClientFactory factory,
+    public static DistributedStore<Node, ByteArray, byte[], byte[]> create(StoreFactory factory,
                                                                            StoreDefinition storeDef,
                                                                            Cluster cluster,
                                                                            FailureDetector detector,
@@ -83,33 +64,25 @@ public class DistributedStoreFactory {
         return create(factory, storeDef, cluster, detector, zoneId, false);
     }
 
-    public static DistributedStore<Node, ByteArray, byte[], byte[]> create(AbstractStoreClientFactory factory,
+    public static DistributedStore<Node, ByteArray, byte[], byte[]> create(StoreFactory factory,
                                                                            StoreDefinition storeDef,
                                                                            Cluster cluster,
                                                                            FailureDetector detector,
                                                                            int zoneId,
                                                                            boolean makeUnique) {
-        Map<Node, AsynchronousStore<ByteArray, byte[], byte[]>> nodeStores = createNodeStores(factory,
-                                                                                              storeDef,
-                                                                                              cluster,
-                                                                                              detector);
+        Map<Node, AsynchronousStore<ByteArray, byte[], byte[]>> nodeStores = factory.getNodeStores(storeDef);
         DistributedStore<Node, ByteArray, byte[], byte[]> distributor = create(nodeStores,
                                                                                storeDef,
                                                                                cluster,
-                                                                               detector,
                                                                                zoneId,
                                                                                makeUnique);
 
         if(storeDef.hasHintedHandoffStrategyType()) {
             Map<Node, AsynchronousStore<ByteArray, byte[], byte[]>> slopStores = Maps.newHashMap();
             for(Node node: cluster.getNodes()) {
-                AsynchronousStore<ByteArray, byte[], byte[]> async = factory.getAsyncStore("slop",
-                                                                                           node);
-                AsynchronousStore<ByteArray, byte[], byte[]> logging = LoggingStore.create(async);
-                AsynchronousStore<ByteArray, byte[], byte[]> failure = FailureDetectingStore.create(node,
-                                                                                                    detector,
-                                                                                                    logging);
-                slopStores.put(node, failure);
+                AsynchronousStore<ByteArray, byte[], byte[]> async = factory.getNodeStore(node,
+                                                                                          "slop");
+                slopStores.put(node, async);
             }
             distributor = new HintedHandoffStore(distributor,
                                                  storeDef,
@@ -124,15 +97,13 @@ public class DistributedStoreFactory {
     public static DistributedStore<Node, ByteArray, byte[], byte[]> create(Map<Node, AsynchronousStore<ByteArray, byte[], byte[]>> nodeStores,
                                                                            StoreDefinition storeDef,
                                                                            Cluster cluster,
-                                                                           FailureDetector detector,
                                                                            int zoneId) {
-        return create(nodeStores, storeDef, cluster, detector, zoneId, false);
+        return create(nodeStores, storeDef, cluster, zoneId, false);
     }
 
     public static DistributedStore<Node, ByteArray, byte[], byte[]> create(Map<Node, AsynchronousStore<ByteArray, byte[], byte[]>> nodeStores,
                                                                            StoreDefinition storeDef,
                                                                            Cluster cluster,
-                                                                           FailureDetector detector,
                                                                            int zoneId,
                                                                            boolean makeUnique) {
         DistributedStore<Node, ByteArray, byte[], byte[]> distributor = DistributedParallelStore.create(nodeStores,
