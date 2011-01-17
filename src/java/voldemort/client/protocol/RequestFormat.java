@@ -1,6 +1,8 @@
 /*
  * Copyright 2008-2009 LinkedIn, Inc
  * 
+ * Portion Copyright 2010 Nokia Corporation. All rights reserved.
+ * 
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
  * the License at
@@ -16,10 +18,6 @@
 
 package voldemort.client.protocol;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
 
@@ -37,54 +35,73 @@ import voldemort.versioning.Versioned;
  */
 public interface RequestFormat {
 
-    public void writeGetRequest(DataOutputStream output,
-                                String storeName,
-                                ByteArray key,
-                                byte[] transforms,
-                                RequestRoutingType routingType) throws IOException;
+    /**
+     * Creates a Get Request for sending to the server
+     * 
+     * @param storeName The name of the store
+     * @param key The key being retrieved
+     * @param transforms Transformations for the returned value
+     * @param routing How the request should be routed
+     * @return The client request
+     */
+    public ClientRequestFormat<List<Versioned<byte[]>>> createGetRequest(String storeName,
+                                                                         ByteArray key,
+                                                                         byte[] transforms,
+                                                                         RequestRoutingType routing);
 
-    public boolean isCompleteGetResponse(ByteBuffer buffer);
+    /**
+     * Creates a Get Version Request for sending to the server
+     * 
+     * @param storeName The name of the store
+     * @param key The key being retrieved
+     * @param routing How the request should be routed
+     * @return The client request
+     */
+    public ClientRequestFormat<List<Version>> createGetVersionsRequest(String storeName,
+                                                                       ByteArray key,
+                                                                       RequestRoutingType routing);
 
-    public List<Versioned<byte[]>> readGetResponse(DataInputStream stream) throws IOException;
+    /**
+     * Creates a Get All Request for sending to the server
+     * 
+     * @param storeName The name of the store
+     * @param keys The key being retrieved
+     * @param transforms Transformations for the returned values
+     * @param routing How the request should be routed
+     * @return The client request
+     */
+    public ClientRequestFormat<Map<ByteArray, List<Versioned<byte[]>>>> createGetAllRequest(String storeName,
+                                                                                            Iterable<ByteArray> key,
+                                                                                            Map<ByteArray, byte[]> transforms,
+                                                                                            RequestRoutingType routing);
 
-    public void writeGetVersionRequest(DataOutputStream output,
-                                       String storeName,
-                                       ByteArray key,
-                                       RequestRoutingType routingType) throws IOException;
+    /**
+     * Creates a Put Request for sending to the server
+     * 
+     * @param storeName The name of the store
+     * @param keys The key being updated
+     * @param value The value being updated
+     * @param transforms Transformations for the updated value
+     * @param routing How the request should be routed
+     * @return The client request
+     */
+    public ClientRequestFormat<Version> createPutRequest(String storeName,
+                                                         ByteArray key,
+                                                         Versioned<byte[]> value,
+                                                         byte[] transforms,
+                                                         RequestRoutingType routing);
 
-    public boolean isCompleteGetVersionResponse(ByteBuffer buffer);
-
-    public List<Version> readGetVersionResponse(DataInputStream stream) throws IOException;
-
-    public void writeGetAllRequest(DataOutputStream output,
-                                   String storeName,
-                                   Iterable<ByteArray> key,
-                                   Map<ByteArray, byte[]> transforms,
-                                   RequestRoutingType routingType) throws IOException;
-
-    public boolean isCompleteGetAllResponse(ByteBuffer buffer);
-
-    public Map<ByteArray, List<Versioned<byte[]>>> readGetAllResponse(DataInputStream stream)
-            throws IOException;
-
-    public void writePutRequest(DataOutputStream output,
-                                String storeName,
-                                ByteArray key,
-                                Versioned<byte[]> value,
-                                byte[] transforms,
-                                RequestRoutingType routingType) throws IOException;
-
-    public boolean isCompletePutResponse(ByteBuffer buffer);
-
-    public Version readPutResponse(DataInputStream stream) throws IOException;
-
-    public void writeDeleteRequest(DataOutputStream output,
-                                   String storeName,
-                                   ByteArray key,
-                                   Version version,
-                                   RequestRoutingType routingType) throws IOException;
-
-    public boolean isCompleteDeleteResponse(ByteBuffer buffer);
-
-    public boolean readDeleteResponse(DataInputStream input) throws IOException;
+    /**
+     * Creates a Delete Request for sending to the server
+     * 
+     * @param storeName The name of the store
+     * @param keys The key being delete
+     * @param version The version being deleted
+     * @param routing How the request should be routed
+     * @return The client request
+     */
+    public ClientRequestFormat<Boolean> createDeleteRequest(String storeName,
+                                                            ByteArray key,
+                                                            Version version,
+                                                            RequestRoutingType routing);
 }

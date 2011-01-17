@@ -4,6 +4,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 
 import voldemort.client.protocol.RequestFormatType;
+import voldemort.serialization.VoldemortOpCode;
 import voldemort.server.RequestRoutingType;
 
 public class VoldemortNativeClientRequestFormatV2 extends VoldemortNativeClientRequestFormat {
@@ -15,10 +16,10 @@ public class VoldemortNativeClientRequestFormatV2 extends VoldemortNativeClientR
 
     @Override
     protected void writeMessageHeader(DataOutputStream outputStream,
-                                      byte operation,
+                                      VoldemortOpCode operation,
                                       String storeName,
                                       RequestRoutingType routingType) throws IOException {
-        outputStream.writeByte(operation);
+        outputStream.writeByte(operation.asCode());
         outputStream.writeUTF(storeName);
         outputStream.writeByte(routingType.getRoutingTypeCode());
     }

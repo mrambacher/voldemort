@@ -24,6 +24,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import voldemort.client.protocol.ClientRequestFormat;
 import voldemort.client.protocol.RequestFormat;
 import voldemort.client.protocol.pb.VProto.DeleteResponse;
 import voldemort.client.protocol.pb.VProto.GetAllResponse;
@@ -48,7 +49,11 @@ import com.google.protobuf.ByteString;
  */
 public class ProtoBuffClientRequestFormat implements RequestFormat {
 
-    public final ErrorCodeMapper mapper;
+    protected final ErrorCodeMapper mapper;
+
+    // **TODO: The code for these read/write/complete methods have lots of
+    // commonality that
+    // could be factored into a generic base class for all PB-encoded requests
 
     public ProtoBuffClientRequestFormat() {
         this.mapper = new ErrorCodeMapper();
@@ -82,6 +87,113 @@ public class ProtoBuffClientRequestFormat implements RequestFormat {
         if(response.hasError())
             ProtoUtils.throwException(mapper, response.getError());
         return response.getSuccess();
+    }
+
+    public ClientRequestFormat<List<Versioned<byte[]>>> createGetRequest(final String storeName,
+                                                                         final ByteArray key,
+                                                                         final byte[] transforms,
+                                                                         final RequestRoutingType routingType) {
+        return new ClientRequestFormat<List<Versioned<byte[]>>>() {
+
+            public boolean writeRequest(DataOutputStream outputStream) throws IOException {
+                writeGetRequest(outputStream, storeName, key, transforms, routingType);
+                return true;
+            }
+
+            public boolean isCompleteResponse(ByteBuffer buffer) {
+                return isCompleteGetResponse(buffer);
+            }
+
+            public List<Versioned<byte[]>> readResponse(DataInputStream inputStream)
+                    throws IOException {
+                return readGetResponse(inputStream);
+            }
+        };
+    }
+
+    public ClientRequestFormat<Map<ByteArray, List<Versioned<byte[]>>>> createGetAllRequest(final String storeName,
+                                                                                            final Iterable<ByteArray> key,
+                                                                                            final Map<ByteArray, byte[]> transforms,
+                                                                                            final RequestRoutingType routingType) {
+        return new ClientRequestFormat<Map<ByteArray, List<Versioned<byte[]>>>>() {
+
+            public boolean writeRequest(DataOutputStream outputStream) throws IOException {
+                writeGetAllRequest(outputStream, storeName, key, transforms, routingType);
+                return true;
+            }
+
+            public boolean isCompleteResponse(ByteBuffer buffer) {
+                return isCompleteGetAllResponse(buffer);
+            }
+
+            public Map<ByteArray, List<Versioned<byte[]>>> readResponse(DataInputStream inputStream)
+                    throws IOException {
+                return readGetAllResponse(inputStream);
+            }
+        };
+    }
+
+    public ClientRequestFormat<List<Version>> createGetVersionsRequest(final String storeName,
+                                                                       final ByteArray key,
+                                                                       final RequestRoutingType routingType) {
+        return new ClientRequestFormat<List<Version>>() {
+
+            public boolean writeRequest(DataOutputStream outputStream) throws IOException {
+                writeGetVersionRequest(outputStream, storeName, key, routingType);
+                return true;
+            }
+
+            public boolean isCompleteResponse(ByteBuffer buffer) {
+                return isCompleteGetVersionResponse(buffer);
+            }
+
+            public List<Version> readResponse(DataInputStream inputStream) throws IOException {
+                return readGetVersionResponse(inputStream);
+            }
+        };
+    }
+
+    public ClientRequestFormat<Boolean> createDeleteRequest(final String storeName,
+                                                            final ByteArray key,
+                                                            final Version version,
+                                                            final RequestRoutingType routingType) {
+        return new ClientRequestFormat<Boolean>() {
+
+            public boolean writeRequest(DataOutputStream outputStream) throws IOException {
+                writeDeleteRequest(outputStream, storeName, key, version, routingType);
+                return true;
+            }
+
+            public boolean isCompleteResponse(ByteBuffer buffer) {
+                return isCompleteDeleteResponse(buffer);
+            }
+
+            public Boolean readResponse(DataInputStream inputStream) throws IOException {
+                return readDeleteResponse(inputStream);
+            }
+        };
+    }
+
+    public ClientRequestFormat<Version> createPutRequest(final String storeName,
+                                                         final ByteArray key,
+                                                         final Versioned<byte[]> value,
+                                                         final byte[] transforms,
+                                                         final RequestRoutingType routingType) {
+        return new ClientRequestFormat<Version>() {
+
+            public boolean writeRequest(DataOutputStream outputStream) throws IOException {
+                writePutRequest(outputStream, storeName, key, value, transforms, routingType);
+                return true;
+            }
+
+            public boolean isCompleteResponse(ByteBuffer buffer) {
+                return isCompletePutResponse(buffer);
+            }
+
+            public Version readResponse(DataInputStream inputStream) throws IOException {
+                return readPutResponse(inputStream);
+            }
+        };
     }
 
     public void writeGetRequest(DataOutputStream output,

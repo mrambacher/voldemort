@@ -20,11 +20,6 @@ package voldemort.client.protocol;
 
 import voldemort.utils.ByteUtils;
 
-/**
- * An enumeration of request serialization types
- * 
- * 
- */
 public enum RequestFormatType {
     VOLDEMORT_V0("vp", "voldemort-native-v0", 0),
     VOLDEMORT_V1("vp", "voldemort-native-v1", 1),
