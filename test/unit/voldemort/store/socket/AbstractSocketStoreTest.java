@@ -18,8 +18,10 @@ package voldemort.store.socket;
 
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
@@ -38,15 +40,20 @@ import voldemort.VoldemortTestConstants;
 import voldemort.client.protocol.RequestFormatType;
 import voldemort.server.AbstractSocketService;
 import voldemort.server.StoreRepository;
+import voldemort.server.protocol.RequestHandlerFactory;
 import voldemort.store.FailingStore;
 import voldemort.store.SleepyStore;
 import voldemort.store.Store;
+import voldemort.store.UnreachableStoreException;
 import voldemort.store.async.AbstractAsynchronousStoreTest;
 import voldemort.store.async.AsyncUtils;
 import voldemort.store.async.AsynchronousStore;
 import voldemort.store.memory.InMemoryStorageEngine;
 import voldemort.store.socket.clientrequest.ClientRequestExecutorPool;
+import voldemort.store.versioned.VersionIncrementingStore;
 import voldemort.utils.ByteArray;
+import voldemort.utils.SystemTime;
+import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
 /**
@@ -56,7 +63,7 @@ import voldemort.versioning.Versioned;
  */
 public abstract class AbstractSocketStoreTest extends AbstractAsynchronousStoreTest {
 
-    private static final Logger logger = Logger.getLogger(AbstractSocketStoreTest.class);
+    private final Logger logger = Logger.getLogger(getClass());
 
     public AbstractSocketStoreTest(RequestFormatType type, boolean useNio) {
         super("test");
@@ -74,23 +81,32 @@ public abstract class AbstractSocketStoreTest extends AbstractAsynchronousStoreT
     private AbstractSocketService socketService;
     protected final RequestFormatType requestFormatType;
     private final boolean useNio;
-    private SocketStoreFactory socketStoreFactory;
+    private ClientRequestExecutorPool socketStoreFactory;
     private StoreRepository repository;
 
     @Override
     @Before
     public void setUp() throws Exception {
         super.setUp();
+        int clientConnections = 20;
+        int socketBufferSize = 32 * 1024;
         repository = ServerTestUtils.getStores("test",
                                                VoldemortTestConstants.getOneNodeClusterXml(),
                                                VoldemortTestConstants.getSimpleStoreDefinitionsXml());
         this.socketPort = ServerTestUtils.findFreePort();
-        socketStoreFactory = new ClientRequestExecutorPool(2, 10000, 100000, 32 * 1024);
+        socketStoreFactory = new ClientRequestExecutorPool(clientConnections,
+                                                           0,
+                                                           1000,
+                                                           socketBufferSize);
+        RequestHandlerFactory factory = ServerTestUtils.getSocketRequestHandlerFactory(VoldemortTestConstants.getOneNodeClusterXml(),
+                                                                                       VoldemortTestConstants.getSimpleStoreDefinitionsXml(),
+                                                                                       repository);
         socketService = ServerTestUtils.getSocketService(useNio,
-                                                         VoldemortTestConstants.getOneNodeClusterXml(),
-                                                         VoldemortTestConstants.getSimpleStoreDefinitionsXml(),
+                                                         factory,
                                                          socketPort,
-                                                         repository);
+                                                         clientConnections,
+                                                         clientConnections * 2,
+                                                         socketBufferSize);
         socketService.start();
     }
 
@@ -192,6 +208,134 @@ public abstract class AbstractSocketStoreTest extends AbstractAsynchronousStoreT
         latch.await();
     }
 
+    @SuppressWarnings("unused")
+    protected boolean performLongTest(int numThreads, int valueSize, int numOps) {
+        return false;
+    }
+
+    protected void testLotsOfGets(final String testName,
+                                  final int numThreads,
+                                  final int valueSize,
+                                  final int every,
+                                  final int numOps) throws Exception {
+        if(!performLongTest(numThreads, valueSize, numOps)) {
+            logger.info("Skipping test " + testName);
+            return;
+        }
+        logger.info("Starting " + numOps + " gets in " + numThreads + " of size " + valueSize);
+        final AsynchronousStore<ByteArray, byte[], byte[]> store = getAsyncStore(storeName);
+        final List<ByteArray> keys = this.getKeys(numThreads);
+        List<byte[]> values = getByteValues(numThreads, valueSize);
+        List<Version> versions = new ArrayList<Version>();
+        for(int i = 0; i < numThreads; i++) {
+            versions.add(waitForCompletion(store.submitPut(keys.get(i),
+                                                           new Versioned<byte[]>(values.get(i)),
+                                                           null)));
+
+        }
+        final CountDownLatch latch = new CountDownLatch(numThreads);
+        Executor exec = Executors.newFixedThreadPool(numThreads);
+        long submitted = System.currentTimeMillis();
+        for(final ByteArray key: keys) {
+            exec.execute(new Runnable() {
+
+                public void run() {
+                    long startTime = System.currentTimeMillis();
+                    for(int j = 1; j <= numOps; j++) {
+                        waitForCompletion(store.submitGet(key, null));
+                        if(every > 0 && (j % every) == 0) {
+                            long completed = (System.currentTimeMillis() - startTime);
+                            logger.info("Completed " + j + " gets in " + completed + " ms "
+                                        + (completed / j));
+                        }
+                    }
+                    long completed = System.currentTimeMillis() - startTime;
+                    logger.info("Completed " + numOps + " in " + completed + " ms "
+                                + (completed / numOps));
+                    latch.countDown();
+                }
+            });
+        }
+        latch.await();
+        for(int i = 0; i < numThreads; i++) {
+            waitForCompletion(store.submitDelete(keys.get(i), versions.get(i)));
+        }
+        logger.info("Completed " + numOps + " gets in " + numThreads + " threads of size "
+                    + valueSize + " in " + (System.currentTimeMillis() - submitted) + " ms.");
+    }
+
+    @Test
+    public void testLotsOfSmallGets() throws Exception {
+        testLotsOfGets("LotsOfSmallGets", 10, 1024, 100000, 10000000);
+    }
+
+    @Test
+    public void testLotsOfBigGets() throws Exception {
+        testLotsOfGets("LotsOfBigGets", 10, 1024 * 1024, 500, 10000);
+    }
+
+    protected void testLotsOfPuts(final String testName,
+                                  final int numThreads,
+                                  final int valueSize,
+                                  final int every,
+                                  final int numOps) throws Exception {
+        if(!performLongTest(numThreads, valueSize, numOps)) {
+            logger.info("Skipping test " + testName);
+            return;
+        }
+        logger.info("Starting " + numOps + " puts in " + numThreads + " of size " + valueSize);
+        AsynchronousStore<ByteArray, byte[], byte[]> async = getAsyncStore(storeName);
+        Store<ByteArray, byte[], byte[]> sync = AsyncUtils.asStore(async);
+        final Store<ByteArray, byte[], byte[]> store = new VersionIncrementingStore<ByteArray, byte[], byte[]>(sync,
+                                                                                                               1,
+                                                                                                               SystemTime.INSTANCE);
+        final List<ByteArray> keys = this.getKeys(numThreads);
+        final List<byte[]> values = getByteValues(numThreads, valueSize);
+        final CountDownLatch latch = new CountDownLatch(numThreads);
+        Executor exec = Executors.newFixedThreadPool(numThreads);
+        long submitted = System.currentTimeMillis();
+        for(int i = 0; i < numThreads; i++) {
+            final ByteArray key = keys.get(i);
+            final byte[] value = values.get(i);
+            exec.execute(new Runnable() {
+
+                public void run() {
+                    Versioned<byte[]> versioned = new Versioned<byte[]>(value);
+                    long startTime = System.currentTimeMillis();
+                    for(int j = 1; j <= numOps; j++) {
+                        Version version = store.put(key, versioned, null);
+                        versioned = new Versioned<byte[]>(value, version);
+                        if(every > 0 && (j % every) == 0) {
+                            long completed = (System.currentTimeMillis() - startTime);
+                            logger.info("Completed " + j + " puts in " + completed + " ms "
+                                        + (completed / j));
+                        }
+                    }
+                    long completed = (System.currentTimeMillis() - startTime);
+                    logger.info("Completed " + numOps + " puts in " + completed + " ms "
+                                + (completed / numOps));
+                    latch.countDown();
+                }
+            });
+        }
+        latch.await();
+        logger.info("Completed " + numOps + " puts in " + numThreads + " threads of size "
+                    + valueSize + " in " + (System.currentTimeMillis() - submitted) + " ms.");
+
+    }
+
+    @Test
+    public void testLotsOfSmallPuts() throws Exception {
+        // 10M puts of 1K size in 10 threads
+        testLotsOfPuts("LotsOfSmallPuts", 10, 1024, 100000, 10000000);
+    }
+
+    @Test
+    public void testLotsOfBigPuts() throws Exception {
+        // 10K 1puts of 1M in 10 threads
+        testLotsOfPuts("LotsOfBigPuts", 10, 1024 * 1024, 1000, 10000);
+    }
+
     @Test
     public void testRepeatedClosedConnections() throws Exception {
         for(int i = 0; i < 100; i++) {
@@ -209,4 +353,16 @@ public abstract class AbstractSocketStoreTest extends AbstractAsynchronousStoreT
         }
     }
 
+    @Test
+    public void testNoServerRunning() {
+        this.socketService.stop();
+        ByteArray key = getKey();
+        byte[] value = getValue();
+        try {
+            doPut(key, value);
+            fail("Expected exception");
+        } catch(VoldemortException e) {
+            assertEquals("Unexpected exception", UnreachableStoreException.class, e.getClass());
+        }
+    }
 }
