@@ -26,6 +26,7 @@ import java.net.Socket;
 
 import voldemort.VoldemortException;
 import voldemort.client.protocol.RequestFormatType;
+import voldemort.store.socket.SocketDestination;
 import voldemort.utils.ByteUtils;
 
 /**
@@ -67,10 +68,18 @@ public class SocketAndStreams {
         super.finalize();
     }
 
-    public Socket getSocket() {
-        return socket;
+    public void close() throws IOException {
+        socket.close();
     }
 
+    public boolean isValid() {
+        boolean isValid = !socket.isClosed() && socket.isBound() && socket.isConnected();
+        return isValid;
+    }
+
+    /*
+     * public Socket getSocket() { return socket; }
+     */
     public DataInputStream getInputStream() {
         return inputStream;
     }

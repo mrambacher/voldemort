@@ -222,10 +222,22 @@ public class ClientConfig {
         if(props.containsKey(FAILUREDETECTOR_CATASTROPHIC_ERROR_TYPES_PROPERTY))
             this.setFailureDetectorCatastrophicErrorTypes(props.getList(FAILUREDETECTOR_CATASTROPHIC_ERROR_TYPES_PROPERTY));
 
-        if(props.containsKey(FAILUREDETECTOR_REQUEST_LENGTH_THRESHOLD_PROPERTY))
+        if(props.containsKey(FAILUREDETECTOR_REQUEST_LENGTH_THRESHOLD_PROPERTY)) {
             this.setFailureDetectorRequestLengthThreshold(props.getLong(FAILUREDETECTOR_REQUEST_LENGTH_THRESHOLD_PROPERTY));
-        else
-            this.setFailureDetectorRequestLengthThreshold(getSocketTimeout(TimeUnit.MILLISECONDS));
+        } else {
+            // Since there is no request length threshold property, set the
+            // value based on
+            // 1. The socket timeout, it is > 0
+            // 2. A factor of the routing timeout, if it is > 0
+            // 3. If those fail, use the default.
+            long threshold = getSocketTimeout(TimeUnit.MILLISECONDS);
+            if(threshold <= 0) {
+                threshold = getRoutingTimeout(TimeUnit.MILLISECONDS) / 10;
+            }
+            if(threshold > 0) {
+                this.setFailureDetectorRequestLengthThreshold(threshold);
+            }
+        }
 
         if(props.containsKey(MAX_BOOTSTRAP_RETRIES))
             this.setMaxBootstrapRetries(props.getInt(MAX_BOOTSTRAP_RETRIES));
