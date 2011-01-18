@@ -52,7 +52,7 @@ public class DistributedParallelStore<N, K, V, T> extends AbstractDistributedSto
                                                      int available,
                                                      int preferred,
                                                      int required) {
-        return new DistributedFutureTask<N, R>(operation.getMethodName(),
+        return new DistributedFutureTask<N, R>(operation.getOperationName(),
                                                futures,
                                                builder,
                                                available,

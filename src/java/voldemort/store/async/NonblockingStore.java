@@ -35,6 +35,6 @@ public class NonblockingStore<K, V, T> extends AsynchronousCallableStore<K, V, T
      */
     @Override
     protected <R> StoreFuture<R> submit(VoldemortOpCode operation, Callable<R> task) {
-        return new CallableFuture<R>(operation.getMethodName(), task);
+        return new CallableFuture<R>(operation.getOperationName(), task);
     }
 }

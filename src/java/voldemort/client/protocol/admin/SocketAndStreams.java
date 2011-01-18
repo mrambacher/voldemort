@@ -69,11 +69,14 @@ public class SocketAndStreams {
     }
 
     public void close() throws IOException {
-        socket.close();
+        if(socket != null) {
+            socket.close();
+        }
     }
 
     public boolean isValid() {
-        boolean isValid = !socket.isClosed() && socket.isBound() && socket.isConnected();
+        boolean isValid = (socket != null) && !socket.isClosed() && socket.isBound()
+                          && socket.isConnected();
         return isValid;
     }
 

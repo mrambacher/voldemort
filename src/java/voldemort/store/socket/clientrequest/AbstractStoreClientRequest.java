@@ -26,6 +26,13 @@ import voldemort.client.protocol.RequestFormat;
 import voldemort.serialization.VoldemortOpCode;
 import voldemort.server.RequestRoutingType;
 
+/**
+ * AbstractStoreClientRequest extends AbstractClientRequest to provide some
+ * basic mechanisms that most request serializations require (like the routing
+ * type and store name).
+ * 
+ * @param <T> Return type
+ */
 public abstract class AbstractStoreClientRequest<T> extends AbstractClientRequest<T> {
 
     private ClientRequestFormat<T> request;
@@ -36,7 +43,7 @@ public abstract class AbstractStoreClientRequest<T> extends AbstractClientReques
     public AbstractStoreClientRequest(VoldemortOpCode request,
                                       String storeName,
                                       RequestRoutingType routingType) {
-        super(request.getMethodName());
+        super(request.getOperationName());
         this.routingType = routingType;
         this.storeName = storeName;
     }

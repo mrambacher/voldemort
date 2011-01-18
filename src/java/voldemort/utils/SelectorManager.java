@@ -169,12 +169,17 @@ public class SelectorManager implements Runnable {
         if(!isClosed.compareAndSet(false, true)) {
             return;
         }
+        // While the selector is open, wait for it to close.
+        // This is necessary as only the main thread should be messing with the
+        // selector,
+        // of exceptions (such as ConcurrentModificationExceptions) might be
+        // thrown.
         while(selector.isOpen()) {
             try {
                 selector.wakeup();
                 if(logger.isEnabledFor(Level.INFO))
                     logger.info("Waiting for selector to close");
-                Thread.sleep(100);
+                Thread.sleep(10);
             } catch(InterruptedException e) {
 
             }

@@ -107,7 +107,7 @@ public class DistributedZoneStore<K, V, T> extends DelegatingDistributedStore<No
                                                                                  1);
             futures.add(future);
         }
-        return new ZoneFutureTask<Node, List<Versioned<V>>>(VoldemortOpCode.GET.getMethodName(),
+        return new ZoneFutureTask<Node, List<Versioned<V>>>(VoldemortOpCode.GET.getOperationName(),
                                                             futures,
                                                             this.getBuilder,
                                                             storeDef.getZoneCountReads(),
@@ -134,7 +134,7 @@ public class DistributedZoneStore<K, V, T> extends DelegatingDistributedStore<No
                                                                                     1);
             futures.add(future);
         }
-        return new ZoneFutureTask<Node, List<Version>>(VoldemortOpCode.GET_VERSION.getMethodName(),
+        return new ZoneFutureTask<Node, List<Version>>(VoldemortOpCode.GET_VERSION.getOperationName(),
                                                        futures,
                                                        this.versionsBuilder,
                                                        storeDef.getZoneCountReads(),
@@ -162,7 +162,7 @@ public class DistributedZoneStore<K, V, T> extends DelegatingDistributedStore<No
                                                                          1);
             futures.add(future);
         }
-        return new ZoneFutureTask<Node, Boolean>(VoldemortOpCode.DELETE.getMethodName(),
+        return new ZoneFutureTask<Node, Boolean>(VoldemortOpCode.DELETE.getOperationName(),
                                                  futures,
                                                  deleteBuilder,
                                                  storeDef.getZoneCountWrites(),
@@ -192,7 +192,7 @@ public class DistributedZoneStore<K, V, T> extends DelegatingDistributedStore<No
                                                                       1);
             futures.add(future);
         }
-        return new ZoneFutureTask<Node, Version>(VoldemortOpCode.PUT.getMethodName(),
+        return new ZoneFutureTask<Node, Version>(VoldemortOpCode.PUT.getOperationName(),
                                                  futures,
                                                  putBuilder,
                                                  storeDef.getZoneCountWrites(),
