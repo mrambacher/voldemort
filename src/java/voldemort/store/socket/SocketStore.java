@@ -73,7 +73,7 @@ public class SocketStore extends AsynchronousCallableStore<ByteArray, byte[], by
     @Override
     protected <R> StoreFuture<R> submit(VoldemortOpCode operation, Callable<R> task) {
         ClientRequest<R> delegate = (ClientRequest<R>) task;
-        SocketStoreFuture<R> socketFuture = new SocketStoreFuture<R>(operation.getMethodName(),
+        SocketStoreFuture<R> socketFuture = new SocketStoreFuture<R>(operation.getOperationName(),
                                                                      delegate,
                                                                      destination,
                                                                      pool);

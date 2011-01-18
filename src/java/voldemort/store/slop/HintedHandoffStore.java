@@ -111,7 +111,7 @@ public class HintedHandoffStore extends
         // **TODO: This is what it should be:
         // byte[] data = VersionFactory.toBytes(value, serializer);
         byte[] data = value.getValue();
-        return new HintedHandoffFuture<Version>(VoldemortOpCode.PUT.getMethodName(),
+        return new HintedHandoffFuture<Version>(VoldemortOpCode.PUT.getOperationName(),
                                                 future,
                                                 putBuilder,
                                                 Slop.Operation.PUT,
@@ -134,7 +134,7 @@ public class HintedHandoffStore extends
                                                                      nodes,
                                                                      preferred,
                                                                      required);
-        return new HintedHandoffFuture<Boolean>(VoldemortOpCode.DELETE.getMethodName(),
+        return new HintedHandoffFuture<Boolean>(VoldemortOpCode.DELETE.getOperationName(),
                                                 future,
                                                 deleteBuilder,
                                                 Slop.Operation.DELETE,

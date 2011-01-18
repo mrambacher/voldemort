@@ -35,25 +35,25 @@ public enum VoldemortOpCode {
     GET_VERSION("GET_VERSION", 10),
     GET_METADATA("GET_METADATA", 11);
 
-    private final String method;
+    private final String operation;
     private final int code;
 
-    private VoldemortOpCode(String method, int code) {
-        this.method = method;
+    private VoldemortOpCode(String operation, int code) {
+        this.operation = operation;
         this.code = code;
     }
 
     @Override
     public String toString() {
-        return method;
+        return operation;
     }
 
     public byte asCode() {
         return (byte) code;
     }
 
-    public String getMethodName() {
-        return method;
+    public String getOperationName() {
+        return operation;
     }
 
     /**

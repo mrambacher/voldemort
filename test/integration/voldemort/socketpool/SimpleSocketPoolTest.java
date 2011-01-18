@@ -117,7 +117,7 @@ public class SimpleSocketPoolTest extends TestCase {
                 Thread.sleep(100);
                 int random = (int) (Math.random() * 10);
                 if(random >= 5)
-                    resource.getSocket().close();
+                    resource.close();
             }
 
             @Override

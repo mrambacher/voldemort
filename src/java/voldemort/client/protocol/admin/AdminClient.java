@@ -22,7 +22,6 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.StringReader;
-import java.net.Socket;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
 import java.nio.channels.ReadableByteChannel;
@@ -46,8 +45,8 @@ import voldemort.client.protocol.RequestFormatType;
 import voldemort.client.protocol.VoldemortFilter;
 import voldemort.client.protocol.pb.ProtoUtils;
 import voldemort.client.protocol.pb.VAdminProto;
-import voldemort.client.protocol.pb.VProto;
 import voldemort.client.protocol.pb.VAdminProto.ROStoreVersionDirMap;
+import voldemort.client.protocol.pb.VProto;
 import voldemort.client.protocol.pb.VProto.RequestType;
 import voldemort.client.rebalance.RebalancePartitionsInfo;
 import voldemort.cluster.Cluster;
@@ -196,7 +195,8 @@ public class AdminClient {
 
             return ProtoUtils.readToBuilder(inputStream, builder);
         } catch(IOException e) {
-            close(sands.getSocket());
+
+            close(sands);
             throw new VoldemortException(e);
         } finally {
             pool.checkin(destination, sands);
@@ -275,7 +275,7 @@ public class AdminClient {
                 }
             }
         } catch(IOException e) {
-            close(sands.getSocket());
+            close(sands);
             throw new VoldemortException(e);
         } finally {
             pool.checkin(destination, sands);
@@ -368,7 +368,7 @@ public class AdminClient {
                                  fetchMasterEntries,
                                  skipRecords);
         } catch(IOException e) {
-            close(sands.getSocket());
+            close(sands);
             pool.checkin(destination, sands);
             throw new VoldemortException(e);
         }
@@ -397,7 +397,7 @@ public class AdminClient {
                     return Pair.create(ProtoUtils.decodeBytes(partitionEntry.getKey()),
                                        ProtoUtils.decodeVersioned(partitionEntry.getVersioned()));
                 } catch(IOException e) {
-                    close(sands.getSocket());
+                    close(sands);
                     pool.checkin(destination, sands);
                     throw new VoldemortException(e);
                 }
@@ -455,7 +455,7 @@ public class AdminClient {
                                  fetchMasterEntries,
                                  skipRecords);
         } catch(IOException e) {
-            close(sands.getSocket());
+            close(sands);
             pool.checkin(destination, sands);
             throw new VoldemortException(e);
         }
@@ -481,7 +481,7 @@ public class AdminClient {
 
                     return ProtoUtils.decodeBytes(response.getKey());
                 } catch(IOException e) {
-                    close(sands.getSocket());
+                    close(sands);
                     pool.checkin(destination, sands);
                     throw new VoldemortException(e);
                 }
@@ -898,9 +898,9 @@ public class AdminClient {
         throw errorMapper.getError((short) error.getErrorCode(), error.getErrorMessage());
     }
 
-    private void close(Socket socket) {
+    private void close(SocketAndStreams sands) {
         try {
-            socket.close();
+            sands.close();
         } catch(IOException e) {
             logger.warn("Failed to close socket");
         }
@@ -1560,7 +1560,7 @@ public class AdminClient {
                 }
             }
         } catch(IOException e) {
-            close(sands.getSocket());
+            close(sands);
             throw new VoldemortException(e);
         } finally {
             pool.checkin(destination, sands);
@@ -1608,7 +1608,7 @@ public class AdminClient {
             while(true) {
                 int size = inputStream.readInt();
                 if(size == -1) {
-                    close(sands.getSocket());
+                    close(sands);
                     break;
                 }
 
@@ -1629,7 +1629,7 @@ public class AdminClient {
             }
 
         } catch(IOException e) {
-            close(sands.getSocket());
+            close(sands);
             throw new VoldemortException(e);
         } finally {
             pool.checkin(destination, sands);

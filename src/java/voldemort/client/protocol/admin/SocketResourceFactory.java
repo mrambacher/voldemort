@@ -63,7 +63,7 @@ public class SocketResourceFactory implements ResourceFactory<SocketDestination,
      * Close the socket
      */
     public void destroy(SocketDestination dest, SocketAndStreams sands) throws Exception {
-        sands.getSocket().close();
+        sands.close();
         int numDestroyed = destroyed.incrementAndGet();
         if(logger.isDebugEnabled())
             logger.debug("Destroyed socket " + numDestroyed + " connection to " + dest.getHost()
@@ -128,8 +128,7 @@ public class SocketResourceFactory implements ResourceFactory<SocketDestination,
             return false;
         }
 
-        Socket s = sands.getSocket();
-        boolean isValid = !s.isClosed() && s.isBound() && s.isConnected();
+        boolean isValid = sands.isValid();
         if(!isValid && logger.isDebugEnabled())
             logger.debug("Socket connection " + sands + " is no longer valid, closing.");
         return isValid;

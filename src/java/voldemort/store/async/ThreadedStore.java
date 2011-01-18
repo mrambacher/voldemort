@@ -74,7 +74,7 @@ public class ThreadedStore<K, V, T> extends AsynchronousCallableStore<K, V, T> {
      */
     @Override
     protected <R> StoreFuture<R> submit(VoldemortOpCode operation, Callable<R> callable) {
-        RunnableFutureTask<R> task = new RunnableFutureTask<R>(operation.getMethodName(), callable);
+        RunnableFutureTask<R> task = new RunnableFutureTask<R>(operation.getOperationName(), callable);
         executor.execute(task);
         return task;
     }
