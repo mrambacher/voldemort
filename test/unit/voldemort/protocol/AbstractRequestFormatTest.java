@@ -23,7 +23,7 @@ import voldemort.client.protocol.RequestFormatType;
 import voldemort.server.RequestRoutingType;
 import voldemort.server.StoreRepository;
 import voldemort.server.protocol.RequestHandler;
-import voldemort.store.memory.InMemoryStorageEngine;
+import voldemort.store.memory.InMemoryStore;
 import voldemort.utils.ByteArray;
 import voldemort.versioning.ObsoleteVersionException;
 import voldemort.versioning.VectorClock;
@@ -35,13 +35,13 @@ public abstract class AbstractRequestFormatTest extends TestCase {
     private final String storeName;
     private final RequestFormat clientWireFormat;
     private final RequestHandler serverWireFormat;
-    private final InMemoryStorageEngine<ByteArray, byte[], byte[]> store;
+    private final InMemoryStore<ByteArray, byte[], byte[]> store;
     private final RequestFormatType formatType;
 
     public AbstractRequestFormatTest(RequestFormatType type) {
         this.formatType = type;
         this.storeName = "test";
-        this.store = new InMemoryStorageEngine<ByteArray, byte[], byte[]>(storeName);
+        this.store = new InMemoryStore<ByteArray, byte[], byte[]>(storeName);
         StoreRepository repository = new StoreRepository();
         repository.addLocalStore(store);
         repository.addRoutedStore(store);

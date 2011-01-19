@@ -7,6 +7,7 @@ import org.apache.log4j.Logger;
 
 import voldemort.VoldemortException;
 import voldemort.annotations.jmx.JmxOperation;
+import voldemort.client.protocol.VoldemortFilter;
 import voldemort.store.StorageEngine;
 import voldemort.store.StoreCapabilityType;
 import voldemort.store.memory.InMemoryStorageEngine;
@@ -74,14 +75,14 @@ public class PausableStorageEngine<K, V, T> implements StorageEngine<K, V, T> {
         return inner.put(key, value, transforms);
     }
 
-    public ClosableIterator<Pair<K, Versioned<V>>> entries() {
+    public ClosableIterator<Pair<K, Versioned<V>>> entries(final VoldemortFilter filter) {
         blockIfNecessary();
-        return inner.entries();
+        return inner.entries(filter);
     }
 
-    public ClosableIterator<K> keys() {
+    public ClosableIterator<K> keys(final VoldemortFilter filter) {
         blockIfNecessary();
-        return inner.keys();
+        return inner.keys(filter);
     }
 
     public void truncate() {

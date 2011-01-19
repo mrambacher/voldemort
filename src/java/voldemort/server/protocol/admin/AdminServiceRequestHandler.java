@@ -116,24 +116,22 @@ public class AdminServiceRequestHandler implements RequestHandler {
     }
 
     private void setFetcherClass(VoldemortConfig voldemortConfig) {
-        if (voldemortConfig != null) {
+        if(voldemortConfig != null) {
             String className = voldemortConfig.getAllProps().getString("file.fetcher.class", null);
-            if (className == null || className.trim().length() == 0) {
+            if(className == null || className.trim().length() == 0) {
                 this.fileFetcher = null;
-            }
-            else {
+            } else {
                 try {
                     logger.info("Loading fetcher " + className);
                     Class<?> cls = Class.forName(className.trim());
                     this.fileFetcher = (FileFetcher) ReflectUtils.callConstructor(cls,
                                                                                   new Class<?>[] { Props.class },
                                                                                   new Object[] { voldemortConfig.getAllProps() });
-                } catch (Exception e) {
+                } catch(Exception e) {
                     throw new VoldemortException("Error loading file fetcher class " + className, e);
                 }
             }
-        }
-        else {
+        } else {
             this.fileFetcher = null;
         }
     }
@@ -145,92 +143,92 @@ public class AdminServiceRequestHandler implements RequestHandler {
         VoldemortAdminRequest.Builder request = VoldemortAdminRequest.newBuilder();
         int size = inputStream.readInt();
 
-        if (logger.isTraceEnabled())
+        if(logger.isTraceEnabled())
             logger.trace("In handleRequest, request specified size of " + size + " bytes");
 
-        if (size < 0)
+        if(size < 0)
             throw new IOException("In handleRequest, request specified size of " + size + " bytes");
 
         byte[] input = new byte[size];
         ByteUtils.read(inputStream, input);
         request.mergeFrom(input);
 
-        switch (request.getType()) {
-        case GET_METADATA:
-            ProtoUtils.writeMessage(outputStream, handleGetMetadata(request.getGetMetadata()));
-            break;
-        case UPDATE_METADATA:
-            ProtoUtils.writeMessage(outputStream,
+        switch(request.getType()) {
+            case GET_METADATA:
+                ProtoUtils.writeMessage(outputStream, handleGetMetadata(request.getGetMetadata()));
+                break;
+            case UPDATE_METADATA:
+                ProtoUtils.writeMessage(outputStream,
                                         handleUpdateMetadata(request.getUpdateMetadata()));
-            break;
-        case DELETE_PARTITION_ENTRIES:
-            ProtoUtils.writeMessage(outputStream,
+                break;
+            case DELETE_PARTITION_ENTRIES:
+                ProtoUtils.writeMessage(outputStream,
                                         handleDeletePartitionEntries(request.getDeletePartitionEntries()));
-            break;
-        case FETCH_PARTITION_ENTRIES:
-            return handleFetchPartitionEntries(request.getFetchPartitionEntries());
+                break;
+            case FETCH_PARTITION_ENTRIES:
+                return handleFetchPartitionEntries(request.getFetchPartitionEntries());
 
-        case UPDATE_PARTITION_ENTRIES:
-            return handleUpdatePartitionEntries(request.getUpdatePartitionEntries());
+            case UPDATE_PARTITION_ENTRIES:
+                return handleUpdatePartitionEntries(request.getUpdatePartitionEntries());
 
-        case INITIATE_FETCH_AND_UPDATE:
-            ProtoUtils.writeMessage(outputStream,
+            case INITIATE_FETCH_AND_UPDATE:
+                ProtoUtils.writeMessage(outputStream,
                                         handleFetchAndUpdate(request.getInitiateFetchAndUpdate()));
-            break;
-        case ASYNC_OPERATION_STATUS:
-            ProtoUtils.writeMessage(outputStream,
+                break;
+            case ASYNC_OPERATION_STATUS:
+                ProtoUtils.writeMessage(outputStream,
                                         handleAsyncStatus(request.getAsyncOperationStatus()));
-            break;
-        case INITIATE_REBALANCE_NODE:
-            ProtoUtils.writeMessage(outputStream,
+                break;
+            case INITIATE_REBALANCE_NODE:
+                ProtoUtils.writeMessage(outputStream,
                                         handleRebalanceNode(request.getInitiateRebalanceNode()));
-            break;
-        case ASYNC_OPERATION_LIST:
-            ProtoUtils.writeMessage(outputStream,
+                break;
+            case ASYNC_OPERATION_LIST:
+                ProtoUtils.writeMessage(outputStream,
                                         handleAsyncOperationList(request.getAsyncOperationList()));
-            break;
-        case ASYNC_OPERATION_STOP:
-            ProtoUtils.writeMessage(outputStream,
+                break;
+            case ASYNC_OPERATION_STOP:
+                ProtoUtils.writeMessage(outputStream,
                                         handleAsyncOperationStop(request.getAsyncOperationStop()));
-            break;
-        case TRUNCATE_ENTRIES:
-            ProtoUtils.writeMessage(outputStream,
+                break;
+            case TRUNCATE_ENTRIES:
+                ProtoUtils.writeMessage(outputStream,
                                         handleTruncateEntries(request.getTruncateEntries()));
-            break;
-        case ADD_STORE:
-            ProtoUtils.writeMessage(outputStream, handleAddStore(request.getAddStore()));
-            break;
-        case DELETE_STORE:
-            ProtoUtils.writeMessage(outputStream, handleDeleteStore(request.getDeleteStore()));
-            break;
-        case FETCH_STORE:
-            ProtoUtils.writeMessage(outputStream, handleFetchStore(request.getFetchStore()));
-            break;
-        case SWAP_STORE:
-            ProtoUtils.writeMessage(outputStream, handleSwapStore(request.getSwapStore()));
-            break;
-        case ROLLBACK_STORE:
-            ProtoUtils.writeMessage(outputStream,
+                break;
+            case ADD_STORE:
+                ProtoUtils.writeMessage(outputStream, handleAddStore(request.getAddStore()));
+                break;
+            case DELETE_STORE:
+                ProtoUtils.writeMessage(outputStream, handleDeleteStore(request.getDeleteStore()));
+                break;
+            case FETCH_STORE:
+                ProtoUtils.writeMessage(outputStream, handleFetchStore(request.getFetchStore()));
+                break;
+            case SWAP_STORE:
+                ProtoUtils.writeMessage(outputStream, handleSwapStore(request.getSwapStore()));
+                break;
+            case ROLLBACK_STORE:
+                ProtoUtils.writeMessage(outputStream,
                                         handleRollbackStore(request.getRollbackStore()));
-            break;
-        case GET_RO_MAX_VERSION_DIR:
-            ProtoUtils.writeMessage(outputStream,
+                break;
+            case GET_RO_MAX_VERSION_DIR:
+                ProtoUtils.writeMessage(outputStream,
                                         handleGetROMaxVersionDir(request.getGetRoMaxVersionDir()));
-            break;
-        case GET_RO_CURRENT_VERSION_DIR:
-            ProtoUtils.writeMessage(outputStream,
+                break;
+            case GET_RO_CURRENT_VERSION_DIR:
+                ProtoUtils.writeMessage(outputStream,
                                         handleGetROCurrentVersionDir(request.getGetRoCurrentVersionDir()));
-            break;
-        case FETCH_PARTITION_FILES:
-            return handleFetchPartitionFiles(request.getFetchPartitionFiles());
-        case SWAP_STORES_AND_CLEAN_STATE:
-            ProtoUtils.writeMessage(outputStream,
+                break;
+            case FETCH_PARTITION_FILES:
+                return handleFetchPartitionFiles(request.getFetchPartitionFiles());
+            case SWAP_STORES_AND_CLEAN_STATE:
+                ProtoUtils.writeMessage(outputStream,
                                         handleSwapStoresAndCleanState(request.getSwapStoresAndCleanState()));
-            break;
-        case UPDATE_SLOP_ENTRIES:
-            return handleUpdateSlopEntries(request.getUpdateSlopEntries());
-        default:
-            throw new VoldemortException("Unkown operation " + request.getType());
+                break;
+            case UPDATE_SLOP_ENTRIES:
+                return handleUpdateSlopEntries(request.getUpdateSlopEntries());
+            default:
+                throw new VoldemortException("Unkown operation " + request.getType());
         }
 
         return null;
@@ -241,7 +239,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
         VAdminProto.GetROCurrentVersionDirResponse.Builder response = VAdminProto.GetROCurrentVersionDirResponse.newBuilder();
 
         try {
-            for (String storeName : storeNames) {
+            for(String storeName: storeNames) {
 
                 ReadOnlyStorageEngine store = getReadOnlyStorageEngine(metadataStore,
                                                                        storeRepository,
@@ -252,7 +250,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
                                                                                                  .build();
                 response.addRoStoreVersions(storeResponse);
             }
-        } catch (VoldemortException e) {
+        } catch(VoldemortException e) {
             response.setError(ProtoUtils.encodeError(errorCodeMapper, e));
             logger.error("handleGetROCurrentVersion failed for request(" + request.toString() + ")",
                          e);
@@ -265,14 +263,14 @@ public class AdminServiceRequestHandler implements RequestHandler {
         VAdminProto.GetROMaxVersionDirResponse.Builder response = VAdminProto.GetROMaxVersionDirResponse.newBuilder();
 
         try {
-            for (String storeName : storeNames) {
+            for(String storeName: storeNames) {
 
                 ReadOnlyStorageEngine store = getReadOnlyStorageEngine(metadataStore,
                                                                        storeRepository,
                                                                        storeName);
                 File storeDirPath = new File(store.getStoreDirPath());
 
-                if (!storeDirPath.exists())
+                if(!storeDirPath.exists())
                     throw new VoldemortException("Unable to locate the directory of the read-only store "
                                                  + storeName);
 
@@ -288,7 +286,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
 
                 response.addRoStoreVersions(storeResponse);
             }
-        } catch (VoldemortException e) {
+        } catch(VoldemortException e) {
             response.setError(ProtoUtils.encodeError(errorCodeMapper, e));
             logger.error("handleGetROMaxVersion failed for request(" + request.toString() + ")", e);
         }
@@ -309,19 +307,18 @@ public class AdminServiceRequestHandler implements RequestHandler {
     public StreamRequestHandler handleFetchPartitionEntries(VAdminProto.FetchPartitionEntriesRequest request) {
         boolean fetchValues = request.hasFetchValues() && request.getFetchValues();
 
-        if (fetchValues) {
+        if(fetchValues) {
             boolean fetchMasterValues = request.hasFetchMasterEntries()
                                         && request.getFetchMasterEntries();
 
-            if (fetchMasterValues) {
+            if(fetchMasterValues) {
                 return new FetchMasterEntriesStreamRequestHandler(request,
                                                                   metadataStore,
                                                                   errorCodeMapper,
                                                                   voldemortConfig,
                                                                   storeRepository,
                                                                   networkClassLoader);
-            }
-            else {
+            } else {
                 return new FetchEntriesStreamRequestHandler(request,
                                                             metadataStore,
                                                             errorCodeMapper,
@@ -329,8 +326,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
                                                             storeRepository,
                                                             networkClassLoader);
             }
-        }
-        else
+        } else
             return new FetchKeysStreamRequestHandler(request,
                                                      metadataStore,
                                                      errorCodeMapper,
@@ -349,7 +345,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
 
     private Map<String, String> encodeROStoreVersionDirMap(List<ROStoreVersionDirMap> storeVersionDirMap) {
         Map<String, String> storeToVersionDir = Maps.newHashMap();
-        for (ROStoreVersionDirMap currentStore : storeVersionDirMap) {
+        for(ROStoreVersionDirMap currentStore: storeVersionDirMap) {
             storeToVersionDir.put(currentStore.getStoreName(), currentStore.getStoreDir());
         }
         return storeToVersionDir;
@@ -358,7 +354,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
     public VAdminProto.AsyncOperationStatusResponse handleRebalanceNode(VAdminProto.InitiateRebalanceNodeRequest request) {
         VAdminProto.AsyncOperationStatusResponse.Builder response = VAdminProto.AsyncOperationStatusResponse.newBuilder();
         try {
-            if (!voldemortConfig.isEnableRebalanceService())
+            if(!voldemortConfig.isEnableRebalanceService())
                 throw new VoldemortException("Rebalance service is not enabled for node:"
                                              + metadataStore.getNodeId());
 
@@ -372,8 +368,8 @@ public class AdminServiceRequestHandler implements RequestHandler {
                                                                                      encodeROStoreVersionDirMap(request.getDonorRoStoreToDirList()),
                                                                                      request.getAttempt());
 
-            RebalancePartitionsInfoLiveCycle rebalancePartitionsInfoLiveCycle =
-                    new RebalancePartitionsInfoLiveCycle(rebalanceStealInfo, RebalancePartitionsInfoLifeCycleStatus.NEW);
+            RebalancePartitionsInfoLiveCycle rebalancePartitionsInfoLiveCycle = new RebalancePartitionsInfoLiveCycle(rebalanceStealInfo,
+                                                                                                                     RebalancePartitionsInfoLifeCycleStatus.NEW);
 
             int requestId = rebalancer.rebalanceLocalNode(rebalancePartitionsInfoLiveCycle);
 
@@ -381,7 +377,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
                     .setDescription(rebalanceStealInfo.toString())
                     .setStatus("started")
                     .setComplete(false);
-        } catch (VoldemortException e) {
+        } catch(VoldemortException e) {
             response.setError(ProtoUtils.encodeError(errorCodeMapper, e));
             logger.error("handleRebalanceNode failed for request(" + request.toString() + ")", e);
         }
@@ -394,7 +390,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
         boolean showComplete = request.hasShowComplete() && request.getShowComplete();
         try {
             response.addAllRequestIds(asyncService.getAsyncOperationList(showComplete));
-        } catch (VoldemortException e) {
+        } catch(VoldemortException e) {
             response.setError(ProtoUtils.encodeError(errorCodeMapper, e));
             logger.error("handleAsyncOperationList failed for request(" + request.toString() + ")",
                          e);
@@ -408,7 +404,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
         int requestId = request.getRequestId();
         try {
             asyncService.stopOperation(requestId);
-        } catch (VoldemortException e) {
+        } catch(VoldemortException e) {
             response.setError(ProtoUtils.encodeError(errorCodeMapper, e));
             logger.error("handleAsyncOperationStop failed for request(" + request.toString() + ")",
                          e);
@@ -430,7 +426,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
             File rollbackVersionDir = new File(store.getStoreDirPath(), "version-" + pushVersion);
 
             store.rollback(rollbackVersionDir);
-        } catch (VoldemortException e) {
+        } catch(VoldemortException e) {
             response.setError(ProtoUtils.encodeError(errorCodeMapper, e));
             logger.error("handleRollbackStore failed for request(" + request.toString() + ")", e);
         }
@@ -441,17 +437,17 @@ public class AdminServiceRequestHandler implements RequestHandler {
         VAdminProto.SwapStoresAndCleanStateResponse.Builder response = VAdminProto.SwapStoresAndCleanStateResponse.newBuilder();
 
         Map<String, String> storeToVersionDir = Maps.newHashMap();
-        for (ROStoreVersionDirMap currentStore : request.getRoStoreVersionsList()) {
+        for(ROStoreVersionDirMap currentStore: request.getRoStoreVersionsList()) {
             storeToVersionDir.put(currentStore.getStoreName(), currentStore.getStoreDir());
         }
 
         try {
-            for (String storeName : storeToVersionDir.keySet()) {
+            for(String storeName: storeToVersionDir.keySet()) {
                 logger.debug("Swapping " + storeName);
                 swapStore(storeName, storeToVersionDir.get(storeName));
             }
 
-        } catch (VoldemortException e) {
+        } catch(VoldemortException e) {
             response.setError(ProtoUtils.encodeError(errorCodeMapper, e));
             logger.error("handleSwapStoresAndCleanState failed for request(" + request.toString()
                          + ")", e);
@@ -459,7 +455,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
         } finally {
             logger.debug("Cleaning rebalancer state");
             metadataStore.cleanAllRebalancingState();
-            if (rebalancer.hasRebalancingPermit(metadataStore.getNodeId()))
+            if(rebalancer.hasRebalancingPermit(metadataStore.getNodeId()))
                 rebalancer.releaseRebalancingPermit(metadataStore.getNodeId());
         }
         return response.build();
@@ -472,7 +468,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
                                                                storeRepository,
                                                                storeName);
 
-        if (!Utils.isReadableDir(directory))
+        if(!Utils.isReadableDir(directory))
             throw new VoldemortException("Store directory '" + directory
                                          + "' is not a readable directory.");
 
@@ -484,7 +480,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
         final String storeName = request.getStoreName();
         VAdminProto.SwapStoreResponse.Builder response = VAdminProto.SwapStoreResponse.newBuilder();
 
-        if (metadataStore.getServerState()
+        if(metadataStore.getServerState()
                         .equals(MetadataStore.VoldemortState.REBALANCING_MASTER_SERVER)) {
             response.setError(ProtoUtils.encodeError(errorCodeMapper,
                                                      new VoldemortException("Rebalancing in progress")));
@@ -493,7 +489,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
 
         try {
             swapStore(storeName, dir);
-        } catch (VoldemortException e) {
+        } catch(VoldemortException e) {
             response.setError(ProtoUtils.encodeError(errorCodeMapper, e));
             logger.error("handleSwapStore failed for request(" + request.toString() + ")", e);
         }
@@ -515,21 +511,19 @@ public class AdminServiceRequestHandler implements RequestHandler {
                                                                          storeRepository,
                                                                          storeName);
             final long pushVersion;
-            if (request.hasPushVersion()) {
+            if(request.hasPushVersion()) {
                 pushVersion = request.getPushVersion();
-                if (pushVersion <= store.getCurrentVersionId())
+                if(pushVersion <= store.getCurrentVersionId())
                     throw new VoldemortException("Version of push specified (" + pushVersion
                                                  + ") should be greater than current version "
                                                  + store.getCurrentVersionId());
-            }
-            else {
+            } else {
                 // Find the max version
                 long maxVersion;
                 File[] storeDirList = ReadOnlyUtils.getVersionDirs(new File(store.getStoreDirPath()));
-                if (storeDirList == null || storeDirList.length == 0) {
+                if(storeDirList == null || storeDirList.length == 0) {
                     throw new VoldemortException("Push version required since no version folders exist");
-                }
-                else {
+                } else {
                     maxVersion = ReadOnlyUtils.getVersionId(ReadOnlyUtils.findKthVersionedDir(storeDirList,
                                                                                               storeDirList.length - 1,
                                                                                               storeDirList.length - 1)[0]);
@@ -543,7 +537,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
 
                 @Override
                 public void markComplete() {
-                    if (fetchDirPath != null)
+                    if(fetchDirPath != null)
                         status.setStatus(fetchDirPath);
                     status.setComplete(true);
                 }
@@ -553,11 +547,11 @@ public class AdminServiceRequestHandler implements RequestHandler {
 
                     File fetchDir = null;
 
-                    if (fileFetcher == null) {
+                    if(fileFetcher == null) {
 
                         logger.warn("File fetcher class has not instantiated correctly. Assuming local file");
 
-                        if (!Utils.isReadableDir(fetchUrl)) {
+                        if(!Utils.isReadableDir(fetchUrl)) {
                             throw new VoldemortException("Fetch url " + fetchUrl
                                                          + " is not readable");
                         }
@@ -566,8 +560,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
                                                                      + Long.toString(pushVersion));
                         Utils.move(new File(fetchUrl), fetchDir);
 
-                    }
-                    else {
+                    } else {
 
                         logger.info("Executing fetch of " + fetchUrl);
                         updateStatus("0 MB copied at 0 MB/sec - 0 % complete");
@@ -578,17 +571,16 @@ public class AdminServiceRequestHandler implements RequestHandler {
                                                                    + Long.toString(pushVersion));
                             updateStatus("Completed fetch of " + fetchUrl);
 
-                            if (fetchDir == null) {
+                            if(fetchDir == null) {
                                 throw new VoldemortException("File fetcher failed for "
                                                              + fetchUrl
                                                              + " and store name = "
                                                              + storeName
                                                              + " due to incorrect input path/checksum error");
-                            }
-                            else {
+                            } else {
                                 logger.info("Fetch complete.");
                             }
-                        } catch (Exception e) {
+                        } catch(Exception e) {
                             throw new VoldemortException("Exception in Fetcher = " + e.getMessage());
                         }
 
@@ -602,7 +594,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
                 }
             });
 
-        } catch (VoldemortException e) {
+        } catch(VoldemortException e) {
             response.setError(ProtoUtils.encodeError(errorCodeMapper, e));
             logger.error("handleFetchStore failed for request(" + request.toString() + ")", e);
         }
@@ -652,35 +644,34 @@ public class AdminServiceRequestHandler implements RequestHandler {
                         updateStatus("Initated fetchPartitionEntries");
                         EventThrottler throttler = new EventThrottler(voldemortConfig.getStreamMaxWriteBytesPerSec());
 
-                        if (isReadOnlyStore) {
+                        if(isReadOnlyStore) {
                             String destinationDir = ((ReadOnlyStorageEngine) storageEngine).getCurrentDirPath();
                             adminClient.fetchPartitionFiles(nodeId,
                                                             storeName,
                                                             partitions,
                                                             destinationDir);
 
-                        }
-                        else {
+                        } else {
                             Iterator<Pair<ByteArray, Versioned<byte[]>>> entriesIterator = adminClient.fetchEntries(nodeId,
                                                                                                                     storeName,
                                                                                                                     partitions,
                                                                                                                     filter,
                                                                                                                     false);
 
-                            for (long i = 0; running.get() && entriesIterator.hasNext(); i++) {
+                            for(long i = 0; running.get() && entriesIterator.hasNext(); i++) {
                                 Pair<ByteArray, Versioned<byte[]>> entry = entriesIterator.next();
 
                                 ByteArray key = entry.getFirst();
                                 Versioned<byte[]> value = entry.getSecond();
                                 try {
                                     storageEngine.put(key, value, null);
-                                } catch (ObsoleteVersionException e) {
+                                } catch(ObsoleteVersionException e) {
                                     // log and ignore
                                     logger.debug("migratePartition threw ObsoleteVersionException, Ignoring.");
                                 }
 
                                 throttler.maybeThrottle(key.length() + valueSize(value));
-                                if ((i % 1000) == 0) {
+                                if((i % 1000) == 0) {
                                     updateStatus(i + " entries processed");
                                 }
                             }
@@ -692,7 +683,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
                 }
             });
 
-        } catch (VoldemortException e) {
+        } catch(VoldemortException e) {
             response.setError(ProtoUtils.encodeError(errorCodeMapper, e));
             logger.error("handleFetchAndUpdate failed for request(" + request.toString() + ")", e);
         }
@@ -710,9 +701,9 @@ public class AdminServiceRequestHandler implements RequestHandler {
             response.setComplete(requestComplete);
             response.setStatus(operationStatus.getStatus());
             response.setRequestId(requestId);
-            if (operationStatus.hasException())
+            if(operationStatus.hasException())
                 throw new VoldemortException(operationStatus.getException());
-        } catch (VoldemortException e) {
+        } catch(VoldemortException e) {
             response.setError(ProtoUtils.encodeError(errorCodeMapper, e));
             logger.error("handleAsyncStatus failed for request(" + request.toString().trim() + ")",
                          e);
@@ -736,28 +727,27 @@ public class AdminServiceRequestHandler implements RequestHandler {
             RoutingStrategy routingStrategy = metadataStore.getRoutingStrategy(storageEngine.getName());
 
             EventThrottler throttler = new EventThrottler(voldemortConfig.getStreamMaxReadBytesPerSec());
-            iterator = storageEngine.entries();
+            iterator = storageEngine.entries(filter);
             int deleteSuccess = 0;
 
-            while (iterator.hasNext()) {
+            while(iterator.hasNext()) {
                 Pair<ByteArray, Versioned<byte[]>> entry = iterator.next();
 
                 ByteArray key = entry.getFirst();
                 Versioned<byte[]> value = entry.getSecond();
                 throttler.maybeThrottle(key.length() + valueSize(value));
-                if (checkKeyBelongsToDeletePartition(key.get(), partitions, routingStrategy)
-                        && filter.accept(key, value)) {
-                    if (storageEngine.delete(key, value.getVersion()))
+                if(checkKeyBelongsToDeletePartition(key.get(), partitions, routingStrategy)) {
+                    if(storageEngine.delete(key, value.getVersion()))
                         deleteSuccess++;
                 }
             }
             response.setCount(deleteSuccess);
-        } catch (VoldemortException e) {
+        } catch(VoldemortException e) {
             response.setError(ProtoUtils.encodeError(errorCodeMapper, e));
             logger.error("handleDeletePartitionEntries failed for request(" + request.toString()
                          + ")", e);
         } finally {
-            if (null != iterator)
+            if(null != iterator)
                 iterator.close();
         }
 
@@ -770,13 +760,13 @@ public class AdminServiceRequestHandler implements RequestHandler {
         try {
             ByteArray key = ProtoUtils.decodeBytes(request.getKey());
             String keyString = ByteUtils.getString(key.get(), "UTF-8");
-            if (MetadataStore.METADATA_KEYS.contains(keyString)) {
+            if(MetadataStore.METADATA_KEYS.contains(keyString)) {
                 Versioned<byte[]> versionedValue = ProtoUtils.decodeVersioned(request.getVersioned());
                 metadataStore.put(new ByteArray(ByteUtils.getBytes(keyString, "UTF-8")),
                                   versionedValue,
                                   null);
             }
-        } catch (VoldemortException e) {
+        } catch(VoldemortException e) {
             response.setError(ProtoUtils.encodeError(errorCodeMapper, e));
             logger.error("handleUpdateMetadata failed for request(" + request.toString() + ")", e);
         }
@@ -790,20 +780,19 @@ public class AdminServiceRequestHandler implements RequestHandler {
         try {
             ByteArray key = ProtoUtils.decodeBytes(request.getKey());
             String keyString = ByteUtils.getString(key.get(), "UTF-8");
-            if (MetadataStore.METADATA_KEYS.contains(keyString)) {
+            if(MetadataStore.METADATA_KEYS.contains(keyString)) {
                 List<Versioned<byte[]>> versionedList = metadataStore.get(key, null);
                 int size = (versionedList.size() > 0) ? 1 : 0;
 
-                if (size > 0) {
+                if(size > 0) {
                     Versioned<byte[]> versioned = versionedList.get(0);
                     response.setVersion(ProtoUtils.encodeVersioned(versioned));
                 }
-            }
-            else {
+            } else {
                 throw new VoldemortException("Metadata Key passed " + keyString
                                              + " is not handled yet ...");
             }
-        } catch (VoldemortException e) {
+        } catch(VoldemortException e) {
             response.setError(ProtoUtils.encodeError(errorCodeMapper, e));
             logger.error("handleGetMetadata failed for request(" + request.toString() + ")", e);
         }
@@ -819,7 +808,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
                                                                                       storeName);
 
             storageEngine.truncate();
-        } catch (VoldemortException e) {
+        } catch(VoldemortException e) {
             response.setError(ProtoUtils.encodeError(errorCodeMapper, e));
             logger.error("handleTruncateEntries failed for request(" + request.toString() + ")", e);
         }
@@ -831,7 +820,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
         VAdminProto.DeleteStoreResponse.Builder response = VAdminProto.DeleteStoreResponse.newBuilder();
 
         // don't try to delete a store in the middle of rebalancing
-        if (!metadataStore.getServerState().equals(MetadataStore.VoldemortState.NORMAL_SERVER)) {
+        if(!metadataStore.getServerState().equals(MetadataStore.VoldemortState.NORMAL_SERVER)) {
             response.setError(ProtoUtils.encodeError(errorCodeMapper,
                                                      new VoldemortException("Rebalancing in progress")));
             return response.build();
@@ -840,35 +829,31 @@ public class AdminServiceRequestHandler implements RequestHandler {
         try {
             String storeName = request.getStoreName();
 
-            synchronized (lock) {
+            synchronized(lock) {
 
-                if (storeRepository.hasLocalStore(storeName)) {
-                    if (storeName.compareTo("slop") == 0) {
+                if(storeRepository.hasLocalStore(storeName)) {
+                    if(storeName.compareTo("slop") == 0) {
                         storageService.unregisterEngine(storeName,
                                                         "slop",
                                                         storeRepository.getStorageEngine(storeName));
-                    }
-                    else {
+                    } else {
                         // update stores list in metadata store
                         List<StoreDefinition> oldStoreDefList = metadataStore.getStoreDefList();
                         List<StoreDefinition> newStoreDefList = new ArrayList<StoreDefinition>();
 
-                        for (StoreDefinition storeDef : oldStoreDefList) {
-                            if (storeDef.isView()) {
-                                if (storeDef.getViewTargetStoreName().compareTo(storeName) != 0) {
+                        for(StoreDefinition storeDef: oldStoreDefList) {
+                            if(storeDef.isView()) {
+                                if(storeDef.getViewTargetStoreName().compareTo(storeName) != 0) {
                                     newStoreDefList.add(storeDef);
-                                }
-                                else {
+                                } else {
                                     storageService.unregisterEngine(storeDef.getName(),
                                                                     storeDef.getType(),
                                                                     storeRepository.getStorageEngine(storeDef.getName()));
                                 }
-                            }
-                            else {
-                                if (storeDef.getName().compareTo(storeName) != 0) {
+                            } else {
+                                if(storeDef.getName().compareTo(storeName) != 0) {
                                     newStoreDefList.add(storeDef);
-                                }
-                                else {
+                                } else {
                                     storageService.unregisterEngine(storeDef.getName(),
                                                                     storeDef.getType(),
                                                                     storeRepository.getStorageEngine(storeDef.getName()));
@@ -878,18 +863,17 @@ public class AdminServiceRequestHandler implements RequestHandler {
 
                         try {
                             metadataStore.put(MetadataStore.STORES_KEY, newStoreDefList);
-                        } catch (Exception e) {
+                        } catch(Exception e) {
                             throw new VoldemortException(e);
                         }
                     }
 
-                }
-                else {
+                } else {
                     throw new StoreOperationFailureException(String.format("Store '%s' does not exist on this server",
                                                                            storeName));
                 }
             }
-        } catch (VoldemortException e) {
+        } catch(VoldemortException e) {
             response.setError(ProtoUtils.encodeError(errorCodeMapper, e));
             logger.error("handleDeleteStore failed for request(" + request.toString() + ")", e);
         }
@@ -902,7 +886,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
         VAdminProto.AddStoreResponse.Builder response = VAdminProto.AddStoreResponse.newBuilder();
 
         // don't try to add a store in the middle of rebalancing
-        if (!metadataStore.getServerState().equals(MetadataStore.VoldemortState.NORMAL_SERVER)) {
+        if(!metadataStore.getServerState().equals(MetadataStore.VoldemortState.NORMAL_SERVER)) {
             response.setError(ProtoUtils.encodeError(errorCodeMapper,
                                                      new VoldemortException("Rebalancing in progress")));
             return response.build();
@@ -913,13 +897,13 @@ public class AdminServiceRequestHandler implements RequestHandler {
             StoreDefinitionsMapper mapper = new StoreDefinitionsMapper();
             StoreDefinition def = mapper.readStore(new StringReader(request.getStoreDefinition()));
 
-            synchronized (lock) {
+            synchronized(lock) {
                 // only allow a single store to be created at a time. We'll see
                 // concurrent errors when writing the
                 // stores.xml file out otherwise. (see
                 // ConfigurationStorageEngine.put for details)
 
-                if (!storeRepository.hasLocalStore(def.getName())) {
+                if(!storeRepository.hasLocalStore(def.getName())) {
                     // open the store
                     storageService.openStore(def);
 
@@ -928,27 +912,25 @@ public class AdminServiceRequestHandler implements RequestHandler {
                     List<StoreDefinition> currentStoreDefs;
                     List<Versioned<byte[]>> v = metadataStore.get(MetadataStore.STORES_KEY, null);
 
-                    if (((v.size() > 0) ? 1 : 0) > 0) {
+                    if(((v.size() > 0) ? 1 : 0) > 0) {
                         Versioned<byte[]> currentValue = v.get(0);
                         currentStoreDefs = mapper.readStoreList(new StringReader(ByteUtils.getString(currentValue.getValue(),
                                                                                                      "UTF-8")));
-                    }
-                    else {
+                    } else {
                         currentStoreDefs = Lists.newArrayList();
                     }
                     currentStoreDefs.add(def);
                     try {
                         metadataStore.put(MetadataStore.STORES_KEY, currentStoreDefs);
-                    } catch (Exception e) {
+                    } catch(Exception e) {
                         throw new VoldemortException(e);
                     }
-                }
-                else {
+                } else {
                     throw new StoreOperationFailureException(String.format("Store '%s' already exists on this server",
                                                                            def.getName()));
                 }
             }
-        } catch (VoldemortException e) {
+        } catch(VoldemortException e) {
             response.setError(ProtoUtils.encodeError(errorCodeMapper, e));
             logger.error("handleAddStore failed for request(" + request.toString() + ")", e);
         }
@@ -964,8 +946,8 @@ public class AdminServiceRequestHandler implements RequestHandler {
      * partial reads, and this identifies that case.
      * 
      * @param buffer Buffer to check; the buffer is reset to position 0 before
-     *            calling this method and the caller must reset it after the call
-     *            returns
+     *        calling this method and the caller must reset it after the call
+     *        returns
      * @return True if the buffer holds a complete request, false otherwise
      */
     public boolean isCompleteRequest(ByteBuffer buffer) {
@@ -974,11 +956,11 @@ public class AdminServiceRequestHandler implements RequestHandler {
         try {
             int dataSize = inputStream.readInt();
 
-            if (logger.isTraceEnabled())
+            if(logger.isTraceEnabled())
                 logger.trace("In isCompleteRequest, dataSize: " + dataSize + ", buffer position: "
                              + buffer.position());
 
-            if (dataSize == -1)
+            if(dataSize == -1)
                 return true;
 
             // Here we skip over the data (without reading it in) and
@@ -986,12 +968,12 @@ public class AdminServiceRequestHandler implements RequestHandler {
             buffer.position(buffer.position() + dataSize);
 
             return true;
-        } catch (Exception e) {
+        } catch(Exception e) {
             // This could also occur if the various methods we call into
             // re-throw a corrupted value error as some other type of exception.
             // For example, updating the position on a buffer past its limit
             // throws an InvalidArgumentException.
-            if (logger.isTraceEnabled())
+            if(logger.isTraceEnabled())
                 logger.trace("In isCompleteRequest, probable partial read occurred: " + e);
 
             return false;
@@ -1008,7 +990,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
         logger.debug("Attempt to load VoldemortFilter class:" + className);
 
         try {
-            if (voldemortConfig.isNetworkClassLoaderEnabled()) {
+            if(voldemortConfig.isNetworkClassLoaderEnabled()) {
                 // TODO: network class loader was throwing NoClassDefFound for
                 // voldemort.server package classes, Need testing and fixes
                 logger.warn("NetworkLoader is experimental and should not be used for now.");
@@ -1018,12 +1000,11 @@ public class AdminServiceRequestHandler implements RequestHandler {
                                                            0,
                                                            classBytes.length);
                 filter = (VoldemortFilter) cl.newInstance();
-            }
-            else {
+            } else {
                 Class<?> cl = Thread.currentThread().getContextClassLoader().loadClass(className);
                 filter = (VoldemortFilter) cl.newInstance();
             }
-        } catch (Exception e) {
+        } catch(Exception e) {
             throw new VoldemortException("Failed to load and instantiate the filter class", e);
         }
 
@@ -1037,7 +1018,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
     static ReadOnlyStorageEngine getReadOnlyStorageEngine(MetadataStore metadata,
                                                           StoreRepository repo,
                                                           String name) {
-        if (metadata.getStoreDef(name).getType().compareTo(ReadOnlyStorageConfiguration.TYPE_NAME) != 0)
+        if(metadata.getStoreDef(name).getType().compareTo(ReadOnlyStorageConfiguration.TYPE_NAME) != 0)
             throw new VoldemortException("Store " + name
                                          + " is not a read-only store, cannot complete operation");
         return (ReadOnlyStorageEngine) getStorageEngine(repo, name);
@@ -1047,7 +1028,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
                                                                      String storeName) {
         StorageEngine<ByteArray, byte[], byte[]> storageEngine = storeRepository.getStorageEngine(storeName);
 
-        if (storageEngine == null) {
+        if(storageEngine == null) {
             throw new VoldemortException("No store named '" + storeName + "'.");
         }
 
@@ -1083,12 +1064,12 @@ public class AdminServiceRequestHandler implements RequestHandler {
 
         ownedPartitions.removeAll(partitionList);
 
-        for (int p : keyPartitions) {
-            if (ownedPartitions.contains(p)) {
+        for(int p: keyPartitions) {
+            if(ownedPartitions.contains(p)) {
                 return false;
             }
 
-            if (partitionList.contains(p)) {
+            if(partitionList.contains(p)) {
                 return true;
             }
         }

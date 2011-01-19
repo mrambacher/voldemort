@@ -16,24 +16,18 @@
 
 package voldemort.store.slop;
 
-import java.util.List;
 import java.util.Map;
 
-import voldemort.VoldemortException;
 import voldemort.annotations.jmx.JmxGetter;
 import voldemort.cluster.Cluster;
 import voldemort.serialization.ByteArraySerializer;
 import voldemort.serialization.IdentitySerializer;
 import voldemort.serialization.SlopSerializer;
+import voldemort.store.DelegatingStorageEngine;
 import voldemort.store.StorageEngine;
-import voldemort.store.StoreCapabilityType;
 import voldemort.store.serialized.SerializingStorageEngine;
 import voldemort.store.stats.SlopStats;
 import voldemort.utils.ByteArray;
-import voldemort.utils.ClosableIterator;
-import voldemort.utils.Pair;
-import voldemort.versioning.Version;
-import voldemort.versioning.Versioned;
 
 /**
  * Tracks statistics of hints that were attempted, but not successfully pushed
@@ -41,14 +35,13 @@ import voldemort.versioning.Versioned;
  * last run
  * 
  */
-public class SlopStorageEngine implements StorageEngine<ByteArray, byte[], byte[]> {
+public class SlopStorageEngine extends DelegatingStorageEngine<ByteArray, byte[], byte[]> {
 
-    private final StorageEngine<ByteArray, byte[], byte[]> slopEngine;
     private final SlopSerializer slopSerializer;
     private final SlopStats slopStats;
 
     public SlopStorageEngine(StorageEngine<ByteArray, byte[], byte[]> slopEngine, Cluster cluster) {
-        this.slopEngine = slopEngine;
+        super(slopEngine);
         this.slopSerializer = new SlopSerializer();
         this.slopStats = new SlopStats(cluster);
     }
@@ -77,52 +70,5 @@ public class SlopStorageEngine implements StorageEngine<ByteArray, byte[], byte[
                                              new ByteArraySerializer(),
                                              slopSerializer,
                                              new IdentitySerializer());
-    }
-
-    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries() {
-        return slopEngine.entries();
-    }
-
-    public ClosableIterator<ByteArray> keys() {
-        return slopEngine.keys();
-    }
-
-    public void truncate() {
-        slopEngine.truncate();
-    }
-
-    public List<Versioned<byte[]>> get(ByteArray key, byte[] transforms) throws VoldemortException {
-        return slopEngine.get(key, transforms);
-    }
-
-    public Map<ByteArray, List<Versioned<byte[]>>> getAll(Iterable<ByteArray> keys,
-                                                          Map<ByteArray, byte[]> transforms)
-            throws VoldemortException {
-        return slopEngine.getAll(keys, transforms);
-    }
-
-    public Version put(ByteArray key, Versioned<byte[]> value, byte[] transforms)
-            throws VoldemortException {
-        return slopEngine.put(key, value, transforms);
-    }
-
-    public boolean delete(ByteArray key, Version version) throws VoldemortException {
-        return slopEngine.delete(key, version);
-    }
-
-    public String getName() {
-        return slopEngine.getName();
-    }
-
-    public void close() throws VoldemortException {
-        slopEngine.close();
-    }
-
-    public Object getCapability(StoreCapabilityType capability) {
-        return slopEngine.getCapability(capability);
-    }
-
-    public List<Version> getVersions(ByteArray key) {
-        return slopEngine.getVersions(key);
     }
 }

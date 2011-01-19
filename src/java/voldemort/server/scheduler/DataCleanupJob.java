@@ -20,13 +20,14 @@ import java.util.concurrent.Semaphore;
 
 import org.apache.log4j.Logger;
 
+import voldemort.client.protocol.VoldemortFilter;
 import voldemort.store.StorageEngine;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.EventThrottler;
 import voldemort.utils.Pair;
 import voldemort.utils.Time;
 import voldemort.utils.Utils;
-import voldemort.versioning.VectorClock;
+import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
 /**
@@ -62,8 +63,15 @@ public class DataCleanupJob<K, V, T> implements Runnable {
         try {
             logger.info("Starting data cleanup on store \"" + store.getName() + "\"...");
             int deleted = 0;
-            long now = time.getMilliseconds();
-            iterator = store.entries();
+            final long now = time.getMilliseconds();
+            VoldemortFilter filter = new VoldemortFilter() {
+
+                public boolean accept(Object key, Versioned<?> value) {
+                    Version clock = value.getVersion();
+                    return (now - clock.getTimestamp() > maxAgeMs);
+                }
+            };
+            iterator = store.entries(filter);
 
             while(iterator.hasNext()) {
                 // check if we have been interrupted
@@ -73,13 +81,11 @@ public class DataCleanupJob<K, V, T> implements Runnable {
                 }
 
                 Pair<K, Versioned<V>> keyAndVal = iterator.next();
-                VectorClock clock = (VectorClock) keyAndVal.getSecond().getVersion();
-                if(now - clock.getTimestamp() > maxAgeMs) {
-                    store.delete(keyAndVal.getFirst(), clock);
-                    deleted++;
-                    if(deleted % 10000 == 0)
-                        logger.debug("Deleted item " + deleted);
-                }
+                Version clock = keyAndVal.getSecond().getVersion();
+                store.delete(keyAndVal.getFirst(), clock);
+                deleted++;
+                if(deleted % 10000 == 0)
+                    logger.debug("Deleted item " + deleted);
 
                 // throttle on number of entries.
                 throttler.maybeThrottle(1);

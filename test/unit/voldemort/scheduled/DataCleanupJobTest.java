@@ -21,8 +21,10 @@ import java.util.concurrent.Semaphore;
 
 import junit.framework.TestCase;
 import voldemort.MockTime;
+import voldemort.TestUtils;
 import voldemort.server.scheduler.DataCleanupJob;
 import voldemort.store.StorageEngine;
+import voldemort.store.memory.InMemoryStorageConfiguration;
 import voldemort.store.memory.InMemoryStorageEngine;
 import voldemort.utils.EventThrottler;
 import voldemort.utils.Time;
@@ -38,7 +40,8 @@ public class DataCleanupJobTest extends TestCase {
     @Override
     public void setUp() {
         time = new MockTime();
-        engine = new InMemoryStorageEngine<String, String, String>("test");
+        engine = new InMemoryStorageEngine<String, String, String>(TestUtils.getStoreDef("test",
+                                                                                         InMemoryStorageConfiguration.TYPE_NAME));
     }
 
     public void testCleanupCleansUp() {

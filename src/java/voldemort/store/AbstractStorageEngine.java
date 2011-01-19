@@ -25,7 +25,9 @@ import org.apache.commons.codec.binary.Hex;
 import org.apache.log4j.Logger;
 
 import voldemort.VoldemortException;
+import voldemort.client.protocol.VoldemortFilter;
 import voldemort.utils.ByteArray;
+import voldemort.utils.ClosableFilterIterator;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
 import voldemort.utils.Utils;
@@ -40,15 +42,15 @@ public abstract class AbstractStorageEngine implements StorageEngine<ByteArray, 
 
     protected final Logger logger = Logger.getLogger(getClass());
     private static final Hex hexCodec = new Hex();
-    private final String name;
+    private final StoreDefinition storeDef;
 
-    protected AbstractStorageEngine(String name) {
-        this.name = Utils.notNull(name);
+    protected AbstractStorageEngine(StoreDefinition def) {
+        this.storeDef = Utils.notNull(def);
 
     }
 
     public String getName() {
-        return name;
+        return storeDef.getName();
     }
 
     abstract protected StoreTransaction<Version> startTransaction(ByteArray key)
@@ -200,16 +202,26 @@ public abstract class AbstractStorageEngine implements StorageEngine<ByteArray, 
         throw new NoSuchCapabilityException(capability, getName());
     }
 
-    abstract protected ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> getEntriesIterator();
+    public ClosableIterator<ByteArray> keys(ClosableIterator<ByteArray> iter,
+                                            final VoldemortFilter filter) {
+        return new ClosableFilterIterator<ByteArray>(iter) {
 
-    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries() {
-        return getEntriesIterator();
+            @Override
+            public boolean matches(ByteArray key) {
+                return filter.accept(key, null);
+            }
+        };
     }
 
-    abstract protected ClosableIterator<ByteArray> getKeysIterator();
+    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iter,
+                                                                        final VoldemortFilter filter) {
+        return new ClosableFilterIterator<Pair<ByteArray, Versioned<byte[]>>>(iter) {
 
-    public ClosableIterator<ByteArray> keys() {
-        return getKeysIterator();
+            @Override
+            public boolean matches(Pair<ByteArray, Versioned<byte[]>> entry) {
+                return filter.accept(entry.getFirst(), entry.getSecond());
+            }
+        };
     }
 
     protected <T> void attemptClose(StoreTransaction<T> transaction, boolean success) {
@@ -233,7 +245,7 @@ public abstract class AbstractStorageEngine implements StorageEngine<ByteArray, 
 
     @Override
     public int hashCode() {
-        return name.hashCode();
+        return getName().hashCode();
     }
 
     @Override

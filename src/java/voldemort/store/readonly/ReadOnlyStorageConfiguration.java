@@ -29,6 +29,7 @@ import voldemort.routing.RoutingStrategy;
 import voldemort.server.VoldemortConfig;
 import voldemort.store.StorageConfiguration;
 import voldemort.store.StorageEngine;
+import voldemort.store.StoreDefinition;
 import voldemort.utils.ByteArray;
 import voldemort.utils.JmxUtils;
 import voldemort.utils.ReflectUtils;
@@ -63,7 +64,8 @@ public class ReadOnlyStorageConfiguration implements StorageConfiguration {
         this.routingStrategy = routingStrategy;
     }
 
-    public StorageEngine<ByteArray, byte[], byte[]> getStore(String name) {
+    public StorageEngine<ByteArray, byte[], byte[]> getStore(StoreDefinition storeDef) {
+        String name = storeDef.getName();
         ReadOnlyStorageEngine store = new ReadOnlyStorageEngine(name,
                                                                 this.searcher,
                                                                 this.routingStrategy,

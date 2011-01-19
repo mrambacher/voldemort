@@ -38,7 +38,7 @@ import voldemort.server.protocol.RequestHandlerFactory;
 import voldemort.store.Store;
 import voldemort.store.async.AsyncUtils;
 import voldemort.store.http.HttpStore;
-import voldemort.store.memory.InMemoryStorageEngine;
+import voldemort.store.memory.InMemoryStore;
 import voldemort.store.socket.SocketStoreFactory;
 import voldemort.store.socket.clientrequest.ClientRequestExecutorPool;
 import voldemort.utils.ByteArray;
@@ -57,7 +57,7 @@ public class RemoteStoreComparisonTest {
         boolean useNio = args.length > 2 ? args[2].equals("true") : false;
 
         /** * In memory test ** */
-        final Store<byte[], byte[], byte[]> memStore = new InMemoryStorageEngine<byte[], byte[], byte[]>("test");
+        final Store<byte[], byte[], byte[]> memStore = new InMemoryStore<byte[], byte[], byte[]>("test");
         PerformanceTest memWriteTest = new PerformanceTest() {
 
             @Override
@@ -93,7 +93,7 @@ public class RemoteStoreComparisonTest {
         /** * Do Socket tests ** */
         String storeName = "test";
         StoreRepository repository = new StoreRepository();
-        repository.addLocalStore(new InMemoryStorageEngine<ByteArray, byte[], byte[]>(storeName));
+        repository.addLocalStore(new InMemoryStore<ByteArray, byte[], byte[]>(storeName));
         SocketStoreFactory storeFactory = new ClientRequestExecutorPool(10, 1000, 1000, 32 * 1024);
         final Store<ByteArray, byte[], byte[]> socketStore = AsyncUtils.asStore(storeFactory.create(storeName,
                                                                                                     "localhost",
@@ -147,7 +147,7 @@ public class RemoteStoreComparisonTest {
         socketService.stop();
 
         /** * Do HTTP tests ** */
-        repository.addLocalStore(new InMemoryStorageEngine<ByteArray, byte[], byte[]>(storeName));
+        repository.addLocalStore(new InMemoryStore<ByteArray, byte[], byte[]>(storeName));
         HttpService httpService = new HttpService(null,
                                                   null,
                                                   repository,
@@ -174,7 +174,7 @@ public class RemoteStoreComparisonTest {
                                                   "localhost",
                                                   8080,
                                                   httpClient,
-                                                  RequestFormatFactory.getRequestFormat(RequestFormatType.VOLDEMORT_V0),
+                                                  new RequestFormatFactory().getRequestFormat(RequestFormatType.VOLDEMORT_V0),
                                                   false);
         Thread.sleep(400);
 

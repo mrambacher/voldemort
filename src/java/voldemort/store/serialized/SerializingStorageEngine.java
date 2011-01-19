@@ -16,6 +16,7 @@
 
 package voldemort.store.serialized;
 
+import voldemort.client.protocol.VoldemortFilter;
 import voldemort.serialization.Serializer;
 import voldemort.store.StorageEngine;
 import voldemort.utils.ByteArray;
@@ -53,12 +54,12 @@ public class SerializingStorageEngine<K, V, T> extends SerializingStore<K, V, T>
         return new SerializingStorageEngine<K1, V1, T1>(s, k, v, t);
     }
 
-    public ClosableIterator<Pair<K, Versioned<V>>> entries() {
-        return new EntriesIterator(storageEngine.entries());
+    public ClosableIterator<Pair<K, Versioned<V>>> entries(VoldemortFilter filter) {
+        return new EntriesIterator(storageEngine.entries(filter));
     }
 
-    public ClosableIterator<K> keys() {
-        return new KeysIterator(storageEngine.keys());
+    public ClosableIterator<K> keys(VoldemortFilter filter) {
+        return new KeysIterator(storageEngine.keys(filter));
     }
 
     public void truncate() {

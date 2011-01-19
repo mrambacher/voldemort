@@ -24,7 +24,7 @@ import voldemort.VoldemortTestConstants;
 import voldemort.store.AbstractByteArrayStoreTest;
 import voldemort.store.Store;
 import voldemort.store.StoreDefinition;
-import voldemort.store.memory.InMemoryStorageEngine;
+import voldemort.store.memory.InMemoryStore;
 import voldemort.utils.ByteArray;
 import voldemort.versioning.Versioned;
 import voldemort.xml.StoreDefinitionsMapper;
@@ -37,7 +37,7 @@ public class LimitingStoreTest extends AbstractByteArrayStoreTest {
 
     @Override
     public Store<ByteArray, byte[], byte[]> createStore(String name) {
-        Store<ByteArray, byte[], byte[]> store = new InMemoryStorageEngine<ByteArray, byte[], byte[]>(name);
+        Store<ByteArray, byte[], byte[]> store = new InMemoryStore<ByteArray, byte[], byte[]>(name);
         return new LimitingStore(store, 300, 30 * 1024 * 1024, 200);
     }
 
@@ -81,7 +81,7 @@ public class LimitingStoreTest extends AbstractByteArrayStoreTest {
         StoreDefinitionsMapper mapper = new StoreDefinitionsMapper();
         StoreDefinition storeDef = mapper.readStoreList(new StringReader(VoldemortTestConstants.getStoreWithPropertiesXml()))
                                          .get(0);
-        Store<ByteArray, byte[], byte[]> store = new InMemoryStorageEngine<ByteArray, byte[], byte[]>(storeDef.getName());
+        Store<ByteArray, byte[], byte[]> store = new InMemoryStore<ByteArray, byte[], byte[]>(storeDef.getName());
         LimitingStore limit = new LimitingStore(store, storeDef);
         assertTrue("Key limit (" + limit.maxKeySize + "> 0", (limit.maxKeySize > 0));
         assertTrue("Value limit (" + limit.maxValueSize + "> 0", (limit.maxValueSize > 0));

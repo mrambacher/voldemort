@@ -31,6 +31,7 @@ import org.junit.Test;
 import voldemort.TestUtils;
 import voldemort.store.AbstractStorageEngineTest;
 import voldemort.store.StorageEngine;
+import voldemort.store.StoreDefinition;
 import voldemort.utils.ByteArray;
 
 public class MysqlStorageEngineTest extends AbstractStorageEngineTest {
@@ -47,13 +48,14 @@ public class MysqlStorageEngineTest extends AbstractStorageEngineTest {
     protected final static String DEFAULT_JDBC_USER = "root";
     protected final static String DEFAULT_JDBC_PSWD = "";
 
-    protected MysqlStorageEngineTest(String storeName) {
-        super(storeName);
+    protected MysqlStorageEngineTest(String storeName, String storeType) {
+        super(storeName, storeType);
         configureDatabaseProperties();
     }
 
     public MysqlStorageEngineTest() {
-        super("test_store_" + System.getProperty("user.name", "mysql"));
+        super("test_store_" + System.getProperty("user.name", "mysql"),
+              MysqlStorageConfiguration.TYPE_NAME);
         configureDatabaseProperties();
     }
 
@@ -135,8 +137,8 @@ public class MysqlStorageEngineTest extends AbstractStorageEngineTest {
     }
 
     @Override
-    public StorageEngine<ByteArray, byte[], byte[]> createStorageEngine(String name) {
-        MysqlStorageEngine engine = new MysqlStorageEngine(name, getDataSource());
+    public StorageEngine<ByteArray, byte[], byte[]> createStorageEngine(StoreDefinition storeDef) {
+        MysqlStorageEngine engine = new MysqlStorageEngine(storeDef, getDataSource());
         engine.destroy();
         engine.create();
         return engine;
@@ -176,7 +178,7 @@ public class MysqlStorageEngineTest extends AbstractStorageEngineTest {
     public void testOpenNonExistantStoreCreatesTable() throws SQLException {
         String newStore = TestUtils.randomLetters(15);
         /* Create the engine for side-effect */
-        this.createStorageEngine(newStore);
+        this.createStorageEngine(getStoreDef(newStore));
         executeQuery("select 1 from " + newStore + " limit 1");
         executeQuery("drop table " + newStore);
     }

@@ -17,7 +17,7 @@
 package voldemort;
 
 import voldemort.store.Store;
-import voldemort.store.memory.InMemoryStorageEngine;
+import voldemort.store.memory.InMemoryStore;
 import voldemort.store.versioned.InconsistencyResolvingStore;
 import voldemort.store.versioned.VersionIncrementingStore;
 import voldemort.utils.SystemTime;
@@ -31,7 +31,7 @@ import voldemort.versioning.VectorClockInconsistencyResolver;
 public class InMemoryMultiThreadedTest {
 
     public static void main(String[] args) throws Exception {
-        Store<byte[], byte[], byte[]> store = new VersionIncrementingStore<byte[], byte[], byte[]>(new InMemoryStorageEngine<byte[], byte[], byte[]>("test"),
+        Store<byte[], byte[], byte[]> store = new VersionIncrementingStore<byte[], byte[], byte[]>(new InMemoryStore<byte[], byte[], byte[]>("test"),
                                                                                                    0,
                                                                                                    new SystemTime());
         store = new InconsistencyResolvingStore<byte[], byte[], byte[]>(store,

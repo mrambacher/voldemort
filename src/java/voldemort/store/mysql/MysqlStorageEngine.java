@@ -25,8 +25,10 @@ import javax.sql.DataSource;
 
 import org.apache.log4j.Logger;
 
+import voldemort.client.protocol.VoldemortFilter;
 import voldemort.store.AbstractStorageEngine;
 import voldemort.store.PersistenceFailureException;
+import voldemort.store.StoreDefinition;
 import voldemort.store.StoreEntriesIterator;
 import voldemort.store.StoreKeysIterator;
 import voldemort.store.StoreRow;
@@ -49,8 +51,8 @@ public class MysqlStorageEngine extends AbstractStorageEngine {
 
     private final DataSource datasource;
 
-    public MysqlStorageEngine(String name, DataSource datasource) {
-        super(name);
+    public MysqlStorageEngine(StoreDefinition storeDef, DataSource datasource) {
+        super(storeDef);
         this.datasource = datasource;
 
         if(!tableExists()) {
@@ -135,23 +137,21 @@ public class MysqlStorageEngine extends AbstractStorageEngine {
         MysqlUtils.execute(datasource, "delete from " + getName());
     }
 
-    @Override
-    protected ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> getEntriesIterator() {
+    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(VoldemortFilter filter) {
         String sql = "select key_, version_, value_, metadata_ from " + getName();
         try {
             StoreRow rows = new MysqlRow(getName(), this.datasource, sql);
-            return new StoreEntriesIterator(rows);
+            return entries(new StoreEntriesIterator(rows), filter);
         } catch(SQLException e) {
             throw new PersistenceFailureException("Fix me!", e);
         }
     }
 
-    @Override
-    protected ClosableIterator<ByteArray> getKeysIterator() {
+    public ClosableIterator<ByteArray> keys(VoldemortFilter filter) {
         String sql = "select key_ from " + getName();
         try {
             StoreRow rows = new MysqlRow(getName(), this.datasource, sql);
-            return new StoreKeysIterator(rows);
+            return keys(new StoreKeysIterator(rows), filter);
         } catch(SQLException e) {
             throw new PersistenceFailureException("Fix me!", e);
         }
@@ -164,6 +164,6 @@ public class MysqlStorageEngine extends AbstractStorageEngine {
     }
 
     public void close() throws PersistenceFailureException {
-    // don't close datasource cause others could be using it
+        // don't close datasource cause others could be using it
     }
 }

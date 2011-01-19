@@ -28,8 +28,10 @@ import org.apache.commons.io.FileDeleteStrategy;
 import org.junit.Test;
 
 import voldemort.TestUtils;
+import voldemort.client.protocol.admin.filter.DefaultVoldemortFilter;
 import voldemort.store.AbstractStorageEngineTest;
 import voldemort.store.StorageEngine;
+import voldemort.store.StoreDefinition;
 import voldemort.utils.ByteArray;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
@@ -43,7 +45,7 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
     private BdbConfiguration configuration;
 
     public BdbStorageEngineTest() {
-        super("test");
+        super("test", BdbStorageConfiguration.TYPE_NAME);
     }
 
     private File tempDir;
@@ -68,9 +70,9 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
     }
 
     @Override
-    public BdbStorageEngine createStorageEngine(String name) {
+    public BdbStorageEngine createStorageEngine(StoreDefinition storeDef) {
         try {
-            return configuration.createStorageEngine(name);
+            return configuration.createStorageEngine(storeDef);
         } catch(DatabaseException e) {
             assertNull("Unexpected exception", e);
             return null;
@@ -94,8 +96,8 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
     @Test
     public void testEquals() {
         String name = "someName";
-        BdbStorageEngine first = createStorageEngine(name);
-        BdbStorageEngine second = createStorageEngine(name);
+        BdbStorageEngine first = createStorageEngine(getStoreDef(name));
+        BdbStorageEngine second = createStorageEngine(getStoreDef(name));
         assertEquals(first, second);
         first.close();
         second.close();
@@ -143,7 +145,7 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
             continue;
 
         // now simultaneously do iteration
-        ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iter = this.store.entries();
+        ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iter = this.store.entries(new DefaultVoldemortFilter());
         while(iter.hasNext())
             iter.next();
         iter.close();

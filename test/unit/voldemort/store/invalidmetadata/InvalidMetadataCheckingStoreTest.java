@@ -52,7 +52,7 @@ public class InvalidMetadataCheckingStoreTest extends TestCase {
                                                                      Arrays.asList(storeDef));
 
         InvalidMetadataCheckingStore store = new InvalidMetadataCheckingStore(0,
-                                                                              new DoNothingStore<ByteArray, byte[], byte[]>(storeDef.getName()),
+                                                                              new DoNothingStore<ByteArray, byte[], byte[]>(storeDef),
                                                                               metadata);
 
         try {
@@ -76,7 +76,7 @@ public class InvalidMetadataCheckingStoreTest extends TestCase {
                                                                      Arrays.asList(storeDef));
 
         InvalidMetadataCheckingStore store = new InvalidMetadataCheckingStore(0,
-                                                                              new DoNothingStore<ByteArray, byte[], byte[]>(storeDef.getName()),
+                                                                              new DoNothingStore<ByteArray, byte[], byte[]>(storeDef),
                                                                               metadata);
         try {
             // add partitions to node 0 on client side.
@@ -102,7 +102,7 @@ public class InvalidMetadataCheckingStoreTest extends TestCase {
                                                                      Arrays.asList(storeDef));
 
         InvalidMetadataCheckingStore store = new InvalidMetadataCheckingStore(0,
-                                                                              new DoNothingStore<ByteArray, byte[], byte[]>(storeDef.getName()),
+                                                                              new DoNothingStore<ByteArray, byte[], byte[]>(storeDef),
                                                                               metadata);
         try {
             // remove partitions to node 0 on client side.

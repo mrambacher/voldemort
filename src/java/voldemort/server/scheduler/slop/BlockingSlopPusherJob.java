@@ -22,6 +22,7 @@ import java.util.Map;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 
+import voldemort.client.protocol.admin.filter.DefaultVoldemortFilter;
 import voldemort.cluster.Cluster;
 import voldemort.cluster.Node;
 import voldemort.cluster.failuredetector.FailureDetector;
@@ -31,8 +32,8 @@ import voldemort.store.Store;
 import voldemort.store.UnreachableStoreException;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.store.slop.Slop;
-import voldemort.store.slop.SlopStorageEngine;
 import voldemort.store.slop.Slop.Operation;
+import voldemort.store.slop.SlopStorageEngine;
 import voldemort.utils.ByteArray;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.EventThrottler;
@@ -107,7 +108,7 @@ public class BlockingSlopPusherJob implements Runnable {
                 StorageEngine<ByteArray, Slop, byte[]> slopStore = slopStorageEngine.asSlopStore();
                 EventThrottler throttler = new EventThrottler(maxWriteBytesPerSec);
 
-                iterator = slopStore.entries();
+                iterator = slopStore.entries(new DefaultVoldemortFilter());
 
                 while(iterator.hasNext()) {
                     if(Thread.interrupted())
@@ -196,8 +197,8 @@ public class BlockingSlopPusherJob implements Runnable {
 
                 Map<Integer, Long> outstanding = Maps.newHashMapWithExpectedSize(cluster.getNumberOfNodes());
                 for(int nodeId: succeededByNode.keySet()) {
-                    outstanding.put(nodeId, attemptedByNode.get(nodeId)
-                                            - succeededByNode.get(nodeId));
+                    outstanding.put(nodeId,
+                                    attemptedByNode.get(nodeId) - succeededByNode.get(nodeId));
                 }
 
                 slopStorageEngine.resetStats(outstanding);

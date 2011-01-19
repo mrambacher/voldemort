@@ -13,6 +13,7 @@ import voldemort.store.ErrorCodeMapper;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.utils.ByteArray;
 import voldemort.utils.NetworkClassLoader;
+import voldemort.utils.Pair;
 import voldemort.versioning.Versioned;
 
 import com.google.protobuf.Message;
@@ -27,7 +28,7 @@ import com.google.protobuf.Message;
  * <p>
  */
 
-public class FetchMasterEntriesStreamRequestHandler extends FetchStreamRequestHandler {
+public class FetchMasterEntriesStreamRequestHandler extends FetchEntriesStreamRequestHandler {
 
     public FetchMasterEntriesStreamRequestHandler(FetchPartitionEntriesRequest request,
                                                   MetadataStore metadataStore,
@@ -43,33 +44,34 @@ public class FetchMasterEntriesStreamRequestHandler extends FetchStreamRequestHa
               networkClassLoader);
     }
 
+    @Override
     public StreamRequestHandlerState handleRequest(DataInputStream inputStream,
                                                    DataOutputStream outputStream)
             throws IOException {
-        if(!keyIterator.hasNext())
+        if(!hasNext())
             return StreamRequestHandlerState.COMPLETE;
 
-        ByteArray key = keyIterator.next();
+        Pair<ByteArray, Versioned<byte[]>> entry = next();
+        ByteArray key = entry.getFirst();
+        Versioned<byte[]> value = entry.getSecond();
 
         // Since Master-Only filter does not need value, we can save some disk
         // seeks by getting back only Master replica values
-        if(validPartition(key.get()) && filter.accept(key, null) && counter % skipRecords == 0) {
-            for(Versioned<byte[]> value: storageEngine.get(key, null)) {
-                throttler.maybeThrottle(key.length());
-                fetched++;
-                VAdminProto.FetchPartitionEntriesResponse.Builder response = VAdminProto.FetchPartitionEntriesResponse.newBuilder();
+        if(validPartition(key.get()) && counter % skipRecords == 0) {
+            throttler.maybeThrottle(key.length());
+            fetched++;
+            VAdminProto.FetchPartitionEntriesResponse.Builder response = VAdminProto.FetchPartitionEntriesResponse.newBuilder();
 
-                VAdminProto.PartitionEntry partitionEntry = VAdminProto.PartitionEntry.newBuilder()
-                                                                                      .setKey(ProtoUtils.encodeBytes(key))
-                                                                                      .setVersioned(ProtoUtils.encodeVersioned(value))
-                                                                                      .build();
-                response.setPartitionEntry(partitionEntry);
+            VAdminProto.PartitionEntry partitionEntry = VAdminProto.PartitionEntry.newBuilder()
+                                                                                  .setKey(ProtoUtils.encodeBytes(key))
+                                                                                  .setVersioned(ProtoUtils.encodeVersioned(value))
+                                                                                  .build();
+            response.setPartitionEntry(partitionEntry);
 
-                Message message = response.build();
-                ProtoUtils.writeMessage(outputStream, message);
+            Message message = response.build();
+            ProtoUtils.writeMessage(outputStream, message);
 
-                throttler.maybeThrottle(AdminServiceRequestHandler.valueSize(value));
-            }
+            throttler.maybeThrottle(AdminServiceRequestHandler.valueSize(value));
         }
 
         // log progress
@@ -84,7 +86,7 @@ public class FetchMasterEntriesStreamRequestHandler extends FetchStreamRequestHa
                              + " partition:" + partitionList + " in " + totalTime + " s");
         }
 
-        if(keyIterator.hasNext())
+        if(hasNext())
             return StreamRequestHandlerState.WRITING;
         else
             return StreamRequestHandlerState.COMPLETE;

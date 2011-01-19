@@ -2,6 +2,8 @@ package voldemort.store.bdb;
 
 import java.io.File;
 
+import voldemort.store.StoreDefinition;
+
 import com.sleepycat.je.Database;
 import com.sleepycat.je.DatabaseConfig;
 import com.sleepycat.je.DatabaseException;
@@ -26,11 +28,11 @@ public class BdbConfiguration {
         databaseConfig.setSortedDuplicates(true);
     }
 
-    public BdbStorageEngine createStorageEngine(String storeName) throws DatabaseException {
-        if(storeName == null)
+    public BdbStorageEngine createStorageEngine(StoreDefinition storeDef) throws DatabaseException {
+        if(storeDef == null)
             throw new IllegalArgumentException("Store must not be null");
-        Database database = environment.openDatabase(null, storeName, databaseConfig);
-        return new BdbStorageEngine(storeName, this.environment, database);
+        Database database = environment.openDatabase(null, storeDef.getName(), databaseConfig);
+        return new BdbStorageEngine(storeDef, this.environment, database);
     }
 
     public void close() throws DatabaseException {

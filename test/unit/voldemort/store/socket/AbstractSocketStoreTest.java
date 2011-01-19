@@ -48,7 +48,7 @@ import voldemort.store.UnreachableStoreException;
 import voldemort.store.async.AbstractAsynchronousStoreTest;
 import voldemort.store.async.AsyncUtils;
 import voldemort.store.async.AsynchronousStore;
-import voldemort.store.memory.InMemoryStorageEngine;
+import voldemort.store.memory.InMemoryStore;
 import voldemort.store.socket.clientrequest.ClientRequestExecutorPool;
 import voldemort.store.versioned.VersionIncrementingStore;
 import voldemort.utils.ByteArray;
@@ -122,7 +122,7 @@ public abstract class AbstractSocketStoreTest extends AbstractAsynchronousStoreT
     public AsynchronousStore<ByteArray, byte[], byte[]> createAsyncStore(String name) {
         Store<ByteArray, byte[], byte[]> local = repository.getLocalStore(name);
         if(local == null) {
-            local = new InMemoryStorageEngine<ByteArray, byte[], byte[]>(name);
+            local = new InMemoryStore<ByteArray, byte[], byte[]>(name);
             repository.addLocalStore(local);
             repository.addRoutedStore(local);
         }
@@ -141,7 +141,7 @@ public abstract class AbstractSocketStoreTest extends AbstractAsynchronousStoreT
     public AsynchronousStore<ByteArray, byte[], byte[]> createSlowStore(String name, long delay) {
         Store<ByteArray, byte[], byte[]> local = repository.getLocalStore(name);
         if(local == null) {
-            local = new InMemoryStorageEngine<ByteArray, byte[], byte[]>(name);
+            local = new InMemoryStore<ByteArray, byte[], byte[]>(name);
             local = new SleepyStore<ByteArray, byte[], byte[]>(delay, local);
             repository.addLocalStore(local);
             repository.addRoutedStore(local);

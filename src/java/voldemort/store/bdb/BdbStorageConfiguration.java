@@ -27,6 +27,7 @@ import voldemort.server.VoldemortConfig;
 import voldemort.store.StorageConfiguration;
 import voldemort.store.StorageEngine;
 import voldemort.store.StorageInitializationException;
+import voldemort.store.StoreDefinition;
 import voldemort.utils.ByteArray;
 import voldemort.utils.Time;
 
@@ -98,9 +99,10 @@ public class BdbStorageConfiguration implements StorageConfiguration {
             environmentConfig.setSharedCache(true);
     }
 
-    public StorageEngine<ByteArray, byte[], byte[]> getStore(String storeName) {
+    public StorageEngine<ByteArray, byte[], byte[]> getStore(StoreDefinition storeDef) {
         synchronized(lock) {
             try {
+                String storeName = storeDef.getName();
                 Environment environment = getEnvironment(storeName);
                 Database db = environment.openDatabase(null, storeName, databaseConfig);
                 if(voldemortConfig.getBdbCursorPreload()) {
@@ -108,7 +110,7 @@ public class BdbStorageConfiguration implements StorageConfiguration {
                     preloadConfig.setLoadLNs(true);
                     db.preload(preloadConfig);
                 }
-                BdbStorageEngine engine = new BdbStorageEngine(storeName,
+                BdbStorageEngine engine = new BdbStorageEngine(storeDef,
                                                                environment,
                                                                db,
                                                                voldemortConfig.getBdbCursorPreload());

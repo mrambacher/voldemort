@@ -20,6 +20,7 @@ import java.util.List;
 
 import org.apache.log4j.Logger;
 
+import voldemort.client.protocol.VoldemortFilter;
 import voldemort.cluster.Node;
 import voldemort.routing.RoutingStrategy;
 import voldemort.server.StoreRepository;
@@ -59,16 +60,20 @@ public class RebalancingJob implements Runnable {
         for(StorageEngine<ByteArray, byte[], byte[]> engine: storeRepository.getAllStorageEngines()) {
             logger.info("Rebalancing " + engine.getName());
             Store<ByteArray, byte[], byte[]> remote = storeRepository.getRoutedStore(engine.getName());
-            ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iterator = engine.entries();
+            VoldemortFilter rebalanceFilter = new VoldemortFilter() {
+
+                public boolean accept(Object key, Versioned<?> value) {
+                    return needsRebalancing((ByteArray) key);
+                }
+            };
+            ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iterator = engine.entries(rebalanceFilter);
             int rebalanced = 0;
             long currStart = System.currentTimeMillis();
             while(iterator.hasNext()) {
                 Pair<ByteArray, Versioned<byte[]>> keyAndVal = iterator.next();
-                if(needsRebalancing(keyAndVal.getFirst())) {
-                    remote.put(keyAndVal.getFirst(), keyAndVal.getSecond(), null);
-                    engine.delete(keyAndVal.getFirst(), keyAndVal.getSecond().getVersion());
-                    rebalanced++;
-                }
+                remote.put(keyAndVal.getFirst(), keyAndVal.getSecond(), null);
+                engine.delete(keyAndVal.getFirst(), keyAndVal.getSecond().getVersion());
+                rebalanced++;
             }
             totalRebalanced += rebalanced;
             long ellapsedSeconds = (System.currentTimeMillis() - currStart) / Time.MS_PER_SECOND;

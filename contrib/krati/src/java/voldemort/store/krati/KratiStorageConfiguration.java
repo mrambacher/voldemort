@@ -10,6 +10,7 @@ import org.apache.log4j.Logger;
 import voldemort.server.VoldemortConfig;
 import voldemort.store.StorageConfiguration;
 import voldemort.store.StorageEngine;
+import voldemort.store.StoreDefinition;
 import voldemort.utils.ByteArray;
 import voldemort.utils.Props;
 import voldemort.utils.ReflectUtils;
@@ -43,8 +44,9 @@ public class KratiStorageConfiguration implements StorageConfiguration {
 
     public void close() {}
 
-    public StorageEngine<ByteArray, byte[], byte[]> getStore(String storeName) {
+    public StorageEngine<ByteArray, byte[], byte[]> getStore(StoreDefinition storeDef) {
         synchronized(lock) {
+            String storeName = storeDef.getName();
             File storeDir = new File(dataDirectory, storeName);
             if(!storeDir.exists()) {
                 logger.info("Creating krati data directory '" + storeDir.getAbsolutePath() + "'.");
@@ -52,7 +54,7 @@ public class KratiStorageConfiguration implements StorageConfiguration {
             }
 
             SegmentFactory segmentFactory = (SegmentFactory) ReflectUtils.callConstructor(factoryClass);
-            return new KratiStorageEngine(storeName,
+            return new KratiStorageEngine(storeDef,
                                           segmentFactory,
                                           segmentFileSizeMb,
                                           lockStripes,

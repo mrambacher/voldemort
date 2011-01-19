@@ -27,7 +27,8 @@ import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
 
 import voldemort.VoldemortException;
-import voldemort.store.StorageEngine;
+import voldemort.client.protocol.VoldemortFilter;
+import voldemort.store.Store;
 import voldemort.store.StoreCapabilityType;
 import voldemort.store.StoreUtils;
 import voldemort.store.metadata.MetadataStore;
@@ -45,7 +46,7 @@ import voldemort.versioning.Versioned;
  * 
  * 
  */
-public class ConfigurationStorageEngine implements StorageEngine<String, String, String> {
+public class ConfigurationStorageEngine implements Store<String, String, String> {
 
     private final static Logger logger = Logger.getLogger(ConfigurationStorageEngine.class);
     private final String name;
@@ -59,7 +60,7 @@ public class ConfigurationStorageEngine implements StorageEngine<String, String,
                                                + " does not exist or can not be read.");
     }
 
-    public ClosableIterator<Pair<String, Versioned<String>>> entries() {
+    public ClosableIterator<Pair<String, Versioned<String>>> entries(VoldemortFilter filter) {
         throw new VoldemortException("Iteration  not supported in ConfigurationStorageEngine");
     }
 
@@ -236,7 +237,7 @@ public class ConfigurationStorageEngine implements StorageEngine<String, String,
         throw new VoldemortException("No extra capability.");
     }
 
-    public ClosableIterator<String> keys() {
+    public ClosableIterator<String> keys(VoldemortFilter filter) {
         throw new VoldemortException("keys iteration not supported.");
     }
 

@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 
 import voldemort.VoldemortException;
+import voldemort.client.protocol.VoldemortFilter;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
 import voldemort.utils.Utils;
@@ -33,14 +34,14 @@ import voldemort.versioning.Versioned;
  */
 public class DoNothingStore<K, V, T> implements StorageEngine<K, V, T> {
 
-    private final String name;
+    private final StoreDefinition storeDef;
 
-    public DoNothingStore(String name) {
-        this.name = Utils.notNull(name);
+    public DoNothingStore(StoreDefinition storeDef) {
+        this.storeDef = Utils.notNull(storeDef);
     }
 
     public void close() throws VoldemortException {
-    // Do nothing;
+        // Do nothing;
     }
 
     public List<Versioned<V>> get(K key, T transforms) throws VoldemortException {
@@ -49,7 +50,7 @@ public class DoNothingStore<K, V, T> implements StorageEngine<K, V, T> {
     }
 
     public String getName() {
-        return name;
+        return storeDef.getName();
     }
 
     public boolean delete(K key, Version value) throws VoldemortException {
@@ -78,7 +79,7 @@ public class DoNothingStore<K, V, T> implements StorageEngine<K, V, T> {
     private class DoNothingIterator<T> implements ClosableIterator<T> {
 
         public void close() {
-        // Do nothing
+            // Do nothing
         }
 
         public boolean hasNext() {
@@ -86,7 +87,7 @@ public class DoNothingStore<K, V, T> implements StorageEngine<K, V, T> {
         }
 
         public void remove() {
-        // Do nothing
+            // Do nothing
         }
 
         public T next() {
@@ -94,15 +95,15 @@ public class DoNothingStore<K, V, T> implements StorageEngine<K, V, T> {
         }
     }
 
-    public ClosableIterator<Pair<K, Versioned<V>>> entries() {
+    public ClosableIterator<Pair<K, Versioned<V>>> entries(VoldemortFilter filter) {
         return new DoNothingIterator<Pair<K, Versioned<V>>>();
     }
 
-    public ClosableIterator<K> keys() {
+    public ClosableIterator<K> keys(VoldemortFilter filter) {
         return new DoNothingIterator<K>();
     }
 
     public void truncate() {
-    // Do nothing
+        // Do nothing
     }
 }

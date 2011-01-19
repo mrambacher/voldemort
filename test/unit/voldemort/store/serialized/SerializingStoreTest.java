@@ -21,7 +21,7 @@ import java.util.List;
 import voldemort.serialization.StringSerializer;
 import voldemort.store.AbstractStoreTest;
 import voldemort.store.Store;
-import voldemort.store.memory.InMemoryStorageEngine;
+import voldemort.store.memory.InMemoryStore;
 import voldemort.utils.ByteArray;
 
 /**
@@ -40,7 +40,7 @@ public class SerializingStoreTest extends AbstractStoreTest<String, String, Stri
 
     @Override
     public Store<String, String, String> createStore(String name) {
-        return SerializingStore.wrap(new InMemoryStorageEngine<ByteArray, byte[], byte[]>(name),
+        return SerializingStore.wrap(new InMemoryStore<ByteArray, byte[], byte[]>(name),
                                      new StringSerializer(),
                                      new StringSerializer(),
                                      new StringSerializer());

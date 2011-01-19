@@ -21,7 +21,6 @@ import voldemort.store.ErrorCodeMapper;
 import voldemort.store.StorageEngine;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.utils.ByteArray;
-import voldemort.utils.ClosableIterator;
 import voldemort.utils.EventThrottler;
 import voldemort.utils.NetworkClassLoader;
 
@@ -40,8 +39,6 @@ public abstract class FetchStreamRequestHandler implements StreamRequestHandler 
     protected final VoldemortFilter filter;
 
     protected final StorageEngine<ByteArray, byte[], byte[]> storageEngine;
-
-    protected final ClosableIterator<ByteArray> keyIterator;
 
     protected long counter;
 
@@ -77,7 +74,6 @@ public abstract class FetchStreamRequestHandler implements StreamRequestHandler 
                 filter = new DefaultVoldemortFilter();
             }
         }
-        keyIterator = storageEngine.keys();
         startTime = System.currentTimeMillis();
         counter = 0;
 
@@ -87,9 +83,11 @@ public abstract class FetchStreamRequestHandler implements StreamRequestHandler 
         }
     }
 
+    abstract protected boolean hasNext() throws IOException;
+
     public StreamRequestHandlerState getRequestState(DataInputStream inputStream)
             throws IOException {
-        if(keyIterator.hasNext()) {
+        if(hasNext()) {
             return StreamRequestHandlerState.WRITING;
         } else {
             return StreamRequestHandlerState.COMPLETE;
@@ -100,9 +98,10 @@ public abstract class FetchStreamRequestHandler implements StreamRequestHandler 
         return StreamRequestDirection.WRITING;
     }
 
+    abstract protected void closeIterator();
+
     public final void close(DataOutputStream outputStream) throws IOException {
-        if(null != keyIterator)
-            keyIterator.close();
+        closeIterator();
 
         ProtoUtils.writeEndOfStream(outputStream);
     }

@@ -294,6 +294,40 @@ public class TestUtils {
         return "\"" + s + "\"";
     }
 
+    public static StoreDefinition getStoreDef(String storeName, String storeType) {
+        return getStoreDef(storeName,
+                           storeType,
+                           1,
+                           1,
+                           1,
+                           1,
+                           1,
+                           RoutingStrategyType.CONSISTENT_STRATEGY);
+    }
+
+    public static StoreDefinition getStoreDef(String storeName,
+                                              String storeType,
+                                              int replicationFactor,
+                                              int preads,
+                                              int rreads,
+                                              int pwrites,
+                                              int rwrites,
+                                              String strategyType) {
+        SerializerDefinition serDef = new SerializerDefinition("string");
+        return new StoreDefinitionBuilder().setName(storeName)
+                                           .setType(storeType)
+                                           .setKeySerializer(serDef)
+                                           .setValueSerializer(serDef)
+                                           .setRoutingPolicy(RoutingTier.SERVER)
+                                           .setRoutingStrategyType(strategyType)
+                                           .setReplicationFactor(replicationFactor)
+                                           .setPreferredReads(preads)
+                                           .setRequiredReads(rreads)
+                                           .setPreferredWrites(pwrites)
+                                           .setRequiredWrites(rwrites)
+                                           .build();
+    }
+
     /**
      * 
      * @param cluster

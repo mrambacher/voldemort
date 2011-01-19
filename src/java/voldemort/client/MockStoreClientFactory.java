@@ -28,6 +28,7 @@ import voldemort.store.Store;
 import voldemort.store.StoreDefinition;
 import voldemort.store.StoreUtils;
 import voldemort.store.memory.InMemoryStorageEngine;
+import voldemort.store.memory.InMemoryStore;
 import voldemort.store.serialized.SerializingStore;
 import voldemort.store.versioned.InconsistencyResolvingStore;
 import voldemort.store.versioned.VersionIncrementingStore;
@@ -120,9 +121,7 @@ public class MockStoreClientFactory implements StoreClientFactory {
         if(resolver != null)
             secondaryResolver = resolver;
 
-        Store store = new VersionIncrementingStore(new InMemoryStorageEngine(storeName),
-                                                   nodeId,
-                                                   time);
+        Store store = new VersionIncrementingStore(new InMemoryStore(storeName), nodeId, time);
         if(isSerialized())
             store = new SerializingStore(store,
                                          keySerializer,
@@ -155,20 +154,16 @@ public class MockStoreClientFactory implements StoreClientFactory {
 
         // Add inconsistency resolving decorator, using their inconsistency
         // resolver (if they gave us one)
-        InconsistencyResolver<Versioned<V1>> secondaryResolver = new TimeBasedInconsistencyResolver();
+        InconsistencyResolver<Versioned<V1>> secondaryResolver = new TimeBasedInconsistencyResolver<V1>();
 
         StorageEngine engine;
-        if(storeDef.isView())
-            engine = new InMemoryStorageEngine(storeDef.getViewTargetStoreName());
-        else
-            engine = new InMemoryStorageEngine(storeDef.getName());
-
         if(storeDef.isView()) {
-            // instantiate view
             String targetName = storeDef.getViewTargetStoreName();
             StoreDefinition targetDef = StoreUtils.getStoreDef(storeDefs, targetName);
+            engine = new InMemoryStorageEngine<K1, V1, T1>(targetDef);
+            // instantiate view
 
-            engine = new ViewStorageEngine(storeName,
+            engine = new ViewStorageEngine(storeDef,
                                            engine,
                                            this.viewValueSerializer != null ? this.viewValueSerializer
                                                                            : serializerFactory.getSerializer(storeDef.getValueSerializer()),
@@ -180,6 +175,8 @@ public class MockStoreClientFactory implements StoreClientFactory {
                                                                        : serializerFactory.getSerializer(targetDef.getValueSerializer()),
                                            null,
                                            ViewStorageConfiguration.loadTransformation(storeDef.getValueTransformation()));
+        } else {
+            engine = new InMemoryStorageEngine<K1, V1, T1>(storeDef);
         }
 
         Store store = new VersionIncrementingStore(engine, nodeId, time);

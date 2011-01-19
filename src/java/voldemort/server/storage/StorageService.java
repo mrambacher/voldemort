@@ -41,6 +41,8 @@ import org.apache.log4j.Logger;
 import voldemort.VoldemortException;
 import voldemort.annotations.jmx.JmxManaged;
 import voldemort.annotations.jmx.JmxOperation;
+import voldemort.client.RoutingTier;
+import voldemort.client.protocol.admin.filter.DefaultVoldemortFilter;
 import voldemort.cluster.Cluster;
 import voldemort.cluster.Node;
 import voldemort.cluster.failuredetector.FailureDetector;
@@ -48,6 +50,8 @@ import voldemort.cluster.failuredetector.FailureDetectorConfig;
 import voldemort.cluster.failuredetector.ServerStoreVerifier;
 import voldemort.routing.RoutingStrategy;
 import voldemort.routing.RoutingStrategyFactory;
+import voldemort.routing.RoutingStrategyType;
+import voldemort.serialization.SerializerDefinition;
 import voldemort.server.AbstractService;
 import voldemort.server.RequestRoutingType;
 import voldemort.server.ServiceType;
@@ -61,6 +65,7 @@ import voldemort.store.StorageConfiguration;
 import voldemort.store.StorageEngine;
 import voldemort.store.Store;
 import voldemort.store.StoreDefinition;
+import voldemort.store.StoreDefinitionBuilder;
 import voldemort.store.async.AsyncUtils;
 import voldemort.store.async.AsynchronousStore;
 import voldemort.store.distributed.DistributedStore;
@@ -170,6 +175,23 @@ public class StorageService extends AbstractService {
             throw new ConfigurationException("No storage engine has been enabled!");
     }
 
+    private StoreDefinition getSlopDef(String name, String type) {
+        SerializerDefinition serDef = new SerializerDefinition("string");
+        return new StoreDefinitionBuilder().setName(name)
+                                           .setType(type)
+                                           .setKeySerializer(serDef)
+                                           .setValueSerializer(serDef)
+                                           .setRoutingPolicy(RoutingTier.SERVER)
+                                           .setRoutingStrategyType(RoutingStrategyType.CONSISTENT_STRATEGY)
+                                           .setReplicationFactor(1)
+                                           .setPreferredReads(1)
+                                           .setRequiredReads(1)
+                                           .setPreferredWrites(1)
+                                           .setRequiredWrites(1)
+                                           .build();
+
+    }
+
     @Override
     protected void startInner() {
         registerEngine(metadata);
@@ -192,7 +214,8 @@ public class StorageService extends AbstractService {
             if(config == null)
                 throw new ConfigurationException("Attempt to get slop store failed");
 
-            SlopStorageEngine slopEngine = new SlopStorageEngine(config.getStore("slop"),
+            SlopStorageEngine slopEngine = new SlopStorageEngine(config.getStore(getSlopDef("slop",
+                                                                                            config.getType())),
                                                                  metadata.getCluster());
             registerEngine(slopEngine);
             storeRepository.setSlopStore(slopEngine);
@@ -266,7 +289,7 @@ public class StorageService extends AbstractService {
             ((ReadOnlyStorageConfiguration) config).setRoutingStrategy(routingStrategy);
         }
 
-        final StorageEngine<ByteArray, byte[], byte[]> engine = config.getStore(storeDef.getName());
+        final StorageEngine<ByteArray, byte[], byte[]> engine = config.getStore(storeDef);
         // Update the routing strategy + add listener to metadata
         if(storeDef.getType().compareTo(ReadOnlyStorageConfiguration.TYPE_NAME) == 0) {
             metadata.addMetadataStoreListener(storeDef.getName(), new MetadataStoreListener() {
@@ -411,7 +434,6 @@ public class StorageService extends AbstractService {
             DistributedStore<Node, ByteArray, byte[], byte[]> distributor = DistributedStoreFactory.create(nodeStores,
                                                                                                            def,
                                                                                                            cluster,
-                                                                                                           failureDetector,
                                                                                                            cluster.getNodeById(localNode)
                                                                                                                   .getZoneId());
 
@@ -680,7 +702,7 @@ public class StorageService extends AbstractService {
 
     private DataSetStats calculateStats(StorageEngine<ByteArray, byte[], byte[]> store) {
         DataSetStats stats = new DataSetStats();
-        ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iter = store.entries();
+        ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iter = store.entries(new DefaultVoldemortFilter());
         try {
             int count = 0;
             while(iter.hasNext()) {

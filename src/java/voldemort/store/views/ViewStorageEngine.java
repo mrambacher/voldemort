@@ -7,10 +7,13 @@ import java.util.Map;
 
 import voldemort.VoldemortException;
 import voldemort.annotations.Experimental;
+import voldemort.client.protocol.VoldemortFilter;
+import voldemort.client.protocol.admin.filter.DefaultVoldemortFilter;
 import voldemort.serialization.Serializer;
 import voldemort.store.StorageEngine;
 import voldemort.store.Store;
 import voldemort.store.StoreCapabilityType;
+import voldemort.store.StoreDefinition;
 import voldemort.store.StoreUtils;
 import voldemort.store.compress.CompressionStrategy;
 import voldemort.store.serialized.SerializingStore;
@@ -31,7 +34,7 @@ import com.google.common.collect.AbstractIterator;
 @Experimental
 public class ViewStorageEngine implements StorageEngine<ByteArray, byte[], byte[]> {
 
-    private final String name;
+    private final StoreDefinition viewDef;
     private final Store<Object, Object, Object> serializingStore;
     private final StorageEngine<ByteArray, byte[], byte[]> target;
     private final Serializer<Object> valSerializer;
@@ -42,7 +45,7 @@ public class ViewStorageEngine implements StorageEngine<ByteArray, byte[], byte[
     private final CompressionStrategy valueCompressionStrategy;
 
     @SuppressWarnings("unchecked")
-    public ViewStorageEngine(String name,
+    public ViewStorageEngine(StoreDefinition viewDef,
                              StorageEngine<ByteArray, byte[], byte[]> target,
                              Serializer<?> valSerializer,
                              Serializer<?> transformSerializer,
@@ -50,7 +53,7 @@ public class ViewStorageEngine implements StorageEngine<ByteArray, byte[], byte[
                              Serializer<?> targetValSerializer,
                              CompressionStrategy valueCompressionStrategy,
                              View<?, ?, ?, ?> valueTrans) {
-        this.name = name;
+        this.viewDef = viewDef;
         this.target = Utils.notNull(target);
         this.serializingStore = new SerializingStore(target,
                                                      targetKeySerializer,
@@ -133,7 +136,7 @@ public class ViewStorageEngine implements StorageEngine<ByteArray, byte[], byte[
     }
 
     public String getName() {
-        return name;
+        return viewDef.getName();
     }
 
     public List<Version> getVersions(ByteArray key) {
@@ -153,16 +156,16 @@ public class ViewStorageEngine implements StorageEngine<ByteArray, byte[], byte[
         return target.put(key, result, null);
     }
 
-    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries() {
-        return new ViewIterator(target.entries());
+    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(VoldemortFilter filter) {
+        return new ViewIterator(target.entries(filter));
     }
 
-    public ClosableIterator<ByteArray> keys() {
-        return StoreUtils.keys(entries());
+    public ClosableIterator<ByteArray> keys(VoldemortFilter filter) {
+        return StoreUtils.keys(entries(filter));
     }
 
     public void truncate() {
-        ViewIterator iterator = new ViewIterator(target.entries());
+        ViewIterator iterator = new ViewIterator(target.entries(new DefaultVoldemortFilter()));
         while(iterator.hasNext()) {
             Pair<ByteArray, Versioned<byte[]>> pair = iterator.next();
             target.delete(pair.getFirst(), pair.getSecond().getVersion());
@@ -212,8 +215,8 @@ public class ViewStorageEngine implements StorageEngine<ByteArray, byte[], byte[
             Pair<ByteArray, Versioned<byte[]>> p = inner.next();
             Versioned<byte[]> newVal = Versioned.value(valueToViewSchema(p.getFirst(),
                                                                          p.getSecond().getValue(),
-                                                                         null), p.getSecond()
-                                                                                 .getVersion());
+                                                                         null),
+                                                       p.getSecond().getVersion());
             return Pair.create(p.getFirst(), newVal);
         }
     }

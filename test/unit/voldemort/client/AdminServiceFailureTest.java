@@ -6,8 +6,8 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Map.Entry;
+import java.util.Properties;
 
 import junit.framework.TestCase;
 
@@ -79,8 +79,7 @@ public class AdminServiceFailureTest extends TestCase {
         cluster = ServerTestUtils.getLocalCluster(2, new int[][] { { 0, 1, 2, 3 }, { 4, 5, 6, 7 } });
         List<StoreDefinition> storeDefs = ServerTestUtils.getStoreDefs(1);
 
-        failingStorageEngine = new RandomlyFailingDelegatingStore<ByteArray, byte[], byte[]>(new InMemoryStorageEngine<ByteArray, byte[], byte[]>(storeDefs.get(0)
-                                                                                                                                                           .getName()));
+        failingStorageEngine = new RandomlyFailingDelegatingStore<ByteArray, byte[], byte[]>(new InMemoryStorageEngine<ByteArray, byte[], byte[]>(storeDefs.get(0)));
         adminServer = getAdminServer(cluster.getNodeById(0),
                                      cluster,
                                      storeDefs,

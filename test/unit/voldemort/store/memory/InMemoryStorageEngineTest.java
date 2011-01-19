@@ -22,17 +22,18 @@ import java.util.List;
 import voldemort.TestUtils;
 import voldemort.store.AbstractStorageEngineTest;
 import voldemort.store.StorageEngine;
+import voldemort.store.StoreDefinition;
 import voldemort.utils.ByteArray;
 
 public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
 
     public InMemoryStorageEngineTest() {
-        super("test");
+        super("test", InMemoryStorageConfiguration.TYPE_NAME);
     }
 
     @Override
-    public StorageEngine<ByteArray, byte[], byte[]> createStorageEngine(String name) {
-        return new InMemoryStorageEngine<ByteArray, byte[], byte[]>(name);
+    public StorageEngine<ByteArray, byte[], byte[]> createStorageEngine(StoreDefinition def) {
+        return new InMemoryStorageEngine<ByteArray, byte[], byte[]>(def);
     }
 
     @Override

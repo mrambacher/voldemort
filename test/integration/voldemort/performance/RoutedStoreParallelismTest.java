@@ -48,7 +48,7 @@ import voldemort.store.async.AsyncUtils;
 import voldemort.store.async.AsynchronousStore;
 import voldemort.store.async.ThreadedStore;
 import voldemort.store.distributed.DistributedStoreFactory;
-import voldemort.store.memory.InMemoryStorageEngine;
+import voldemort.store.memory.InMemoryStore;
 import voldemort.store.routed.RoutedStore;
 import voldemort.store.routed.RoutedStoreFactory;
 import voldemort.store.socket.SocketStoreFactory;
@@ -104,7 +104,9 @@ public class RoutedStoreParallelismTest {
               .ofType(Integer.class);
         parser.accepts("num-clients",
                        "The number of threads to make requests concurrently  Default = "
-                               + DEFAULT_NUM_CLIENTS).withRequiredArg().ofType(Integer.class);
+                               + DEFAULT_NUM_CLIENTS)
+              .withRequiredArg()
+              .ofType(Integer.class);
         parser.accepts("routed-store-type",
                        "Type of routed store, either \"" + THREAD_POOL_ROUTED_STORE + "\" or \""
                                + PIPELINE_ROUTED_STORE + "\"  Default = "
@@ -176,7 +178,7 @@ public class RoutedStoreParallelismTest {
                                                                           cluster);
             serverMap.put(i, server);
 
-            Store<ByteArray, byte[], byte[]> store = new InMemoryStorageEngine<ByteArray, byte[], byte[]>("test-sleepy");
+            Store<ByteArray, byte[], byte[]> store = new InMemoryStore<ByteArray, byte[], byte[]>("test-sleepy");
 
             if(i < numSlowNodes)
                 store = new SleepyStore<ByteArray, byte[], byte[]>(delay, store);
@@ -211,7 +213,6 @@ public class RoutedStoreParallelismTest {
                                                                   DistributedStoreFactory.create(stores,
                                                                                                  storeDefinition,
                                                                                                  cluster,
-                                                                                                 failureDetector,
                                                                                                  0));
 
         ExecutorService runner = Executors.newFixedThreadPool(numClients);
@@ -228,7 +229,7 @@ public class RoutedStoreParallelismTest {
                             try {
                                 routedStore.get(key, null);
                             } catch(VoldemortException e) {
-                                // 
+                                //
                             }
                         }
                     }

@@ -6,6 +6,7 @@ import krati.cds.impl.segment.MappedSegmentFactory;
 import voldemort.TestUtils;
 import voldemort.store.AbstractStorageEngineTest;
 import voldemort.store.StorageEngine;
+import voldemort.store.StoreDefinition;
 import voldemort.utils.ByteArray;
 
 public class KratiStorageEngineTest extends AbstractStorageEngineTest {
@@ -13,7 +14,7 @@ public class KratiStorageEngineTest extends AbstractStorageEngineTest {
     private File storeDir;
 
     public KratiStorageEngineTest() {
-        super("storeName");
+        super("storeName", KratiStorageConfiguration.TYPE_NAME);
     }
 
     @Override
@@ -25,8 +26,14 @@ public class KratiStorageEngineTest extends AbstractStorageEngineTest {
     }
 
     @Override
-    public StorageEngine<ByteArray, byte[], byte[]> createStorageEngine(String name) {
-        return new KratiStorageEngine(name, new MappedSegmentFactory(), 10, 10, 0.75, 0, storeDir);
+    public StorageEngine<ByteArray, byte[], byte[]> createStorageEngine(StoreDefinition storeDef) {
+        return new KratiStorageEngine(storeDef,
+                                      new MappedSegmentFactory(),
+                                      10,
+                                      10,
+                                      0.75,
+                                      0,
+                                      storeDir);
     }
 
     @Override

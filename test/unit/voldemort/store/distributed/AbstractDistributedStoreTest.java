@@ -49,7 +49,7 @@ import voldemort.store.async.CallableStore;
 import voldemort.store.async.StoreFuture;
 import voldemort.store.async.ThreadedStore;
 import voldemort.store.failuredetector.FailureDetectingStore;
-import voldemort.store.memory.InMemoryStorageEngine;
+import voldemort.store.memory.InMemoryStore;
 import voldemort.store.stats.StatTrackingStore;
 import voldemort.store.stats.Tracked;
 import voldemort.utils.ByteArray;
@@ -264,7 +264,7 @@ abstract public class AbstractDistributedStoreTest extends AbstractAsynchronousS
     public static AsynchronousStore<ByteArray, byte[], byte[]> buildMemoryStore(String name,
                                                                                 long timeout,
                                                                                 ExecutorService threadPool) {
-        Store<ByteArray, byte[], byte[]> store = new InMemoryStorageEngine<ByteArray, byte[], byte[]>(name);
+        Store<ByteArray, byte[], byte[]> store = new InMemoryStore<ByteArray, byte[], byte[]>(name);
         if(timeout > 0) {
             store = new SleepyStore<ByteArray, byte[], byte[]>(timeout, store);
         }
@@ -443,9 +443,9 @@ abstract public class AbstractDistributedStoreTest extends AbstractAsynchronousS
                                                                            long delay,
                                                                            FailureDetector detector,
                                                                            ExecutorService threadPool) {
-        Store<ByteArray, byte[], byte[]> memory = new InMemoryStorageEngine<ByteArray, byte[], byte[]>(storeName
-                                                                                                       + "_"
-                                                                                                       + node.getId());
+        Store<ByteArray, byte[], byte[]> memory = new InMemoryStore<ByteArray, byte[], byte[]>(storeName
+                                                                                               + "_"
+                                                                                               + node.getId());
         Store<ByteArray, byte[], byte[]> sleepy = new SleepyStore<ByteArray, byte[], byte[]>(delay,
                                                                                              memory);
         return createAsyncStore(node, sleepy, detector, threadPool);
@@ -747,7 +747,7 @@ abstract public class AbstractDistributedStoreTest extends AbstractAsynchronousS
         ExecutorService threadPool = Executors.newFixedThreadPool(1);
         subStores.put(node1,
                       createAsyncStore(node1,
-                                       new InMemoryStorageEngine<ByteArray, byte[], byte[]>("test"),
+                                       new InMemoryStore<ByteArray, byte[], byte[]>("test"),
                                        failureDetector,
                                        threadPool));
         subStores.put(node2,
@@ -800,12 +800,12 @@ abstract public class AbstractDistributedStoreTest extends AbstractAsynchronousS
         Node node2 = Iterables.get(cluster.getNodes(), 1);
         subStores.put(node1,
                       createAsyncStore(node1,
-                                       new InMemoryStorageEngine<ByteArray, byte[], byte[]>("test"),
+                                       new InMemoryStore<ByteArray, byte[], byte[]>("test"),
                                        failureDetector,
                                        routedStoreThreadPool));
         subStores.put(node2,
                       createAsyncStore(node2,
-                                       new InMemoryStorageEngine<ByteArray, byte[], byte[]>("test"),
+                                       new InMemoryStore<ByteArray, byte[], byte[]>("test"),
                                        failureDetector,
                                        routedStoreThreadPool));
 
@@ -861,24 +861,19 @@ abstract public class AbstractDistributedStoreTest extends AbstractAsynchronousS
         routedStoreThreadPool = Executors.newFixedThreadPool(1);
 
         Store<ByteArray, byte[], byte[]> failing = FailingStore.asStore("test");
-        subStores.put(node1, createAsyncStore(node1,
-                                              failing,
-                                              failureDetector,
-                                              routedStoreThreadPool));
+        subStores.put(node1,
+                      createAsyncStore(node1, failing, failureDetector, routedStoreThreadPool));
         subStores.put(node3,
                       createAsyncStore(node3,
-                                       new InMemoryStorageEngine<ByteArray, byte[], byte[]>("test"),
+                                       new InMemoryStore<ByteArray, byte[], byte[]>("test"),
                                        failureDetector,
                                        routedStoreThreadPool));
         /*
          * The bug would only show itself if the second successful required
          * write was slow (but still within the timeout).
          */
-        subStores.put(node2, createSleepyStore(node2,
-                                               "test",
-                                               100,
-                                               failureDetector,
-                                               routedStoreThreadPool));
+        subStores.put(node2,
+                      createSleepyStore(node2, "test", 100, failureDetector, routedStoreThreadPool));
 
         AsynchronousStore<ByteArray, byte[], byte[]> async = createAsyncStore(storeDef, subStores);
 
@@ -992,7 +987,7 @@ abstract public class AbstractDistributedStoreTest extends AbstractAsynchronousS
         StatTrackingStore<ByteArray, byte[], byte[]> statStore = null;
         for(int i = 0; i < 3; ++i) {
             Node node = Iterables.get(cluster.getNodes(), i);
-            statStore = new StatTrackingStore<ByteArray, byte[], byte[]>(new InMemoryStorageEngine<ByteArray, byte[], byte[]>("test"),
+            statStore = new StatTrackingStore<ByteArray, byte[], byte[]>(new InMemoryStore<ByteArray, byte[], byte[]>("test"),
                                                                          null);
             AsynchronousStore<ByteArray, byte[], byte[]> async = this.createAsyncStore(node,
                                                                                        statStore,
@@ -1035,16 +1030,14 @@ abstract public class AbstractDistributedStoreTest extends AbstractAsynchronousS
         Map<Node, AsynchronousStore<ByteArray, byte[], byte[]>> subStores = Maps.newHashMap();
 
         for(Node node: cluster.getNodes()) {
-            Store<ByteArray, byte[], byte[]> store = new InMemoryStorageEngine<ByteArray, byte[], byte[]>("test");
+            Store<ByteArray, byte[], byte[]> store = new InMemoryStore<ByteArray, byte[], byte[]>("test");
 
             if(subStores.isEmpty()) {
                 store = new SleepyStore<ByteArray, byte[], byte[]>(sleepTimeMs, store);
             }
 
-            subStores.put(node, this.createAsyncStore(node,
-                                                      store,
-                                                      failureDetector,
-                                                      routedStoreThreadPool));
+            subStores.put(node,
+                          this.createAsyncStore(node, store, failureDetector, routedStoreThreadPool));
         }
 
         DistributedStore<Node, ByteArray, byte[], byte[]> distributor = this.buildDistributedStore(subStores,
@@ -1083,16 +1076,14 @@ abstract public class AbstractDistributedStoreTest extends AbstractAsynchronousS
         routedStoreThreadPool = Executors.newFixedThreadPool(cluster.getNumberOfNodes());
 
         for(Node node: cluster.getNodes()) {
-            Store<ByteArray, byte[], byte[]> store = new InMemoryStorageEngine<ByteArray, byte[], byte[]>("test");
+            Store<ByteArray, byte[], byte[]> store = new InMemoryStore<ByteArray, byte[], byte[]>("test");
 
             if(subStores.isEmpty()) {
                 store = new SleepyStore<ByteArray, byte[], byte[]>(sleepTimeMs, store);
             }
 
-            subStores.put(node, this.createAsyncStore(node,
-                                                      store,
-                                                      failureDetector,
-                                                      routedStoreThreadPool));
+            subStores.put(node,
+                          this.createAsyncStore(node, store, failureDetector, routedStoreThreadPool));
         }
 
         DistributedStore<Node, ByteArray, byte[], byte[]> distributor = buildDistributedStore(subStores,

@@ -22,9 +22,11 @@ import org.apache.log4j.Logger;
 
 import voldemort.VoldemortException;
 import voldemort.annotations.jmx.JmxOperation;
+import voldemort.client.protocol.VoldemortFilter;
 import voldemort.store.AbstractStorageEngine;
 import voldemort.store.PersistenceFailureException;
 import voldemort.store.StorageInitializationException;
+import voldemort.store.StoreDefinition;
 import voldemort.store.StoreEntriesIterator;
 import voldemort.store.StoreKeysIterator;
 import voldemort.store.StoreRow;
@@ -61,15 +63,15 @@ public class BdbStorageEngine extends AbstractStorageEngine {
     private final boolean cursorPreload;
     private final AtomicBoolean isTruncating = new AtomicBoolean(false);
 
-    public BdbStorageEngine(String name, Environment environment, Database database) {
-        this(name, environment, database, false);
+    public BdbStorageEngine(StoreDefinition def, Environment environment, Database database) {
+        this(def, environment, database, false);
     }
 
-    public BdbStorageEngine(String name,
+    public BdbStorageEngine(StoreDefinition storeDef,
                             Environment environment,
                             Database database,
                             boolean cursorPreload) {
-        super(name);
+        super(storeDef);
         this.bdbDatabase = Utils.notNull(database);
         this.environment = Utils.notNull(environment);
         this.isOpen = new AtomicBoolean(true);
@@ -156,8 +158,7 @@ public class BdbStorageEngine extends AbstractStorageEngine {
         }
     }
 
-    @Override
-    protected ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> getEntriesIterator() {
+    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(VoldemortFilter filter) {
         try {
             Database db = getBdbDatabase();
             if(cursorPreload) {
@@ -166,15 +167,15 @@ public class BdbStorageEngine extends AbstractStorageEngine {
                 db.preload(preloadConfig);
             }
             StoreRow rows = new BdbStoreRow(db, LockMode.READ_UNCOMMITTED);
-            return new StoreEntriesIterator(rows);
+            return entries(new StoreEntriesIterator(rows), filter);
         } catch(DatabaseException e) {
             logger.error(e);
             throw new PersistenceFailureException(e);
         }
+
     }
 
-    @Override
-    protected ClosableIterator<ByteArray> getKeysIterator() {
+    public ClosableIterator<ByteArray> keys(VoldemortFilter filter) {
         try {
             Database db = getBdbDatabase();
             if(cursorPreload) {
@@ -183,7 +184,7 @@ public class BdbStorageEngine extends AbstractStorageEngine {
                 db.preload(preloadConfig);
             }
             StoreRow rows = new BdbStoreRow(db, LockMode.READ_UNCOMMITTED);
-            return new StoreKeysIterator(rows);
+            return keys(new StoreKeysIterator(rows), filter);
         } catch(DatabaseException e) {
             logger.error(e);
             throw new PersistenceFailureException(e);

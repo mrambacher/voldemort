@@ -34,6 +34,7 @@ import org.apache.log4j.Logger;
 import voldemort.VoldemortException;
 import voldemort.annotations.jmx.JmxGetter;
 import voldemort.annotations.jmx.JmxOperation;
+import voldemort.client.protocol.VoldemortFilter;
 import voldemort.routing.RoutingStrategy;
 import voldemort.store.NoSuchCapabilityException;
 import voldemort.store.StorageEngine;
@@ -363,12 +364,12 @@ public class ReadOnlyStorageEngine implements StorageEngine<ByteArray, byte[], b
         }
     }
 
-    public ClosableIterator<ByteArray> keys() {
+    public ClosableIterator<ByteArray> keys(VoldemortFilter filter) {
         throw new UnsupportedOperationException("Iteration is not supported for "
                                                 + getClass().getName());
     }
 
-    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries() {
+    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(VoldemortFilter filter) {
         throw new UnsupportedOperationException("Iteration is not supported for "
                                                 + getClass().getName());
     }

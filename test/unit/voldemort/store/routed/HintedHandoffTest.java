@@ -47,6 +47,7 @@ import voldemort.serialization.SlopSerializer;
 import voldemort.server.StoreRepository;
 import voldemort.server.scheduler.slop.StreamingSlopPusherJob;
 import voldemort.store.ForceFailStore;
+import voldemort.store.StorageEngine;
 import voldemort.store.Store;
 import voldemort.store.StoreDefinition;
 import voldemort.store.StoreDefinitionBuilder;
@@ -61,6 +62,7 @@ import voldemort.store.failuredetector.FailureDetectingStore;
 import voldemort.store.logging.LoggingStore;
 import voldemort.store.memory.InMemoryStorageConfiguration;
 import voldemort.store.memory.InMemoryStorageEngine;
+import voldemort.store.memory.InMemoryStore;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.store.slop.HintedHandoffStore;
 import voldemort.store.slop.Slop;
@@ -177,16 +179,18 @@ public class HintedHandoffTest extends TestCase {
             StoreRepository storeRepo = new StoreRepository();
             VoldemortException e = new UnreachableStoreException("Node down");
 
-            InMemoryStorageEngine<ByteArray, byte[], byte[]> storageEngine = new InMemoryStorageEngine<ByteArray, byte[], byte[]>(STORE_NAME);
-            LoggingStore<ByteArray, byte[], byte[]> loggingStore = new LoggingStore<ByteArray, byte[], byte[]>(storageEngine);
+            InMemoryStore<ByteArray, byte[], byte[]> memStore = new InMemoryStore<ByteArray, byte[], byte[]>(STORE_NAME);
+            LoggingStore<ByteArray, byte[], byte[]> loggingStore = new LoggingStore<ByteArray, byte[], byte[]>(memStore);
             ForceFailStore<ByteArray, byte[], byte[]> failingStore = new ForceFailStore<ByteArray, byte[], byte[]>(loggingStore,
                                                                                                                    e);
             failingStores.put(node.getId(), failingStore);
             AsynchronousStore<ByteArray, byte[], byte[]> async = ThreadedStore.create(failingStore,
                                                                                       routedStoreThreadPool);
             asyncStores.put(node, FailureDetectingStore.create(node, failureDetector, async));
-            SlopStorageEngine slopStore = new SlopStorageEngine(new InMemoryStorageEngine<ByteArray, byte[], byte[]>(SLOP_STORE_NAME),
-                                                                cluster);
+            StorageEngine<ByteArray, byte[], byte[]> memory = new InMemoryStorageEngine<ByteArray, byte[], byte[]>(TestUtils.getStoreDef(SLOP_STORE_NAME,
+                                                                                                                                         InMemoryStorageConfiguration.TYPE_NAME));
+
+            SlopStorageEngine slopStore = new SlopStorageEngine(memory, cluster);
             slopStores.put(node,
                            FailureDetectingStore.create(node,
                                                         failureDetector,

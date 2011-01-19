@@ -17,7 +17,7 @@ import voldemort.client.StoreClient;
 import voldemort.serialization.Compression;
 import voldemort.server.AbstractSocketService;
 import voldemort.store.AbstractByteArrayStoreTest;
-import voldemort.store.memory.InMemoryStorageEngine;
+import voldemort.store.memory.InMemoryStore;
 import voldemort.utils.ByteArray;
 
 @RunWith(Parameterized.class)
@@ -47,7 +47,7 @@ public class CompressingStoreTest extends AbstractByteArrayStoreTest {
 
     @Override
     public CompressingStore createStore(String name) {
-        CompressingStore store = new CompressingStore(new InMemoryStorageEngine<ByteArray, byte[], byte[]>(name),
+        CompressingStore store = new CompressingStore(new InMemoryStore<ByteArray, byte[], byte[]>(name),
                                                       compressionFactory.get(compression),
                                                       compressionFactory.get(compression));
         return store;

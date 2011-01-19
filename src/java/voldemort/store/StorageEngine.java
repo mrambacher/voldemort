@@ -16,6 +16,7 @@
 
 package voldemort.store;
 
+import voldemort.client.protocol.VoldemortFilter;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
 import voldemort.versioning.Versioned;
@@ -53,7 +54,7 @@ public interface StorageEngine<K, V, T> extends Store<K, V, T> {
      * 
      * @return An iterator over the entries in this StorageEngine.
      */
-    public ClosableIterator<Pair<K, Versioned<V>>> entries();
+    public ClosableIterator<Pair<K, Versioned<V>>> entries(VoldemortFilter filter);
 
     /**
      * Get an iterator over keys in the store.
@@ -63,7 +64,7 @@ public interface StorageEngine<K, V, T> extends Store<K, V, T> {
      * 
      * @return An iterator over the keys in this StorageEngine.
      */
-    public ClosableIterator<K> keys();
+    public ClosableIterator<K> keys(VoldemortFilter filter);
 
     /**
      * Truncate all entries in the store

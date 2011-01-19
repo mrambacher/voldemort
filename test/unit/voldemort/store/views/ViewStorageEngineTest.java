@@ -5,10 +5,12 @@ import java.util.List;
 import java.util.Map;
 
 import junit.framework.TestCase;
+import voldemort.TestUtils;
 import voldemort.serialization.Serializer;
 import voldemort.serialization.StringSerializer;
 import voldemort.serialization.json.JsonTypeSerializer;
 import voldemort.store.Store;
+import voldemort.store.memory.InMemoryStorageConfiguration;
 import voldemort.store.memory.InMemoryStorageEngine;
 import voldemort.store.serialized.SerializingStore;
 import voldemort.utils.ByteArray;
@@ -27,7 +29,8 @@ import com.google.common.collect.ImmutableMap;
 public class ViewStorageEngineTest extends TestCase {
 
     private AddStrViewTrans transform = new AddStrViewTrans("42");
-    private InMemoryStorageEngine<ByteArray, byte[], byte[]> targetRaw1 = new InMemoryStorageEngine<ByteArray, byte[], byte[]>("target1");
+    private InMemoryStorageEngine<ByteArray, byte[], byte[]> targetRaw1 = new InMemoryStorageEngine<ByteArray, byte[], byte[]>(TestUtils.getStoreDef("target1",
+                                                                                                                                                     InMemoryStorageConfiguration.TYPE_NAME));
     private Store<String, String, String> target1 = SerializingStore.wrap(targetRaw1,
                                                                           new StringSerializer(),
                                                                           new StringSerializer(),
@@ -37,7 +40,8 @@ public class ViewStorageEngineTest extends TestCase {
     private Serializer<List<Integer>> valueSer = new IntegerListSerializer();
     private Serializer<List<Integer>> transSer = new IntegerListSerializer();
 
-    private InMemoryStorageEngine<ByteArray, byte[], byte[]> targetRaw2 = new InMemoryStorageEngine<ByteArray, byte[], byte[]>("target2");
+    private InMemoryStorageEngine<ByteArray, byte[], byte[]> targetRaw2 = new InMemoryStorageEngine<ByteArray, byte[], byte[]>(TestUtils.getStoreDef("target2",
+                                                                                                                                                     InMemoryStorageConfiguration.TYPE_NAME));
 
     private Store<Integer, List<Integer>, List<Integer>> target2 = SerializingStore.wrap(targetRaw2,
                                                                                          keySer,
@@ -56,25 +60,33 @@ public class ViewStorageEngineTest extends TestCase {
 
     public Store<String, String, String> getEngine1(View<?, ?, ?, ?> valTrans) {
         Serializer<String> s = new StringSerializer();
-        return SerializingStore.wrap(new ViewStorageEngine("test",
+        return SerializingStore.wrap(new ViewStorageEngine(TestUtils.getStoreDef("test",
+                                                                                 ViewStorageConfiguration.TYPE_NAME),
                                                            targetRaw1,
                                                            s,
                                                            s,
                                                            s,
                                                            s,
                                                            null,
-                                                           valTrans), s, s, s);
+                                                           valTrans),
+                                     s,
+                                     s,
+                                     s);
     }
 
     public Store<Integer, List<Integer>, List<Integer>> getEngine2(View<?, ?, ?, ?> view) {
-        return SerializingStore.wrap(new ViewStorageEngine("transTest",
+        return SerializingStore.wrap(new ViewStorageEngine(TestUtils.getStoreDef("transTest",
+                                                                                 ViewStorageConfiguration.TYPE_NAME),
                                                            targetRaw2,
                                                            valueSer,
                                                            transSer,
                                                            keySer,
                                                            valueSer,
                                                            null,
-                                                           view), keySer, valueSer, transSer);
+                                                           view),
+                                     keySer,
+                                     valueSer,
+                                     transSer);
     }
 
     public void testGetWithValueTransform() {

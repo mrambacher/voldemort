@@ -21,20 +21,19 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 import voldemort.VoldemortException;
 import voldemort.annotations.concurrency.NotThreadsafe;
-import voldemort.store.NoSuchCapabilityException;
+import voldemort.client.protocol.VoldemortFilter;
 import voldemort.store.StorageEngine;
 import voldemort.store.StoreCapabilityType;
+import voldemort.store.StoreDefinition;
 import voldemort.store.StoreUtils;
+import voldemort.utils.ClosableFilterIterator;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
 import voldemort.utils.Utils;
-import voldemort.versioning.ObsoleteVersionException;
-import voldemort.versioning.Occured;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
@@ -45,23 +44,23 @@ import voldemort.versioning.Versioned;
  */
 public class InMemoryStorageEngine<K, V, T> implements StorageEngine<K, V, T> {
 
-    private final ConcurrentMap<K, List<Versioned<V>>> map;
-    private final String name;
+    private final StoreDefinition storeDef;
+    private final InMemoryStore<K, V, T> store;
 
-    public InMemoryStorageEngine(String name) {
-        this.name = Utils.notNull(name);
-        this.map = new ConcurrentHashMap<K, List<Versioned<V>>>();
+    public InMemoryStorageEngine(StoreDefinition def) {
+        storeDef = Utils.notNull(def);
+        store = new InMemoryStore<K, V, T>(storeDef.getName());
     }
 
-    public InMemoryStorageEngine(String name, ConcurrentMap<K, List<Versioned<V>>> map) {
-        this.name = Utils.notNull(name);
-        this.map = Utils.notNull(map);
+    public InMemoryStorageEngine(StoreDefinition def, ConcurrentMap<K, List<Versioned<V>>> map) {
+        storeDef = Utils.notNull(def);
+        store = new InMemoryStore<K, V, T>(storeDef.getName(), map);
     }
 
     public void close() {}
 
     public void deleteAll() {
-        this.map.clear();
+        store.deleteAll();
     }
 
     public boolean delete(K key) {
@@ -70,139 +69,67 @@ public class InMemoryStorageEngine<K, V, T> implements StorageEngine<K, V, T> {
 
     public boolean delete(K key, Version version) {
         StoreUtils.assertValidKey(key);
-
-        if(version == null)
-            return map.remove(key) != null;
-
-        List<Versioned<V>> values = map.get(key);
-        if(values == null) {
-            return false;
-        }
-        synchronized(values) {
-            boolean deletedSomething = false;
-            Iterator<Versioned<V>> iterator = values.iterator();
-            while(iterator.hasNext()) {
-                Versioned<V> item = iterator.next();
-                if(item.getVersion().compare(version) == Occured.BEFORE) {
-                    iterator.remove();
-                    deletedSomething = true;
-                }
-            }
-            if(values.size() == 0) {
-                // If this remove fails, then another delete operation got
-                // there before this one
-                if(!map.remove(key, values))
-                    return false;
-            }
-
-            return deletedSomething;
-        }
+        return store.delete(key, version);
     }
 
     public List<Version> getVersions(K key) {
-        return StoreUtils.getVersions(get(key, null));
+        return store.getVersions(key);
     }
 
     public List<Versioned<V>> get(K key, T transform) throws VoldemortException {
         StoreUtils.assertValidKey(key);
-        List<Versioned<V>> results = map.get(key);
-        if(results == null) {
-            return new ArrayList<Versioned<V>>(0);
-        }
-        synchronized(results) {
-            return new ArrayList<Versioned<V>>(results);
-        }
+        return store.get(key, transform);
     }
 
     public Map<K, List<Versioned<V>>> getAll(Iterable<K> keys, Map<K, T> transforms)
             throws VoldemortException {
         StoreUtils.assertValidKeys(keys);
-        return StoreUtils.getAll(this, keys, transforms);
+        return store.getAll(keys, transforms);
     }
 
     public Version put(K key, Versioned<V> value, T transforms) throws VoldemortException {
         StoreUtils.assertValidKey(key);
-
-        Version version = value.getVersion();
-        boolean success = false;
-        while(!success) {
-            List<Versioned<V>> items = map.get(key);
-            // If we have no value, optimistically try to add one
-            if(items == null) {
-                items = new ArrayList<Versioned<V>>();
-                items.add(value.cloneVersioned());
-                success = map.putIfAbsent(key, items) == null;
-            } else {
-                synchronized(items) {
-                    // if this check fails, items has been removed from the map
-                    // by delete, so we try again.
-                    if(map.get(key) != items)
-                        continue;
-
-                    // Check for existing versions - remember which items to
-                    // remove in case of success
-                    List<Versioned<V>> itemsToRemove = new ArrayList<Versioned<V>>(items.size());
-                    for(Versioned<V> versioned: items) {
-                        Occured occured = value.getVersion().compare(versioned.getVersion());
-                        if(occured == Occured.BEFORE) {
-                            throw new ObsoleteVersionException("Obsolete version for key '" + key
-                                                                       + "': " + value.getVersion(),
-                                                               versioned.getVersion());
-                        } else if(occured == Occured.AFTER) {
-                            itemsToRemove.add(versioned);
-                        }
-                    }
-                    items.removeAll(itemsToRemove);
-                    items.add(value.cloneVersioned());
-                }
-                success = true;
-            }
-        }
-        return version;
+        return store.put(key, value, transforms);
     }
 
     public Object getCapability(StoreCapabilityType capability) {
-        throw new NoSuchCapabilityException(capability, getName());
+        return store.getCapability(capability);
     }
 
-    public ClosableIterator<Pair<K, Versioned<V>>> entries() {
-        return new InMemoryIterator<K, V>(map);
+    public ClosableIterator<Pair<K, Versioned<V>>> entries(final VoldemortFilter filter) {
+        ClosableIterator<Pair<K, Versioned<V>>> entries = new InMemoryIterator<K, V>(store.map);
+        return new ClosableFilterIterator<Pair<K, Versioned<V>>>(entries) {
+
+            @Override
+            protected boolean matches(Pair<K, Versioned<V>> entry) {
+                return filter.accept(entry.getFirst(), entry.getSecond());
+            }
+        };
     }
 
-    public ClosableIterator<K> keys() {
-        // TODO Implement more efficient version.
-        return StoreUtils.keys(entries());
+    public ClosableIterator<K> keys(final VoldemortFilter filter) {
+        final Iterator<K> keys = store.map.keySet().iterator();
+        ClosableIterator<K> iter = new ClosableFilterIterator<K>(keys) {
+
+            @Override
+            protected boolean matches(K key) {
+                return filter.accept(key, null);
+            }
+        };
+        return iter;
     }
 
     public void truncate() {
-        map.clear();
+        store.deleteAll();
     }
 
     public String getName() {
-        return name;
+        return store.getName();
     }
 
     @Override
     public String toString() {
-        return toString(15);
-    }
-
-    public String toString(int size) {
-        StringBuilder builder = new StringBuilder();
-        builder.append("{");
-        int count = 0;
-        for(Entry<K, List<Versioned<V>>> entry: map.entrySet()) {
-            if(count > size) {
-                builder.append("...");
-                break;
-            }
-            builder.append(entry.getKey());
-            builder.append(':');
-            builder.append(entry.getValue());
-            builder.append(',');
-        }
-        builder.append('}');
-        return builder.toString();
+        return store.toString();
     }
 
     @NotThreadsafe
@@ -260,7 +187,7 @@ public class InMemoryStorageEngine<K, V, T> implements StorageEngine<K, V, T> {
         }
 
         public void close() {
-        // nothing to do here
+            // nothing to do here
         }
 
     }

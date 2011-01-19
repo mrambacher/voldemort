@@ -12,7 +12,9 @@ import voldemort.server.VoldemortConfig;
 import voldemort.store.ErrorCodeMapper;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.utils.ByteArray;
+import voldemort.utils.ClosableIterator;
 import voldemort.utils.NetworkClassLoader;
+import voldemort.utils.Pair;
 import voldemort.versioning.Versioned;
 
 import com.google.protobuf.Message;
@@ -27,6 +29,8 @@ import com.google.protobuf.Message;
 
 public class FetchEntriesStreamRequestHandler extends FetchStreamRequestHandler {
 
+    private final ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entryIterator;
+
     public FetchEntriesStreamRequestHandler(FetchPartitionEntriesRequest request,
                                             MetadataStore metadataStore,
                                             ErrorCodeMapper errorCodeMapper,
@@ -39,35 +43,48 @@ public class FetchEntriesStreamRequestHandler extends FetchStreamRequestHandler 
               voldemortConfig,
               storeRepository,
               networkClassLoader);
+        entryIterator = storageEngine.entries(filter);
+    }
+
+    @Override
+    protected void closeIterator() {
+        if(null != entryIterator)
+            entryIterator.close();
+    }
+
+    @Override
+    protected boolean hasNext() {
+        return entryIterator.hasNext();
+    }
+
+    protected Pair<ByteArray, Versioned<byte[]>> next() {
+        return entryIterator.next();
     }
 
     public StreamRequestHandlerState handleRequest(DataInputStream inputStream,
                                                    DataOutputStream outputStream)
             throws IOException {
-        if(!keyIterator.hasNext())
+        if(!hasNext())
             return StreamRequestHandlerState.COMPLETE;
 
-        ByteArray key = keyIterator.next();
-
+        Pair<ByteArray, Versioned<byte[]>> entry = next();
+        ByteArray key = entry.getFirst();
+        Versioned<byte[]> value = entry.getSecond();
         if(validPartition(key.get()) && counter % skipRecords == 0) {
-            for(Versioned<byte[]> value: storageEngine.get(key, null)) {
-                throttler.maybeThrottle(key.length());
-                if(filter.accept(key, value)) {
-                    fetched++;
-                    VAdminProto.FetchPartitionEntriesResponse.Builder response = VAdminProto.FetchPartitionEntriesResponse.newBuilder();
+            throttler.maybeThrottle(key.length());
+            fetched++;
+            VAdminProto.FetchPartitionEntriesResponse.Builder response = VAdminProto.FetchPartitionEntriesResponse.newBuilder();
 
-                    VAdminProto.PartitionEntry partitionEntry = VAdminProto.PartitionEntry.newBuilder()
-                                                                                          .setKey(ProtoUtils.encodeBytes(key))
-                                                                                          .setVersioned(ProtoUtils.encodeVersioned(value))
-                                                                                          .build();
-                    response.setPartitionEntry(partitionEntry);
+            VAdminProto.PartitionEntry partitionEntry = VAdminProto.PartitionEntry.newBuilder()
+                                                                                  .setKey(ProtoUtils.encodeBytes(key))
+                                                                                  .setVersioned(ProtoUtils.encodeVersioned(value))
+                                                                                  .build();
+            response.setPartitionEntry(partitionEntry);
 
-                    Message message = response.build();
-                    ProtoUtils.writeMessage(outputStream, message);
+            Message message = response.build();
+            ProtoUtils.writeMessage(outputStream, message);
 
-                    throttler.maybeThrottle(AdminServiceRequestHandler.valueSize(value));
-                }
-            }
+            throttler.maybeThrottle(AdminServiceRequestHandler.valueSize(value));
         }
 
         // log progress
@@ -82,7 +99,7 @@ public class FetchEntriesStreamRequestHandler extends FetchStreamRequestHandler 
                              + partitionList + " in " + totalTime + " s");
         }
 
-        if(keyIterator.hasNext())
+        if(hasNext())
             return StreamRequestHandlerState.WRITING;
         else
             return StreamRequestHandlerState.COMPLETE;

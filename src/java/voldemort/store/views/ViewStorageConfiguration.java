@@ -34,15 +34,14 @@ public class ViewStorageConfiguration implements StorageConfiguration {
 
     public void close() {}
 
-    public StorageEngine<ByteArray, byte[], byte[]> getStore(String name) {
-        StoreDefinition def = StoreUtils.getStoreDef(storeDefs, name);
-        String targetName = def.getViewTargetStoreName();
+    public StorageEngine<ByteArray, byte[], byte[]> getStore(StoreDefinition viewDef) {
+        String targetName = viewDef.getViewTargetStoreName();
         StoreDefinition targetDef = StoreUtils.getStoreDef(storeDefs, targetName);
         StorageEngine<ByteArray, byte[], byte[]> target = storeRepo.getStorageEngine(targetName);
         if(target == null)
-            throw new VoldemortException("View \"" + name + "\" has a target store \"" + targetName
-                                         + "\" which does not exist.");
-        String factoryName = def.getSerializerFactory();
+            throw new VoldemortException("View \"" + viewDef.getName() + "\" has a target store \""
+                                         + targetName + "\" which does not exist.");
+        String factoryName = viewDef.getSerializerFactory();
         SerializerFactory factory;
         if(factoryName == null)
             factory = new DefaultSerializerFactory();
@@ -55,13 +54,13 @@ public class ViewStorageConfiguration implements StorageConfiguration {
                                                                                      .getCompression());
         }
 
-        View<?, ?, ?, ?> view = loadTransformation(def.getValueTransformation());
+        View<?, ?, ?, ?> view = loadTransformation(viewDef.getValueTransformation());
 
-        return new ViewStorageEngine(name,
+        return new ViewStorageEngine(viewDef,
                                      target,
-                                     factory.getSerializer(def.getValueSerializer()),
-                                     def.getTransformsSerializer() != null ? factory.getSerializer(def.getTransformsSerializer())
-                                                                          : null,
+                                     factory.getSerializer(viewDef.getValueSerializer()),
+                                     viewDef.getTransformsSerializer() != null ? factory.getSerializer(viewDef.getTransformsSerializer())
+                                                                              : null,
                                      factory.getSerializer(targetDef.getKeySerializer()),
                                      factory.getSerializer(targetDef.getValueSerializer()),
                                      valueCompressionStrategy,

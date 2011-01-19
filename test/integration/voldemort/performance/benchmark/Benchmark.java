@@ -29,6 +29,7 @@ import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import voldemort.ServerTestUtils;
 import voldemort.StaticStoreClientFactory;
+import voldemort.TestUtils;
 import voldemort.VoldemortException;
 import voldemort.client.AbstractStoreClientFactory;
 import voldemort.client.ClientConfig;
@@ -384,9 +385,10 @@ public class Benchmark {
             StorageConfiguration conf = (StorageConfiguration) ReflectUtils.callConstructor(ReflectUtils.loadClass(storageEngineClass),
                                                                                             new Object[] { ServerTestUtils.getVoldemortConfig() });
 
-            StorageEngine<ByteArray, byte[], byte[]> engine = conf.getStore(DUMMY_DB);
+            StorageEngine<ByteArray, byte[], byte[]> engine = conf.getStore(TestUtils.getStoreDef(DUMMY_DB,
+                                                                                                  conf.getType()));
             if(conf.getType().compareTo(ViewStorageConfiguration.TYPE_NAME) == 0) {
-                engine = new ViewStorageEngine(STORE_NAME,
+                engine = new ViewStorageEngine(TestUtils.getStoreDef(STORE_NAME, conf.getType()),
                                                engine,
                                                new StringSerializer(),
                                                new StringSerializer(),
@@ -649,9 +651,8 @@ public class Benchmark {
                 mainProps.put(REQUEST_FILE, (String) options.valueOf(REQUEST_FILE));
                 mainProps.put(RECORD_SELECTION, FILE_RECORD_SELECTION);
             } else {
-                mainProps.put(RECORD_SELECTION, CmdUtils.valueOf(options,
-                                                                 RECORD_SELECTION,
-                                                                 UNIFORM_RECORD_SELECTION));
+                mainProps.put(RECORD_SELECTION,
+                              CmdUtils.valueOf(options, RECORD_SELECTION, UNIFORM_RECORD_SELECTION));
 
                 if(options.has(RECORD_COUNT)) {
                     mainProps.put(RECORD_COUNT, (Integer) options.valueOf(RECORD_COUNT));
@@ -687,9 +688,8 @@ public class Benchmark {
             mainProps.put(PIPELINE_ROUTED_STORE, getCmdBoolean(options, PIPELINE_ROUTED_STORE));
             mainProps.put(CLIENT_ZONE_ID, CmdUtils.valueOf(options, CLIENT_ZONE_ID, -1));
             mainProps.put(SELECTORS, CmdUtils.valueOf(options, SELECTORS, 4));
-            mainProps.put(SOCKET_BUFFER_SIZE, CmdUtils.valueOf(options,
-                                                               SOCKET_BUFFER_SIZE,
-                                                               4 * 1024));
+            mainProps.put(SOCKET_BUFFER_SIZE,
+                          CmdUtils.valueOf(options, SOCKET_BUFFER_SIZE, 4 * 1024));
             mainProps.put(START_KEY_INDEX, CmdUtils.valueOf(options, START_KEY_INDEX, 0));
             mainProps.put(VALUE_SIZE, CmdUtils.valueOf(options, VALUE_SIZE, 1024));
             mainProps.put(ITERATIONS, CmdUtils.valueOf(options, ITERATIONS, 1));

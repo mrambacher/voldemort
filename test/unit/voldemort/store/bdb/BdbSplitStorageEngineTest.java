@@ -78,8 +78,10 @@ public class BdbSplitStorageEngineTest extends TestCase {
         voldemortConfig.setBdbOneEnvPerStore(false);
 
         bdbStorage = new BdbStorageConfiguration(voldemortConfig);
-        BdbStorageEngine storeA = (BdbStorageEngine) bdbStorage.getStore("storeA");
-        BdbStorageEngine storeB = (BdbStorageEngine) bdbStorage.getStore("storeB");
+        BdbStorageEngine storeA = (BdbStorageEngine) bdbStorage.getStore(TestUtils.getStoreDef("storeA",
+                                                                                               BdbStorageConfiguration.TYPE_NAME));
+        BdbStorageEngine storeB = (BdbStorageEngine) bdbStorage.getStore(TestUtils.getStoreDef("storeB",
+                                                                                               BdbStorageConfiguration.TYPE_NAME));
 
         storeA.put(TestUtils.toByteArray("testKey1"),
                    new Versioned<byte[]>("value".getBytes()),
@@ -123,8 +125,10 @@ public class BdbSplitStorageEngineTest extends TestCase {
         voldemortConfig.setBdbDataDirectory(bdbMasterDir.toURI().getPath());
 
         bdbStorage = new BdbStorageConfiguration(voldemortConfig);
-        BdbStorageEngine storeA = (BdbStorageEngine) bdbStorage.getStore("storeA");
-        BdbStorageEngine storeB = (BdbStorageEngine) bdbStorage.getStore("storeB");
+        BdbStorageEngine storeA = (BdbStorageEngine) bdbStorage.getStore(TestUtils.getStoreDef("storeA",
+                                                                                               BdbStorageConfiguration.TYPE_NAME));
+        BdbStorageEngine storeB = (BdbStorageEngine) bdbStorage.getStore(TestUtils.getStoreDef("storeB",
+                                                                                               BdbStorageConfiguration.TYPE_NAME));
 
         storeA.put(TestUtils.toByteArray("testKey1"),
                    new Versioned<byte[]>("value".getBytes()),
@@ -200,7 +204,10 @@ public class BdbSplitStorageEngineTest extends TestCase {
         }
         Environment environmentA = new Environment(dirA, environmentConfig);
         Database databaseA = environmentA.openDatabase(null, "storeA", databaseConfig);
-        BdbStorageEngine storeA = new BdbStorageEngine("storeA", environmentA, databaseA);
+        BdbStorageEngine storeA = new BdbStorageEngine(TestUtils.getStoreDef("storeA",
+                                                                             BdbStorageConfiguration.TYPE_NAME),
+                                                       environmentA,
+                                                       databaseA);
 
         File dirB = new File(bdbMasterDir + "/" + "storeB");
         if(!dirB.exists()) {
@@ -208,7 +215,10 @@ public class BdbSplitStorageEngineTest extends TestCase {
         }
         Environment environmentB = new Environment(dirB, environmentConfig);
         Database databaseB = environmentB.openDatabase(null, "storeB", databaseConfig);
-        BdbStorageEngine storeB = new BdbStorageEngine("storeB", environmentB, databaseB);
+        BdbStorageEngine storeB = new BdbStorageEngine(TestUtils.getStoreDef("storeB",
+                                                                             BdbStorageConfiguration.TYPE_NAME),
+                                                       environmentB,
+                                                       databaseB);
 
         long maxCacheUsage = 0;
         for(int i = 0; i <= 4; i++) {

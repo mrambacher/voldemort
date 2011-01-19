@@ -41,10 +41,11 @@ public class DoNothingStorageConfiguration implements StorageConfiguration {
         stores.clear();
     }
 
-    public StorageEngine<ByteArray, byte[], byte[]> getStore(String name) {
+    public StorageEngine<ByteArray, byte[], byte[]> getStore(StoreDefinition storeDef) {
+        String name = storeDef.getName();
         StorageEngine<ByteArray, byte[], byte[]> store = stores.get(name);
         if(store == null) {
-            store = new DoNothingStore<ByteArray, byte[], byte[]>(name);
+            store = new DoNothingStore<ByteArray, byte[], byte[]>(storeDef);
             stores.put(name, store);
         }
         return store;

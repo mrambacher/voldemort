@@ -12,11 +12,14 @@ import voldemort.server.VoldemortConfig;
 import voldemort.store.ErrorCodeMapper;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.utils.ByteArray;
+import voldemort.utils.ClosableIterator;
 import voldemort.utils.NetworkClassLoader;
 
 import com.google.protobuf.Message;
 
 public class FetchKeysStreamRequestHandler extends FetchStreamRequestHandler {
+
+    private final ClosableIterator<ByteArray> keyIterator;
 
     public FetchKeysStreamRequestHandler(FetchPartitionEntriesRequest request,
                                          MetadataStore metadataStore,
@@ -30,6 +33,18 @@ public class FetchKeysStreamRequestHandler extends FetchStreamRequestHandler {
               voldemortConfig,
               storeRepository,
               networkClassLoader);
+        keyIterator = storageEngine.keys(filter);
+    }
+
+    @Override
+    protected void closeIterator() {
+        if(null != keyIterator)
+            keyIterator.close();
+    }
+
+    @Override
+    protected boolean hasNext() {
+        return keyIterator.hasNext();
     }
 
     public StreamRequestHandlerState handleRequest(DataInputStream inputStream,

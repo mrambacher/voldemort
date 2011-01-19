@@ -19,6 +19,7 @@ import org.apache.log4j.Logger;
 import voldemort.VoldemortException;
 import voldemort.client.protocol.admin.AdminClient;
 import voldemort.client.protocol.admin.AdminClientConfig;
+import voldemort.client.protocol.admin.filter.DefaultVoldemortFilter;
 import voldemort.cluster.Cluster;
 import voldemort.cluster.Node;
 import voldemort.cluster.failuredetector.FailureDetector;
@@ -167,7 +168,7 @@ public class StreamingSlopPusherJob implements Runnable {
 
             try {
                 StorageEngine<ByteArray, Slop, byte[]> slopStore = slopStorageEngine.asSlopStore();
-                iterator = slopStore.entries();
+                iterator = slopStore.entries(new DefaultVoldemortFilter());
 
                 while(iterator.hasNext()) {
                     Pair<ByteArray, Versioned<Slop>> keyAndVal;
@@ -259,8 +260,8 @@ public class StreamingSlopPusherJob implements Runnable {
                         logger.info("Slops to node " + nodeId + " - Succeeded - "
                                     + succeededByNode.get(nodeId) + " - Attempted - "
                                     + attemptedByNode.get(nodeId));
-                        outstanding.put(nodeId, attemptedByNode.get(nodeId)
-                                                - succeededByNode.get(nodeId));
+                        outstanding.put(nodeId,
+                                        attemptedByNode.get(nodeId) - succeededByNode.get(nodeId));
                     }
                     slopStorageEngine.resetStats(outstanding);
                     logger.info("Completed streaming slop pusher job which started at " + startTime);

@@ -22,9 +22,11 @@ import java.util.List;
 import java.util.Map;
 
 import voldemort.VoldemortException;
+import voldemort.client.protocol.VoldemortFilter;
 import voldemort.store.NoSuchCapabilityException;
 import voldemort.store.StorageEngine;
 import voldemort.store.StoreCapabilityType;
+import voldemort.store.StoreDefinition;
 import voldemort.store.StoreUtils;
 import voldemort.utils.ByteArray;
 import voldemort.utils.ClosableIterator;
@@ -41,23 +43,23 @@ import voldemort.versioning.Versioned;
  */
 public class NoopStorageEngine implements StorageEngine<ByteArray, byte[], byte[]> {
 
-    protected String name;
+    protected StoreDefinition storeDef;
     protected boolean dataReflect;
     protected ByteArray key;
     protected Versioned<byte[]> value;
     protected List<Versioned<byte[]>> dataList = new MyList();
     protected Map<ByteArray, List<Versioned<byte[]>>> dataMap = new MyMap();
 
-    public NoopStorageEngine(String name, boolean reflect) {
-        this.name = name;
+    public NoopStorageEngine(StoreDefinition storeDef, boolean reflect) {
+        this.storeDef = storeDef;
         this.dataReflect = reflect;
     }
 
-    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries() {
+    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(final VoldemortFilter filter) {
         return null;
     }
 
-    public ClosableIterator<ByteArray> keys() {
+    public ClosableIterator<ByteArray> keys(final VoldemortFilter filter) {
         return null;
     }
 
@@ -93,7 +95,7 @@ public class NoopStorageEngine implements StorageEngine<ByteArray, byte[], byte[
     }
 
     public String getName() {
-        return name;
+        return storeDef.getName();
     }
 
     public void close() throws VoldemortException {}

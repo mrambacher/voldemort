@@ -64,7 +64,7 @@ import voldemort.store.UnreachableStoreException;
 import voldemort.store.async.StoreFuture;
 import voldemort.store.http.HttpStore;
 import voldemort.store.memory.InMemoryStorageConfiguration;
-import voldemort.store.memory.InMemoryStorageEngine;
+import voldemort.store.memory.InMemoryStore;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.store.slop.Slop;
 import voldemort.store.slop.strategy.HintedHandoffStrategyType;
@@ -95,7 +95,7 @@ public class ServerTestUtils {
                                             String storesXml,
                                             long sleepMs) {
         StoreRepository repository = new StoreRepository();
-        Store<ByteArray, byte[], byte[]> store = new InMemoryStorageEngine<ByteArray, byte[], byte[]>(storeName);
+        Store<ByteArray, byte[], byte[]> store = new InMemoryStore<ByteArray, byte[], byte[]>(storeName);
         if(sleepMs > 0) {
             store = new SleepyStore<ByteArray, byte[], byte[]>(sleepMs, store);
         }
@@ -326,7 +326,7 @@ public class ServerTestUtils {
     }
 
     public static MetadataStore createMetadataStore(Cluster cluster, List<StoreDefinition> storeDefs) {
-        Store<String, String, String> innerStore = new InMemoryStorageEngine<String, String, String>("inner-store");
+        Store<String, String, String> innerStore = InMemoryStore.create("inner-store");
         innerStore.put(MetadataStore.CLUSTER_KEY,
                        new Versioned<String>(new ClusterMapper().writeCluster(cluster)),
                        null);
@@ -476,9 +476,27 @@ public class ServerTestUtils {
                                               int pwrites,
                                               int rwrites,
                                               String strategyType) {
+        return getStoreDef(storeName,
+                           InMemoryStorageConfiguration.TYPE_NAME,
+                           replicationFactor,
+                           preads,
+                           rreads,
+                           pwrites,
+                           rwrites,
+                           strategyType);
+    }
+
+    public static StoreDefinition getStoreDef(String storeName,
+                                              String storeType,
+                                              int replicationFactor,
+                                              int preads,
+                                              int rreads,
+                                              int pwrites,
+                                              int rwrites,
+                                              String strategyType) {
         SerializerDefinition serDef = new SerializerDefinition("string");
         return new StoreDefinitionBuilder().setName(storeName)
-                                           .setType(InMemoryStorageConfiguration.TYPE_NAME)
+                                           .setType(storeType)
                                            .setKeySerializer(serDef)
                                            .setValueSerializer(serDef)
                                            .setRoutingPolicy(RoutingTier.SERVER)

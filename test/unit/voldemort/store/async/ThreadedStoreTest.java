@@ -22,7 +22,7 @@ import voldemort.VoldemortException;
 import voldemort.store.FailingStore;
 import voldemort.store.SleepyStore;
 import voldemort.store.Store;
-import voldemort.store.memory.InMemoryStorageEngine;
+import voldemort.store.memory.InMemoryStore;
 import voldemort.utils.ByteArray;
 
 import com.google.common.collect.Maps;
@@ -40,7 +40,7 @@ public class ThreadedStoreTest extends AbstractAsynchronousStoreTest {
     @Override
     public AsynchronousStore<ByteArray, byte[], byte[]> createAsyncStore(String name) {
         Maps.newHashMap();
-        Store<ByteArray, byte[], byte[]> memory = new InMemoryStorageEngine<ByteArray, byte[], byte[]>(name);
+        Store<ByteArray, byte[], byte[]> memory = new InMemoryStore<ByteArray, byte[], byte[]>(name);
         CallableStore<ByteArray, byte[], byte[]> callable = new WrappedCallableStore<ByteArray, byte[], byte[]>(memory);
         AsynchronousStore<ByteArray, byte[], byte[]> threaded = new ThreadedStore<ByteArray, byte[], byte[]>(callable,
                                                                                                              threadPool);
@@ -49,7 +49,7 @@ public class ThreadedStoreTest extends AbstractAsynchronousStoreTest {
 
     @Override
     protected AsynchronousStore<ByteArray, byte[], byte[]> createSlowStore(String name, long delay) {
-        Store<ByteArray, byte[], byte[]> memory = new InMemoryStorageEngine<ByteArray, byte[], byte[]>(name);
+        Store<ByteArray, byte[], byte[]> memory = new InMemoryStore<ByteArray, byte[], byte[]>(name);
         Store<ByteArray, byte[], byte[]> sleepy = new SleepyStore<ByteArray, byte[], byte[]>(delay,
                                                                                              memory);
 

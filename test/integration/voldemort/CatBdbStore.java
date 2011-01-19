@@ -19,9 +19,11 @@ package voldemort;
 import java.io.File;
 import java.util.Iterator;
 
+import voldemort.client.protocol.admin.filter.DefaultVoldemortFilter;
 import voldemort.serialization.StringSerializer;
 import voldemort.server.VoldemortConfig;
 import voldemort.store.StorageEngine;
+import voldemort.store.bdb.BdbStorageConfiguration;
 import voldemort.store.bdb.BdbStorageEngine;
 import voldemort.store.serialized.SerializingStorageEngine;
 import voldemort.utils.ByteArray;
@@ -58,14 +60,16 @@ public class CatBdbStore {
         databaseConfig.setTransactional(config.isBdbWriteTransactionsEnabled());
         databaseConfig.setSortedDuplicates(config.isBdbSortedDuplicatesEnabled());
         Database database = environment.openDatabase(null, storeName, databaseConfig);
-        StorageEngine<ByteArray, byte[], byte[]> store = new BdbStorageEngine(storeName,
+
+        StorageEngine<ByteArray, byte[], byte[]> store = new BdbStorageEngine(TestUtils.getStoreDef(storeName,
+                                                                                                    BdbStorageConfiguration.TYPE_NAME),
                                                                               environment,
                                                                               database);
         StorageEngine<String, String, String> stringStore = SerializingStorageEngine.wrap(store,
                                                                                           new StringSerializer(),
                                                                                           new StringSerializer(),
                                                                                           new StringSerializer());
-        Iterator<Pair<String, Versioned<String>>> iter = stringStore.entries();
+        Iterator<Pair<String, Versioned<String>>> iter = stringStore.entries(new DefaultVoldemortFilter());
         while(iter.hasNext()) {
             Pair<String, Versioned<String>> entry = iter.next();
             System.out.println(entry.getFirst() + " => " + entry.getSecond().getValue());

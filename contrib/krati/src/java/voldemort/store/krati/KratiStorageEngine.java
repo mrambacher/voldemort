@@ -20,9 +20,11 @@ import krati.util.FnvHashFunction;
 import org.apache.log4j.Logger;
 
 import voldemort.VoldemortException;
+import voldemort.client.protocol.VoldemortFilter;
 import voldemort.store.NoSuchCapabilityException;
 import voldemort.store.StorageEngine;
 import voldemort.store.StoreCapabilityType;
+import voldemort.store.StoreDefinition;
 import voldemort.store.StoreUtils;
 import voldemort.utils.ByteArray;
 import voldemort.utils.ClosableIterator;
@@ -38,18 +40,18 @@ import voldemort.versioning.Versioned;
 public class KratiStorageEngine implements StorageEngine<ByteArray, byte[], byte[]> {
 
     private static final Logger logger = Logger.getLogger(KratiStorageEngine.class);
-    private final String name;
+    private final StoreDefinition storeDef;
     private final DynamicDataStore datastore;
     private final StripedLock locks;
 
-    public KratiStorageEngine(String name,
+    public KratiStorageEngine(StoreDefinition storeDef,
                               SegmentFactory segmentFactory,
                               int segmentFileSizeMB,
                               int lockStripes,
                               double hashLoadFactor,
                               int initLevel,
                               File dataDirectory) {
-        this.name = Utils.notNull(name);
+        this.storeDef = Utils.notNull(storeDef);
         try {
             this.datastore = new DynamicDataStore(dataDirectory,
                                                   initLevel,
@@ -69,7 +71,7 @@ public class KratiStorageEngine implements StorageEngine<ByteArray, byte[], byte
     }
 
     public String getName() {
-        return this.name;
+        return this.storeDef.getName();
     }
 
     public void close() throws VoldemortException {}
@@ -89,8 +91,8 @@ public class KratiStorageEngine implements StorageEngine<ByteArray, byte[], byte
         try {
             datastore.clear();
         } catch(Exception e) {
-            logger.error("Failed to truncate store '" + name + "': ", e);
-            throw new VoldemortException("Failed to truncate store '" + name + "'.");
+            logger.error("Failed to truncate store '" + getName() + "': ", e);
+            throw new VoldemortException("Failed to truncate store '" + getName() + "'.");
         }
     }
 
@@ -104,7 +106,7 @@ public class KratiStorageEngine implements StorageEngine<ByteArray, byte[], byte
         }
     }
 
-    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries() {
+    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(final VoldemortFilter filter) {
         List<Pair<ByteArray, Versioned<byte[]>>> returnedList = new ArrayList<Pair<ByteArray, Versioned<byte[]>>>();
         DataArray array = datastore.getDataArray();
         for(int index = 0; index < array.length(); index++) {
@@ -133,8 +135,11 @@ public class KratiStorageEngine implements StorageEngine<ByteArray, byte[], byte
                     if(versions != null) {
                         Iterator<Versioned<byte[]>> iterVersions = versions.iterator();
                         while(iterVersions.hasNext()) {
+                            ByteArray currentKey = new ByteArray(key);
                             Versioned<byte[]> currentVersion = iterVersions.next();
-                            returnedList.add(Pair.create(new ByteArray(key), currentVersion));
+                            if(filter.accept(currentKey, currentVersion)) {
+                                returnedList.add(Pair.create(currentKey, currentVersion));
+                            }
                         }
                     }
                 }
@@ -143,8 +148,8 @@ public class KratiStorageEngine implements StorageEngine<ByteArray, byte[], byte
         return new KratiClosableIterator(returnedList);
     }
 
-    public ClosableIterator<ByteArray> keys() {
-        return StoreUtils.keys(entries());
+    public ClosableIterator<ByteArray> keys(VoldemortFilter filter) {
+        return StoreUtils.keys(entries(filter));
     }
 
     public boolean delete(ByteArray key, Version maxVersion) throws VoldemortException {
@@ -292,7 +297,7 @@ public class KratiStorageEngine implements StorageEngine<ByteArray, byte[], byte
         }
 
         public void close() {
-        // Nothing to close here
+            // Nothing to close here
         }
 
         public boolean hasNext() {
