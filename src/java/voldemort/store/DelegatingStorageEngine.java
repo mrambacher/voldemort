@@ -34,6 +34,10 @@ public class DelegatingStorageEngine<K, V, T> implements StorageEngine<K, V, T> 
         this.inner = inner;
     }
 
+    public StoreDefinition getStoreDefinition() {
+        return inner.getStoreDefinition();
+    }
+
     public ClosableIterator<Pair<K, Versioned<V>>> entries(VoldemortFilter filter) {
         return inner.entries(filter);
     }

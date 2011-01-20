@@ -264,7 +264,7 @@ public class ReadOnlyStorageEngineTest {
         createStoreFiles(versionDir, indexBytes, dataBytes, node, 2);
 
         try {
-            new ReadOnlyStorageEngine("test", strategy, routingStrategy, 0, dir, 1);
+            new ReadOnlyStore("test", strategy, routingStrategy, 0, dir, 1);
             if(!shouldWork)
                 fail("Able to open corrupt read-only store (index size = " + indexBytes
                      + ", data bytes = " + dataBytes + ").");
@@ -279,12 +279,7 @@ public class ReadOnlyStorageEngineTest {
         File versionDir = new File(dir, "version-0");
         createStoreFiles(versionDir, ReadOnlyUtils.INDEX_ENTRY_SIZE * 5, 4 * 5 * 10, this.node, 2);
 
-        ReadOnlyStorageEngine engine = new ReadOnlyStorageEngine("test",
-                                                                 strategy,
-                                                                 routingStrategy,
-                                                                 0,
-                                                                 dir,
-                                                                 2);
+        ReadOnlyStore engine = new ReadOnlyStore("test", strategy, routingStrategy, 0, dir, 2);
         assertVersionsExist(dir, 0);
 
         // swap to a new version with latest present
@@ -329,12 +324,7 @@ public class ReadOnlyStorageEngineTest {
 
     @Test
     public void testSwapRollbackFail() throws IOException {
-        ReadOnlyStorageEngine engine = new ReadOnlyStorageEngine("test",
-                                                                 strategy,
-                                                                 routingStrategy,
-                                                                 0,
-                                                                 dir,
-                                                                 1);
+        ReadOnlyStore engine = new ReadOnlyStore("test", strategy, routingStrategy, 0, dir, 1);
         assertVersionsExist(dir, 0);
 
         // try to rollback nothing
@@ -371,12 +361,7 @@ public class ReadOnlyStorageEngineTest {
     public void testBadSwapNameThrows() throws IOException {
         File versionDir = new File(dir, "version-0");
         createStoreFiles(versionDir, ReadOnlyUtils.INDEX_ENTRY_SIZE * 5, 4 * 5 * 10, node, 2);
-        ReadOnlyStorageEngine engine = new ReadOnlyStorageEngine("test",
-                                                                 strategy,
-                                                                 routingStrategy,
-                                                                 0,
-                                                                 dir,
-                                                                 2);
+        ReadOnlyStore engine = new ReadOnlyStore("test", strategy, routingStrategy, 0, dir, 2);
         assertVersionsExist(dir, 0);
 
         // swap to a directory with an incorrect parent directory
@@ -400,12 +385,7 @@ public class ReadOnlyStorageEngineTest {
     public void testBackupLogic() throws Exception {
         File dirv0 = new File(dir, "version-0");
         createStoreFiles(dirv0, ReadOnlyUtils.INDEX_ENTRY_SIZE * 5, 4 * 5 * 10, node, 2);
-        ReadOnlyStorageEngine engine = new ReadOnlyStorageEngine("test",
-                                                                 strategy,
-                                                                 routingStrategy,
-                                                                 0,
-                                                                 dir,
-                                                                 0);
+        ReadOnlyStore engine = new ReadOnlyStore("test", strategy, routingStrategy, 0, dir, 0);
         assertVersionsExist(dir, 0);
 
         // create directory to imitate a fetch state happening concurrently
@@ -440,12 +420,7 @@ public class ReadOnlyStorageEngineTest {
     public void testBadSwapDataThrows() throws IOException {
         File versionDir = new File(dir, "version-0");
         createStoreFiles(versionDir, ReadOnlyUtils.INDEX_ENTRY_SIZE * 5, 4 * 5 * 10, node, 2);
-        ReadOnlyStorageEngine engine = new ReadOnlyStorageEngine("test",
-                                                                 strategy,
-                                                                 routingStrategy,
-                                                                 0,
-                                                                 dir,
-                                                                 2);
+        ReadOnlyStore engine = new ReadOnlyStore("test", strategy, routingStrategy, 0, dir, 2);
         assertVersionsExist(dir, 0);
 
         // swap to a directory with bad data, rollback should kick-in
@@ -457,7 +432,8 @@ public class ReadOnlyStorageEngineTest {
     @Test
     public void testTruncate() throws IOException {
         createStoreFiles(dir, ReadOnlyUtils.INDEX_ENTRY_SIZE * 5, 4 * 5 * 10, node, 2);
-        ReadOnlyStorageEngine engine = new ReadOnlyStorageEngine("test",
+        ReadOnlyStorageEngine engine = new ReadOnlyStorageEngine(TestUtils.getStoreDef("test",
+                                                                                       ReadOnlyStorageConfiguration.TYPE_NAME),
                                                                  strategy,
                                                                  routingStrategy,
                                                                  0,
@@ -519,10 +495,12 @@ public class ReadOnlyStorageEngineTest {
             case READONLY_V1: {
                 for(Integer partitionId: node.getPartitionIds()) {
                     for(int chunkId = 0; chunkId < numChunks; chunkId++) {
-                        File index = createFile(dir, Integer.toString(partitionId) + "_"
-                                                     + Integer.toString(chunkId) + ".index");
-                        File data = createFile(dir, Integer.toString(partitionId) + "_"
-                                                    + Integer.toString(chunkId) + ".data");
+                        File index = createFile(dir,
+                                                Integer.toString(partitionId) + "_"
+                                                        + Integer.toString(chunkId) + ".index");
+                        File data = createFile(dir,
+                                               Integer.toString(partitionId) + "_"
+                                                       + Integer.toString(chunkId) + ".data");
                         // write some random crap for index and data
                         FileOutputStream dataOs = new FileOutputStream(data);
                         for(int i = 0; i < dataBytes; i++)

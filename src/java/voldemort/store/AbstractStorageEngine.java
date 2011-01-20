@@ -46,7 +46,10 @@ public abstract class AbstractStorageEngine implements StorageEngine<ByteArray, 
 
     protected AbstractStorageEngine(StoreDefinition def) {
         this.storeDef = Utils.notNull(def);
+    }
 
+    public StoreDefinition getStoreDefinition() {
+        return storeDef;
     }
 
     public String getName() {

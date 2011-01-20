@@ -46,11 +46,11 @@ import voldemort.store.StoreDefinition;
 import voldemort.store.StoreDefinitionBuilder;
 import voldemort.store.readonly.BinarySearchStrategy;
 import voldemort.store.readonly.ReadOnlyStorageConfiguration;
-import voldemort.store.readonly.ReadOnlyStorageEngine;
 import voldemort.store.readonly.ReadOnlyStorageFormat;
 import voldemort.store.readonly.ReadOnlyStorageMetadata;
-import voldemort.store.readonly.checksum.CheckSumTests;
+import voldemort.store.readonly.ReadOnlyStore;
 import voldemort.store.readonly.checksum.CheckSum.CheckSumType;
+import voldemort.store.readonly.checksum.CheckSumTests;
 import voldemort.store.readonly.fetcher.HdfsFetcher;
 import voldemort.store.serialized.SerializingStore;
 import voldemort.utils.ByteUtils;
@@ -174,13 +174,13 @@ public class HadoopStoreBuilderTest extends TestCase {
         // open store
         @SuppressWarnings("unchecked")
         Serializer<Object> serializer = (Serializer<Object>) new DefaultSerializerFactory().getSerializer(serDef);
-        Store<Object, Object, Object> store = SerializingStore.wrap(new ReadOnlyStorageEngine(storeName,
-                                                                                              new BinarySearchStrategy(),
-                                                                                              new RoutingStrategyFactory().updateRoutingStrategy(def,
-                                                                                                                                                 cluster),
-                                                                                              0,
-                                                                                              storeDir,
-                                                                                              1),
+        Store<Object, Object, Object> store = SerializingStore.wrap(new ReadOnlyStore(storeName,
+                                                                                      new BinarySearchStrategy(),
+                                                                                      new RoutingStrategyFactory().updateRoutingStrategy(def,
+                                                                                                                                         cluster),
+                                                                                      0,
+                                                                                      storeDir,
+                                                                                      1),
                                                                     serializer,
                                                                     serializer,
                                                                     serializer);

@@ -17,6 +17,10 @@ public class RandomlyFailingDelegatingStore<K, V, T> extends DelegatingStore<K, 
         this.innerStorageEngine = innerStorageEngine;
     }
 
+    public StoreDefinition getStoreDefinition() {
+        return innerStorageEngine.getStoreDefinition();
+    }
+
     public ClosableIterator<Pair<K, Versioned<V>>> entries(final VoldemortFilter filter) {
         return new ClosableIterator<Pair<K, Versioned<V>>>() {
 

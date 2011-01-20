@@ -151,12 +151,12 @@ public class ReadOnlyStorageEngineTestInstance {
             CompressionStrategyFactory comppressionStrategyFactory = new CompressionStrategyFactory();
             CompressionStrategy keyCompressionStrat = comppressionStrategyFactory.get(keySerDef.getCompression());
             CompressionStrategy valueCompressionStrat = comppressionStrategyFactory.get(valueSerDef.getCompression());
-            Store<ByteArray, byte[], byte[]> innerStore = new CompressingStore(new ReadOnlyStorageEngine("test",
-                                                                                                         strategy,
-                                                                                                         router,
-                                                                                                         i,
-                                                                                                         currNode,
-                                                                                                         1),
+            Store<ByteArray, byte[], byte[]> innerStore = new CompressingStore(new ReadOnlyStore("test",
+                                                                                                 strategy,
+                                                                                                 router,
+                                                                                                 i,
+                                                                                                 currNode,
+                                                                                                 1),
                                                                                keyCompressionStrat,
                                                                                valueCompressionStrat);
 

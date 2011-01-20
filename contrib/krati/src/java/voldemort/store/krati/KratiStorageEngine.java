@@ -66,6 +66,10 @@ public class KratiStorageEngine implements StorageEngine<ByteArray, byte[], byte
 
     }
 
+    public StoreDefinition getStoreDefinition() {
+        return storeDef;
+    }
+
     public Object getCapability(StoreCapabilityType capability) {
         throw new NoSuchCapabilityException(capability, getName());
     }

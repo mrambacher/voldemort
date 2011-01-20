@@ -59,8 +59,8 @@ import voldemort.store.StoreDefinition;
 import voldemort.store.StoreDefinitionBuilder;
 import voldemort.store.readonly.BinarySearchStrategy;
 import voldemort.store.readonly.JsonStoreBuilder;
-import voldemort.store.readonly.ReadOnlyStorageEngine;
 import voldemort.store.readonly.ReadOnlyStorageFormat;
+import voldemort.store.readonly.ReadOnlyStore;
 import voldemort.store.readonly.SearchStrategy;
 import voldemort.utils.ByteArray;
 import voldemort.utils.CmdUtils;
@@ -223,13 +223,13 @@ public class ReadOnlyStorePerformanceTest {
 
         }
 
-        final Store<ByteArray, byte[], byte[]> store = new ReadOnlyStorageEngine("test",
-                                                                                 searcher,
-                                                                                 new RoutingStrategyFactory().updateRoutingStrategy(storeDef,
-                                                                                                                                    cluster),
-                                                                                 nodeId,
-                                                                                 new File(storeDir),
-                                                                                 0);
+        final Store<ByteArray, byte[], byte[]> store = new ReadOnlyStore("test",
+                                                                         searcher,
+                                                                         new RoutingStrategyFactory().updateRoutingStrategy(storeDef,
+                                                                                                                            cluster),
+                                                                         nodeId,
+                                                                         new File(storeDir),
+                                                                         0);
 
         final AtomicInteger obsoletes = new AtomicInteger(0);
         final AtomicInteger nullResults = new AtomicInteger(0);

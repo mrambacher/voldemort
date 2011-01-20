@@ -10,6 +10,7 @@ import voldemort.annotations.jmx.JmxOperation;
 import voldemort.client.protocol.VoldemortFilter;
 import voldemort.store.StorageEngine;
 import voldemort.store.StoreCapabilityType;
+import voldemort.store.StoreDefinition;
 import voldemort.store.memory.InMemoryStorageEngine;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
@@ -37,6 +38,10 @@ public class PausableStorageEngine<K, V, T> implements StorageEngine<K, V, T> {
     public PausableStorageEngine(InMemoryStorageEngine<K, V, T> inner) {
         super();
         this.inner = inner;
+    }
+
+    public StoreDefinition getStoreDefinition() {
+        return inner.getStoreDefinition();
     }
 
     public void close() throws VoldemortException {

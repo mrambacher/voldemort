@@ -66,7 +66,7 @@ public class ReadOnlyStorageConfiguration implements StorageConfiguration {
 
     public StorageEngine<ByteArray, byte[], byte[]> getStore(StoreDefinition storeDef) {
         String name = storeDef.getName();
-        ReadOnlyStorageEngine store = new ReadOnlyStorageEngine(name,
+        ReadOnlyStorageEngine store = new ReadOnlyStorageEngine(storeDef,
                                                                 this.searcher,
                                                                 this.routingStrategy,
                                                                 this.nodeId,

@@ -69,6 +69,10 @@ public class ViewStorageEngine implements StorageEngine<ByteArray, byte[], byte[
             throw new IllegalArgumentException("View without either a key transformation or a value transformation.");
     }
 
+    public StoreDefinition getStoreDefinition() {
+        return viewDef;
+    }
+
     private List<Versioned<byte[]>> inflateValues(List<Versioned<byte[]>> result) {
         List<Versioned<byte[]>> inflated = new ArrayList<Versioned<byte[]>>(result.size());
         for(Versioned<byte[]> item: result) {

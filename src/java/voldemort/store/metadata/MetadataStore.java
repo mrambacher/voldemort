@@ -401,6 +401,10 @@ public class MetadataStore implements StorageEngine<ByteArray, byte[], byte[]> {
         }
     }
 
+    public StoreDefinition getStoreDefinition() {
+        throw new VoldemortException("Metadata has no store definition");
+    }
+
     public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(VoldemortFilter filter) {
         throw new VoldemortException("You cannot iterate over all entries in Metadata");
     }
