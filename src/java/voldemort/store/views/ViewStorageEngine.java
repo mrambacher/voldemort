@@ -2,6 +2,7 @@ package voldemort.store.views;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -160,16 +161,20 @@ public class ViewStorageEngine implements StorageEngine<ByteArray, byte[], byte[
         return target.put(key, result, null);
     }
 
-    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(VoldemortFilter filter) {
-        return new ViewIterator(target.entries(filter));
+    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(Collection<Integer> partitions,
+                                                                        VoldemortFilter filter,
+                                                                        byte[] transforms) {
+        return new ViewIterator(target.entries(partitions, filter, null), transforms);
     }
 
-    public ClosableIterator<ByteArray> keys(VoldemortFilter filter) {
-        return StoreUtils.keys(entries(filter));
+    public ClosableIterator<ByteArray> keys(Collection<Integer> partitions, VoldemortFilter filter) {
+        return target.keys(partitions, filter);
     }
 
     public void truncate() {
-        ViewIterator iterator = new ViewIterator(target.entries(new DefaultVoldemortFilter()));
+        ViewIterator iterator = new ViewIterator(target.entries(null,
+                                                                new DefaultVoldemortFilter(),
+                                                                null), null);
         while(iterator.hasNext()) {
             Pair<ByteArray, Versioned<byte[]>> pair = iterator.next();
             target.delete(pair.getFirst(), pair.getSecond().getVersion());
@@ -205,9 +210,12 @@ public class ViewStorageEngine implements StorageEngine<ByteArray, byte[], byte[
             implements ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> {
 
         private final ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> inner;
+        private final byte[] transforms;
 
-        public ViewIterator(ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> inner) {
+        public ViewIterator(ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> inner,
+                            byte[] transforms) {
             this.inner = inner;
+            this.transforms = transforms;
         }
 
         public void close() {

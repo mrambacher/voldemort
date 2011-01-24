@@ -16,6 +16,8 @@
 
 package voldemort.store.serialized;
 
+import java.util.Collection;
+
 import voldemort.client.protocol.VoldemortFilter;
 import voldemort.serialization.Serializer;
 import voldemort.store.StorageEngine;
@@ -59,12 +61,14 @@ public class SerializingStorageEngine<K, V, T> extends SerializingStore<K, V, T>
         return storageEngine.getStoreDefinition();
     }
 
-    public ClosableIterator<Pair<K, Versioned<V>>> entries(VoldemortFilter filter) {
-        return new EntriesIterator(storageEngine.entries(filter));
+    public ClosableIterator<Pair<K, Versioned<V>>> entries(Collection<Integer> partitions,
+                                                           VoldemortFilter filter,
+                                                           T transforms) {
+        return new EntriesIterator(storageEngine.entries(partitions, filter, null));
     }
 
-    public ClosableIterator<K> keys(VoldemortFilter filter) {
-        return new KeysIterator(storageEngine.keys(filter));
+    public ClosableIterator<K> keys(Collection<Integer> partitions, VoldemortFilter filter) {
+        return new KeysIterator(storageEngine.keys(partitions, filter));
     }
 
     public void truncate() {

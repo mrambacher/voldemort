@@ -43,7 +43,7 @@ public class FetchEntriesStreamRequestHandler extends FetchStreamRequestHandler 
               voldemortConfig,
               storeRepository,
               networkClassLoader);
-        entryIterator = storageEngine.entries(filter);
+        entryIterator = storageEngine.entries(partitionList, filter, null);
     }
 
     @Override

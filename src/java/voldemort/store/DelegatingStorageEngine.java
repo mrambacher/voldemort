@@ -16,6 +16,7 @@
 
 package voldemort.store;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -38,12 +39,14 @@ public class DelegatingStorageEngine<K, V, T> implements StorageEngine<K, V, T> 
         return inner.getStoreDefinition();
     }
 
-    public ClosableIterator<Pair<K, Versioned<V>>> entries(VoldemortFilter filter) {
-        return inner.entries(filter);
+    public ClosableIterator<Pair<K, Versioned<V>>> entries(Collection<Integer> partitions,
+                                                           VoldemortFilter filter,
+                                                           T transforms) {
+        return inner.entries(partitions, filter, transforms);
     }
 
-    public ClosableIterator<K> keys(VoldemortFilter filter) {
-        return inner.keys(filter);
+    public ClosableIterator<K> keys(Collection<Integer> partitions, VoldemortFilter filter) {
+        return inner.keys(partitions, filter);
     }
 
     public void truncate() {

@@ -17,6 +17,7 @@
 package voldemort.store.readonly;
 
 import java.io.File;
+import java.util.Collection;
 
 import voldemort.client.protocol.VoldemortFilter;
 import voldemort.routing.RoutingStrategy;
@@ -60,12 +61,14 @@ public class ReadOnlyStorageEngine extends ReadOnlyStore implements
         return storeDef;
     }
 
-    public ClosableIterator<ByteArray> keys(VoldemortFilter filter) {
+    public ClosableIterator<ByteArray> keys(Collection<Integer> partitions, VoldemortFilter filter) {
         throw new UnsupportedOperationException("Iteration is not supported for "
                                                 + getClass().getName());
     }
 
-    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(VoldemortFilter filter) {
+    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(Collection<Integer> partitions,
+                                                                        VoldemortFilter filter,
+                                                                        byte[] transforms) {
         throw new UnsupportedOperationException("Iteration is not supported for "
                                                 + getClass().getName());
     }

@@ -17,6 +17,7 @@
 package voldemort.store.noop;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,11 +60,14 @@ public class NoopStorageEngine implements StorageEngine<ByteArray, byte[], byte[
         return storeDef;
     }
 
-    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(final VoldemortFilter filter) {
+    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(final Collection<Integer> partitions,
+                                                                        final VoldemortFilter filter,
+                                                                        final byte[] transforms) {
         return null;
     }
 
-    public ClosableIterator<ByteArray> keys(final VoldemortFilter filter) {
+    public ClosableIterator<ByteArray> keys(final Collection<Integer> partitions,
+                                            final VoldemortFilter filter) {
         return null;
     }
 

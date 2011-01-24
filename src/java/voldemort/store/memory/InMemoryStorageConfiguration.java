@@ -41,8 +41,8 @@ public class InMemoryStorageConfiguration implements StorageConfiguration {
     public InMemoryStorageConfiguration(VoldemortConfig config) {}
 
     public StorageEngine<ByteArray, byte[], byte[]> getStore(StoreDefinition storeDef) {
-        return new InMemoryStorageEngine<ByteArray, byte[], byte[]>(storeDef,
-                                                                    new ConcurrentHashMap<ByteArray, List<Versioned<byte[]>>>());
+        return new InMemoryStorageEngine(storeDef,
+                                         new ConcurrentHashMap<ByteArray, List<Versioned<byte[]>>>());
     }
 
     public String getType() {

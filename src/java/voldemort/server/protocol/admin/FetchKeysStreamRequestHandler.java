@@ -33,7 +33,7 @@ public class FetchKeysStreamRequestHandler extends FetchStreamRequestHandler {
               voldemortConfig,
               storeRepository,
               networkClassLoader);
-        keyIterator = storageEngine.keys(filter);
+        keyIterator = storageEngine.keys(partitionList, filter);
     }
 
     @Override
@@ -56,7 +56,7 @@ public class FetchKeysStreamRequestHandler extends FetchStreamRequestHandler {
         ByteArray key = keyIterator.next();
 
         throttler.maybeThrottle(key.length());
-        if(validPartition(key.get()) && filter.accept(key, null) && counter % skipRecords == 0) {
+        if(counter % skipRecords == 0) {
             VAdminProto.FetchPartitionEntriesResponse.Builder response = VAdminProto.FetchPartitionEntriesResponse.newBuilder();
             response.setKey(ProtoUtils.encodeBytes(key));
 

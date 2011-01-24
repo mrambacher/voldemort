@@ -727,7 +727,7 @@ public class AdminServiceRequestHandler implements RequestHandler {
             RoutingStrategy routingStrategy = metadataStore.getRoutingStrategy(storageEngine.getName());
 
             EventThrottler throttler = new EventThrottler(voldemortConfig.getStreamMaxReadBytesPerSec());
-            iterator = storageEngine.entries(filter);
+            iterator = storageEngine.entries(partitions, filter, null);
             int deleteSuccess = 0;
 
             while(iterator.hasNext()) {

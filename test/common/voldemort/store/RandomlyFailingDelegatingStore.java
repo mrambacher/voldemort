@@ -1,5 +1,7 @@
 package voldemort.store;
 
+import java.util.Collection;
+
 import voldemort.VoldemortException;
 import voldemort.client.protocol.VoldemortFilter;
 import voldemort.utils.ClosableIterator;
@@ -21,10 +23,14 @@ public class RandomlyFailingDelegatingStore<K, V, T> extends DelegatingStore<K, 
         return innerStorageEngine.getStoreDefinition();
     }
 
-    public ClosableIterator<Pair<K, Versioned<V>>> entries(final VoldemortFilter filter) {
+    public ClosableIterator<Pair<K, Versioned<V>>> entries(final Collection<Integer> partitions,
+                                                           final VoldemortFilter filter,
+                                                           final T transforms) {
         return new ClosableIterator<Pair<K, Versioned<V>>>() {
 
-            ClosableIterator<Pair<K, Versioned<V>>> iterator = innerStorageEngine.entries(filter);
+            ClosableIterator<Pair<K, Versioned<V>>> iterator = innerStorageEngine.entries(partitions,
+                                                                                          filter,
+                                                                                          transforms);
 
             public void close() {
                 iterator.close();
@@ -45,10 +51,11 @@ public class RandomlyFailingDelegatingStore<K, V, T> extends DelegatingStore<K, 
         };
     }
 
-    public ClosableIterator<K> keys(final VoldemortFilter filter) {
+    public ClosableIterator<K> keys(final Collection<Integer> partitions,
+                                    final VoldemortFilter filter) {
         return new ClosableIterator<K>() {
 
-            ClosableIterator<K> iterator = innerStorageEngine.keys(filter);
+            ClosableIterator<K> iterator = innerStorageEngine.keys(partitions, filter);
 
             public void close() {
                 iterator.close();

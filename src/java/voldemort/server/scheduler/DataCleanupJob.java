@@ -71,7 +71,7 @@ public class DataCleanupJob<K, V, T> implements Runnable {
                     return (now - clock.getTimestamp() > maxAgeMs);
                 }
             };
-            iterator = store.entries(filter);
+            iterator = store.entries(null, filter, null);
 
             while(iterator.hasNext()) {
                 // check if we have been interrupted

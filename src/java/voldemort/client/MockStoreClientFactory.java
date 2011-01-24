@@ -160,7 +160,7 @@ public class MockStoreClientFactory implements StoreClientFactory {
         if(storeDef.isView()) {
             String targetName = storeDef.getViewTargetStoreName();
             StoreDefinition targetDef = StoreUtils.getStoreDef(storeDefs, targetName);
-            engine = new InMemoryStorageEngine<K1, V1, T1>(targetDef);
+            engine = new InMemoryStorageEngine(targetDef);
             // instantiate view
 
             engine = new ViewStorageEngine(storeDef,
@@ -176,7 +176,7 @@ public class MockStoreClientFactory implements StoreClientFactory {
                                            null,
                                            ViewStorageConfiguration.loadTransformation(storeDef.getValueTransformation()));
         } else {
-            engine = new InMemoryStorageEngine<K1, V1, T1>(storeDef);
+            engine = new InMemoryStorageEngine(storeDef);
         }
 
         Store store = new VersionIncrementingStore(engine, nodeId, time);

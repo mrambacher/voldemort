@@ -22,7 +22,7 @@ public class PausableStorageConfiguration implements StorageConfiguration {
 
     public StorageEngine<ByteArray, byte[], byte[]> getStore(StoreDefinition storeDef) {
 
-        return new PausableStorageEngine<ByteArray, byte[], byte[]>(new InMemoryStorageEngine<ByteArray, byte[], byte[]>(storeDef));
+        return new PausableStorageEngine(new InMemoryStorageEngine(storeDef));
     }
 
     public String getType() {

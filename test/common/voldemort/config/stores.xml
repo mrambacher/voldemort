@@ -95,6 +95,7 @@
       <schema-info>UTF-8</schema-info>
     </value-serializer>
   </store>
+  <!-- -
   <store>
     <name>test-readonly-fetchfiles</name>
     <persistence>read-only</persistence>
@@ -127,7 +128,8 @@
       <schema-info>UTF-8</schema-info>
     </value-serializer>
   </store>
-  <store>
+ -->
+   <store>
     <name>test-consistent</name>
     <persistence>memory</persistence>
     <routing>client</routing>

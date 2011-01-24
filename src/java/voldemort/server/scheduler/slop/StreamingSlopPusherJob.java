@@ -168,7 +168,7 @@ public class StreamingSlopPusherJob implements Runnable {
 
             try {
                 StorageEngine<ByteArray, Slop, byte[]> slopStore = slopStorageEngine.asSlopStore();
-                iterator = slopStore.entries(new DefaultVoldemortFilter());
+                iterator = slopStore.entries(null, new DefaultVoldemortFilter(), null);
 
                 while(iterator.hasNext()) {
                     Pair<ByteArray, Versioned<Slop>> keyAndVal;

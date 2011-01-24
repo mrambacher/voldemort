@@ -16,6 +16,7 @@
 
 package voldemort.store.bdb;
 
+import java.util.Collection;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.log4j.Logger;
@@ -158,7 +159,9 @@ public class BdbStorageEngine extends AbstractStorageEngine {
         }
     }
 
-    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(VoldemortFilter filter) {
+    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(Collection<Integer> partitions,
+                                                                        VoldemortFilter filter,
+                                                                        byte[] transforms) {
         try {
             Database db = getBdbDatabase();
             if(cursorPreload) {
@@ -167,7 +170,9 @@ public class BdbStorageEngine extends AbstractStorageEngine {
                 db.preload(preloadConfig);
             }
             StoreRow rows = new BdbStoreRow(db, LockMode.READ_UNCOMMITTED);
-            return entries(new StoreEntriesIterator(rows), filter);
+            ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iter = new StoreEntriesIterator(rows);
+            iter = super.entries(iter, partitions); // Filter on partitions
+            return super.entries(iter, filter); // Filter on filter
         } catch(DatabaseException e) {
             logger.error(e);
             throw new PersistenceFailureException(e);
@@ -175,7 +180,7 @@ public class BdbStorageEngine extends AbstractStorageEngine {
 
     }
 
-    public ClosableIterator<ByteArray> keys(VoldemortFilter filter) {
+    public ClosableIterator<ByteArray> keys(Collection<Integer> partitions, VoldemortFilter filter) {
         try {
             Database db = getBdbDatabase();
             if(cursorPreload) {
@@ -184,7 +189,9 @@ public class BdbStorageEngine extends AbstractStorageEngine {
                 db.preload(preloadConfig);
             }
             StoreRow rows = new BdbStoreRow(db, LockMode.READ_UNCOMMITTED);
-            return keys(new StoreKeysIterator(rows), filter);
+            ClosableIterator<ByteArray> iter = new StoreKeysIterator(rows);
+            iter = super.keys(iter, partitions); // Filter on partitions
+            return super.keys(iter, filter); // Filter on filter
         } catch(DatabaseException e) {
             logger.error(e);
             throw new PersistenceFailureException(e);

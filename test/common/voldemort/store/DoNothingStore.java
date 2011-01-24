@@ -16,6 +16,7 @@
 
 package voldemort.store;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -99,11 +100,13 @@ public class DoNothingStore<K, V, T> implements StorageEngine<K, V, T> {
         }
     }
 
-    public ClosableIterator<Pair<K, Versioned<V>>> entries(VoldemortFilter filter) {
+    public ClosableIterator<Pair<K, Versioned<V>>> entries(Collection<Integer> partitions,
+                                                           VoldemortFilter filter,
+                                                           T transforms) {
         return new DoNothingIterator<Pair<K, Versioned<V>>>();
     }
 
-    public ClosableIterator<K> keys(VoldemortFilter filter) {
+    public ClosableIterator<K> keys(Collection<Integer> partitions, VoldemortFilter filter) {
         return new DoNothingIterator<K>();
     }
 

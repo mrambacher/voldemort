@@ -18,6 +18,7 @@
 
 package voldemort.store;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -26,6 +27,7 @@ import org.apache.log4j.Logger;
 
 import voldemort.VoldemortException;
 import voldemort.client.protocol.VoldemortFilter;
+import voldemort.routing.RoutingStrategy;
 import voldemort.utils.ByteArray;
 import voldemort.utils.ClosableFilterIterator;
 import voldemort.utils.ClosableIterator;
@@ -207,24 +209,71 @@ public abstract class AbstractStorageEngine implements StorageEngine<ByteArray, 
 
     public ClosableIterator<ByteArray> keys(ClosableIterator<ByteArray> iter,
                                             final VoldemortFilter filter) {
-        return new ClosableFilterIterator<ByteArray>(iter) {
+        if(filter == null) {
+            // If there is no filter, return the input
+            return iter;
+        } else {
+            return new ClosableFilterIterator<ByteArray>(iter) {
 
-            @Override
-            public boolean matches(ByteArray key) {
-                return filter.accept(key, null);
-            }
-        };
+                @Override
+                public boolean matches(ByteArray key) {
+                    return filter.accept(key, null);
+                }
+            };
+        }
     }
 
     public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iter,
                                                                         final VoldemortFilter filter) {
-        return new ClosableFilterIterator<Pair<ByteArray, Versioned<byte[]>>>(iter) {
+        if(filter == null) {
+            // If there is no filter, return the input
+            return iter;
+        } else {
+            return new ClosableFilterIterator<Pair<ByteArray, Versioned<byte[]>>>(iter) {
 
-            @Override
-            public boolean matches(Pair<ByteArray, Versioned<byte[]>> entry) {
-                return filter.accept(entry.getFirst(), entry.getSecond());
-            }
-        };
+                @Override
+                public boolean matches(Pair<ByteArray, Versioned<byte[]>> entry) {
+                    return filter.accept(entry.getFirst(), entry.getSecond());
+                }
+            };
+        }
+    }
+
+    public ClosableIterator<ByteArray> keys(ClosableIterator<ByteArray> iter,
+                                            final Collection<Integer> partitions) {
+        // If there are no partitions, just return the input value
+        if(partitions == null || partitions.size() <= 0) {
+            return iter;
+        } else {
+            final RoutingStrategy strategy = storeDef.getRoutingStrategy();
+            return new ClosableFilterIterator<ByteArray>(iter) {
+
+                @Override
+                public boolean matches(ByteArray key) {
+                    int partition = strategy.getPrimaryPartition(key.get());
+                    return partitions.contains(partition);
+                }
+            };
+        }
+    }
+
+    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iter,
+                                                                        final Collection<Integer> partitions) {
+        // If there are no partitions, just return the input value
+        if(partitions == null || partitions.size() <= 0) {
+            return iter;
+        } else {
+            final RoutingStrategy strategy = storeDef.getRoutingStrategy();
+            return new ClosableFilterIterator<Pair<ByteArray, Versioned<byte[]>>>(iter) {
+
+                @Override
+                public boolean matches(Pair<ByteArray, Versioned<byte[]>> entry) {
+                    ByteArray key = entry.getFirst();
+                    int partition = strategy.getPrimaryPartition(key.get());
+                    return partitions.contains(partition);
+                }
+            };
+        }
     }
 
     protected <T> void attemptClose(StoreTransaction<T> transaction, boolean success) {

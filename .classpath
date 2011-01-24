@@ -51,5 +51,6 @@
 	<classpathentry kind="lib" path="contrib/krati/lib/krati-0.3.4.jar"/>
 	<classpathentry kind="lib" path="lib/jna.jar"/>
 	<classpathentry kind="lib" path="lib/protobuf-java-2.3.0.jar"/>
+	<classpathentry kind="lib" path="lib/mysql-connector-java-5.1.12-bin.jar"/>
 	<classpathentry kind="output" path="classes"/>
 </classpath>

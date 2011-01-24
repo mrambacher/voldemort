@@ -50,17 +50,16 @@ public class MysqlStorageEngineTest extends AbstractStorageEngineTest {
 
     protected MysqlStorageEngineTest(String storeName, String storeType) {
         super(storeName, storeType);
-        configureDatabaseProperties();
     }
 
     public MysqlStorageEngineTest() {
         super("test_store_" + System.getProperty("user.name", "mysql"),
               MysqlStorageConfiguration.TYPE_NAME);
-        configureDatabaseProperties();
     }
 
     @Override
     public void setUp() throws Exception {
+        configureDatabaseProperties();
         StorageEngine<ByteArray, byte[], byte[]> engine = getStorageEngine();
         destroyEngine(engine);
         createEngine(engine);

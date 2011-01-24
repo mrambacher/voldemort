@@ -16,6 +16,8 @@
 
 package voldemort.store;
 
+import java.util.Collection;
+
 import voldemort.client.protocol.VoldemortFilter;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
@@ -54,7 +56,9 @@ public interface StorageEngine<K, V, T> extends Store<K, V, T> {
      * 
      * @return An iterator over the entries in this StorageEngine.
      */
-    public ClosableIterator<Pair<K, Versioned<V>>> entries(VoldemortFilter filter);
+    public ClosableIterator<Pair<K, Versioned<V>>> entries(Collection<Integer> partitions,
+                                                           VoldemortFilter filter,
+                                                           T transform);
 
     /**
      * Get an iterator over keys in the store.
@@ -64,7 +68,7 @@ public interface StorageEngine<K, V, T> extends Store<K, V, T> {
      * 
      * @return An iterator over the keys in this StorageEngine.
      */
-    public ClosableIterator<K> keys(VoldemortFilter filter);
+    public ClosableIterator<K> keys(Collection<Integer> partitions, VoldemortFilter filter);
 
     /**
      * Truncate all entries in the store

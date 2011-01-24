@@ -20,6 +20,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Collection;
 
 import javax.sql.DataSource;
 
@@ -137,21 +138,27 @@ public class MysqlStorageEngine extends AbstractStorageEngine {
         MysqlUtils.execute(datasource, "delete from " + getName());
     }
 
-    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(VoldemortFilter filter) {
+    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(Collection<Integer> partitions,
+                                                                        VoldemortFilter filter,
+                                                                        byte[] transforms) {
         String sql = "select key_, version_, value_, metadata_ from " + getName();
         try {
             StoreRow rows = new MysqlRow(getName(), this.datasource, sql);
-            return entries(new StoreEntriesIterator(rows), filter);
+            ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iter = new StoreEntriesIterator(rows);
+            iter = super.entries(iter, partitions); // Filter by partition
+            return super.entries(iter, filter); // Filter by filter
         } catch(SQLException e) {
             throw new PersistenceFailureException("Fix me!", e);
         }
     }
 
-    public ClosableIterator<ByteArray> keys(VoldemortFilter filter) {
+    public ClosableIterator<ByteArray> keys(Collection<Integer> partitions, VoldemortFilter filter) {
         String sql = "select key_ from " + getName();
         try {
             StoreRow rows = new MysqlRow(getName(), this.datasource, sql);
-            return keys(new StoreKeysIterator(rows), filter);
+            ClosableIterator<ByteArray> iter = new StoreKeysIterator(rows);
+            iter = super.keys(iter, partitions); // Filter by partition
+            return super.keys(iter, filter); // Filter by filter
         } catch(SQLException e) {
             throw new PersistenceFailureException("Fix me!", e);
         }

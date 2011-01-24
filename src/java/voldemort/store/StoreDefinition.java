@@ -19,7 +19,11 @@ package voldemort.store;
 import java.io.Serializable;
 import java.util.HashMap;
 
+import voldemort.VoldemortException;
 import voldemort.client.RoutingTier;
+import voldemort.cluster.Cluster;
+import voldemort.routing.RoutingStrategy;
+import voldemort.routing.RoutingStrategyFactory;
 import voldemort.routing.RoutingStrategyType;
 import voldemort.serialization.SerializerDefinition;
 import voldemort.store.slop.strategy.HintedHandoffStrategyType;
@@ -60,6 +64,7 @@ public class StoreDefinition implements Serializable {
     private final String serializerFactory;
     private final HintedHandoffStrategyType hintedHandoffStrategyType;
     private final Integer hintPrefListSize;
+    private RoutingStrategy routingStrategy = null;
 
     public StoreDefinition(String name,
                            String type,
@@ -370,6 +375,19 @@ public class StoreDefinition implements Serializable {
                                 hasHintedHandoffStrategyType() ? getHintedHandoffStrategyType()
                                                               : null,
                                 hasHintPreflistSize() ? getHintPrefListSize() : null);
+    }
+
+    public RoutingStrategy getRoutingStrategy() {
+        if(routingStrategy != null) {
+            return routingStrategy;
+        } else {
+            throw new VoldemortException("Routing strategy has not been initialized");
+        }
+    }
+
+    public RoutingStrategy updateRoutingStrategy(Cluster cluster) {
+        routingStrategy = new RoutingStrategyFactory().updateRoutingStrategy(this, cluster);
+        return routingStrategy;
     }
 
     @Override

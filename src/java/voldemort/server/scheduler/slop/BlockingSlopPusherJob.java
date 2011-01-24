@@ -108,7 +108,7 @@ public class BlockingSlopPusherJob implements Runnable {
                 StorageEngine<ByteArray, Slop, byte[]> slopStore = slopStorageEngine.asSlopStore();
                 EventThrottler throttler = new EventThrottler(maxWriteBytesPerSec);
 
-                iterator = slopStore.entries(new DefaultVoldemortFilter());
+                iterator = slopStore.entries(null, new DefaultVoldemortFilter(), null);
 
                 while(iterator.hasNext()) {
                     if(Thread.interrupted())

@@ -69,7 +69,9 @@ public class CatBdbStore {
                                                                                           new StringSerializer(),
                                                                                           new StringSerializer(),
                                                                                           new StringSerializer());
-        Iterator<Pair<String, Versioned<String>>> iter = stringStore.entries(new DefaultVoldemortFilter());
+        Iterator<Pair<String, Versioned<String>>> iter = stringStore.entries(null,
+                                                                             new DefaultVoldemortFilter(),
+                                                                             null);
         while(iter.hasNext()) {
             Pair<String, Versioned<String>> entry = iter.next();
             System.out.println(entry.getFirst() + " => " + entry.getSecond().getValue());

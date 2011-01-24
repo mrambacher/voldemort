@@ -145,7 +145,9 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
             continue;
 
         // now simultaneously do iteration
-        ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iter = this.store.entries(new DefaultVoldemortFilter());
+        ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iter = this.store.entries(null,
+                                                                                       new DefaultVoldemortFilter(),
+                                                                                       null);
         while(iter.hasNext())
             iter.next();
         iter.close();

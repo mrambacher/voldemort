@@ -33,7 +33,7 @@ public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
 
     @Override
     public StorageEngine<ByteArray, byte[], byte[]> createStorageEngine(StoreDefinition def) {
-        return new InMemoryStorageEngine<ByteArray, byte[], byte[]>(def);
+        return new InMemoryStorageEngine(def);
     }
 
     @Override

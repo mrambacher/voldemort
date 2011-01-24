@@ -20,6 +20,7 @@ import java.io.File;
 import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -405,11 +406,13 @@ public class MetadataStore implements StorageEngine<ByteArray, byte[], byte[]> {
         throw new VoldemortException("Metadata has no store definition");
     }
 
-    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(VoldemortFilter filter) {
+    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(Collection<Integer> partitions,
+                                                                        VoldemortFilter filter,
+                                                                        byte[] transforms) {
         throw new VoldemortException("You cannot iterate over all entries in Metadata");
     }
 
-    public ClosableIterator<ByteArray> keys(VoldemortFilter filter) {
+    public ClosableIterator<ByteArray> keys(Collection<Integer> partitions, VoldemortFilter filter) {
         throw new VoldemortException("You cannot iterate over all keys in Metadata");
     }
 

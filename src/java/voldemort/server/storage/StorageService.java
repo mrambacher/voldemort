@@ -283,6 +283,7 @@ public class StorageService extends AbstractService {
                                              + " storage engine of type " + storeDef.getType()
                                              + " has not been enabled.");
 
+        storeDef.updateRoutingStrategy(metadata.getCluster());
         if(storeDef.getType().compareTo(ReadOnlyStorageConfiguration.TYPE_NAME) == 0) {
             final RoutingStrategy routingStrategy = new RoutingStrategyFactory().updateRoutingStrategy(storeDef,
                                                                                                        metadata.getCluster());
@@ -702,7 +703,9 @@ public class StorageService extends AbstractService {
 
     private DataSetStats calculateStats(StorageEngine<ByteArray, byte[], byte[]> store) {
         DataSetStats stats = new DataSetStats();
-        ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iter = store.entries(new DefaultVoldemortFilter());
+        ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iter = store.entries(null,
+                                                                                  new DefaultVoldemortFilter(),
+                                                                                  null);
         try {
             int count = 0;
             while(iter.hasNext()) {

@@ -66,7 +66,9 @@ public class RebalancingJob implements Runnable {
                     return needsRebalancing((ByteArray) key);
                 }
             };
-            ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iterator = engine.entries(rebalanceFilter);
+            ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iterator = engine.entries(null,
+                                                                                           rebalanceFilter,
+                                                                                           null);
             int rebalanced = 0;
             long currStart = System.currentTimeMillis();
             while(iterator.hasNext()) {

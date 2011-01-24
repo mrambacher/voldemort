@@ -54,8 +54,8 @@ public class BlockingSlopPusherTest extends TestCase {
     protected void setUp() throws Exception {
         Cluster cluster = makeCluster(3);
         repo = new StoreRepository();
-        repo.setSlopStore(new SlopStorageEngine(new InMemoryStorageEngine<ByteArray, byte[], byte[]>(TestUtils.getStoreDef("slop",
-                                                                                                                           "slop")),
+        repo.setSlopStore(new SlopStorageEngine(new InMemoryStorageEngine(TestUtils.getStoreDef("slop",
+                                                                                                "slop")),
                                                 cluster));
         repo.addNodeStore(0, new InMemoryStore<ByteArray, byte[], byte[]>(STORE_NAME));
         repo.addNodeStore(1, new InMemoryStore<ByteArray, byte[], byte[]>(STORE_NAME));

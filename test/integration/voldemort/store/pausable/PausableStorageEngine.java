@@ -1,5 +1,6 @@
 package voldemort.store.pausable;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -12,6 +13,7 @@ import voldemort.store.StorageEngine;
 import voldemort.store.StoreCapabilityType;
 import voldemort.store.StoreDefinition;
 import voldemort.store.memory.InMemoryStorageEngine;
+import voldemort.utils.ByteArray;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
 import voldemort.versioning.Version;
@@ -27,15 +29,15 @@ import voldemort.versioning.Versioned;
  * @param <V> The type of the value
  * @param <T> The type of the transforms
  */
-public class PausableStorageEngine<K, V, T> implements StorageEngine<K, V, T> {
+public class PausableStorageEngine implements StorageEngine<ByteArray, byte[], byte[]> {
 
     private static final Logger logger = Logger.getLogger(PausableStorageEngine.class);
 
-    private final InMemoryStorageEngine<K, V, T> inner;
+    private final InMemoryStorageEngine inner;
     private final Object condition = new Object();
     private volatile boolean paused;
 
-    public PausableStorageEngine(InMemoryStorageEngine<K, V, T> inner) {
+    public PausableStorageEngine(InMemoryStorageEngine inner) {
         super();
         this.inner = inner;
     }
@@ -48,7 +50,7 @@ public class PausableStorageEngine<K, V, T> implements StorageEngine<K, V, T> {
         inner.close();
     }
 
-    public boolean delete(K key, Version version) {
+    public boolean delete(ByteArray key, Version version) {
         blockIfNecessary();
         return inner.delete(key);
     }
@@ -65,29 +67,33 @@ public class PausableStorageEngine<K, V, T> implements StorageEngine<K, V, T> {
         }
     }
 
-    public List<Versioned<V>> get(K key, T transforms) {
+    public List<Versioned<byte[]>> get(ByteArray key, byte[] transforms) {
         blockIfNecessary();
         return inner.get(key, transforms);
     }
 
-    public Map<K, List<Versioned<V>>> getAll(Iterable<K> keys, Map<K, T> transforms) {
+    public Map<ByteArray, List<Versioned<byte[]>>> getAll(Iterable<ByteArray> keys,
+                                                          Map<ByteArray, byte[]> transforms) {
         blockIfNecessary();
         return inner.getAll(keys, transforms);
     }
 
-    public Version put(K key, Versioned<V> value, T transforms) {
+    public Version put(ByteArray key, Versioned<byte[]> value, byte[] transforms) {
         blockIfNecessary();
         return inner.put(key, value, transforms);
     }
 
-    public ClosableIterator<Pair<K, Versioned<V>>> entries(final VoldemortFilter filter) {
+    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(final Collection<Integer> partitions,
+                                                                        final VoldemortFilter filter,
+                                                                        final byte[] transforms) {
         blockIfNecessary();
-        return inner.entries(filter);
+        return inner.entries(partitions, filter, transforms);
     }
 
-    public ClosableIterator<K> keys(final VoldemortFilter filter) {
+    public ClosableIterator<ByteArray> keys(final Collection<Integer> partitions,
+                                            final VoldemortFilter filter) {
         blockIfNecessary();
-        return inner.keys(filter);
+        return inner.keys(partitions, filter);
     }
 
     public void truncate() {
@@ -95,7 +101,7 @@ public class PausableStorageEngine<K, V, T> implements StorageEngine<K, V, T> {
         inner.deleteAll();
     }
 
-    public List<Version> getVersions(K key) {
+    public List<Version> getVersions(ByteArray key) {
         blockIfNecessary();
         return inner.getVersions(key);
     }

@@ -8,6 +8,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +22,7 @@ import org.apache.log4j.Logger;
 
 import voldemort.VoldemortException;
 import voldemort.client.protocol.VoldemortFilter;
+import voldemort.routing.RoutingStrategy;
 import voldemort.store.NoSuchCapabilityException;
 import voldemort.store.StorageEngine;
 import voldemort.store.StoreCapabilityType;
@@ -110,7 +112,10 @@ public class KratiStorageEngine implements StorageEngine<ByteArray, byte[], byte
         }
     }
 
-    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(final VoldemortFilter filter) {
+    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(final java.util.Collection<Integer> partitions,
+                                                                        final VoldemortFilter filter,
+                                                                        final byte[] transforms) {
+        RoutingStrategy routingStrategy = this.storeDef.getRoutingStrategy();
         List<Pair<ByteArray, Versioned<byte[]>>> returnedList = new ArrayList<Pair<ByteArray, Versioned<byte[]>>>();
         DataArray array = datastore.getDataArray();
         for(int index = 0; index < array.length(); index++) {
@@ -141,8 +146,11 @@ public class KratiStorageEngine implements StorageEngine<ByteArray, byte[], byte
                         while(iterVersions.hasNext()) {
                             ByteArray currentKey = new ByteArray(key);
                             Versioned<byte[]> currentVersion = iterVersions.next();
-                            if(filter.accept(currentKey, currentVersion)) {
-                                returnedList.add(Pair.create(currentKey, currentVersion));
+                            if(partitions == null
+                               || partitions.contains(routingStrategy.getPrimaryPartition(key))) {
+                                if(filter.accept(currentKey, currentVersion)) {
+                                    returnedList.add(Pair.create(currentKey, currentVersion));
+                                }
                             }
                         }
                     }
@@ -152,8 +160,8 @@ public class KratiStorageEngine implements StorageEngine<ByteArray, byte[], byte
         return new KratiClosableIterator(returnedList);
     }
 
-    public ClosableIterator<ByteArray> keys(VoldemortFilter filter) {
-        return StoreUtils.keys(entries(filter));
+    public ClosableIterator<ByteArray> keys(Collection<Integer> partitions, VoldemortFilter filter) {
+        return StoreUtils.keys(entries(partitions, filter, null));
     }
 
     public boolean delete(ByteArray key, Version maxVersion) throws VoldemortException {
