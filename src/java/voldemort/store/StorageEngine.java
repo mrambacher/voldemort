@@ -57,7 +57,7 @@ public interface StorageEngine<K, V, T> extends Store<K, V, T> {
      * @return An iterator over the entries in this StorageEngine.
      */
     public ClosableIterator<Pair<K, Versioned<V>>> entries(Collection<Integer> partitions,
-                                                           VoldemortFilter filter,
+                                                           VoldemortFilter<K, V> filter,
                                                            T transform);
 
     /**
@@ -68,7 +68,22 @@ public interface StorageEngine<K, V, T> extends Store<K, V, T> {
      * 
      * @return An iterator over the keys in this StorageEngine.
      */
-    public ClosableIterator<K> keys(Collection<Integer> partitions, VoldemortFilter filter);
+    public ClosableIterator<K> keys(Collection<Integer> partitions, VoldemortFilter<K, V> filter);
+
+    /**
+     * Deletes all of the keys in the specified partitions
+     * 
+     * @param partitions The partitions to remove
+     */
+    public void deletePartitions(Collection<Integer> partitions);
+
+    /**
+     * Deletes all of the keys that match the specified filter
+     * 
+     * @param filter The filter to compare values to. All matching values are
+     *        removed
+     */
+    public void deleteEntries(VoldemortFilter<K, V> filter);
 
     /**
      * Truncate all entries in the store

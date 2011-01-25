@@ -26,12 +26,15 @@ import java.util.Map;
 
 import org.apache.log4j.Logger;
 
+import voldemort.VoldemortException;
+import voldemort.client.protocol.VoldemortFilter;
 import voldemort.cluster.Node;
 import voldemort.routing.RoutingStrategy;
 import voldemort.serialization.Serializer;
 import voldemort.serialization.SerializerDefinition;
 import voldemort.serialization.SerializerFactory;
 import voldemort.utils.ByteArray;
+import voldemort.utils.ClosableFilterIterator;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
 import voldemort.versioning.Version;
@@ -174,6 +177,116 @@ public class StoreUtils {
             }
 
         };
+    }
+
+    public static <K> ClosableIterator<K> keys(ClosableIterator<K> iter,
+                                               final VoldemortFilter<K, ?> filter) {
+        if(filter == null) {
+            // If there is no filter, return the input
+            return iter;
+        } else {
+            return new ClosableFilterIterator<K>(iter) {
+
+                @Override
+                public boolean matches(K key) {
+                    return filter.accept(key, null);
+                }
+            };
+        }
+    }
+
+    public static ClosableIterator<ByteArray> keys(ClosableIterator<ByteArray> iter,
+                                                   final StoreDefinition storeDef,
+                                                   final Collection<Integer> partitions) {
+        // If there are no partitions, just return the input value
+        if(partitions == null || partitions.size() <= 0) {
+            return iter;
+        } else {
+            final RoutingStrategy strategy = storeDef.getRoutingStrategy();
+            return new ClosableFilterIterator<ByteArray>(iter) {
+
+                @Override
+                public boolean matches(ByteArray key) {
+                    int partition = strategy.getPrimaryPartition(key.get());
+                    return partitions.contains(partition);
+                }
+            };
+        }
+    }
+
+    public static <K, V> ClosableIterator<Pair<K, Versioned<V>>> entries(ClosableIterator<Pair<K, Versioned<V>>> iter,
+                                                                         final VoldemortFilter<K, V> filter) {
+        if(filter == null) {
+            // If there is no filter, return the input
+            return iter;
+        } else {
+            return new ClosableFilterIterator<Pair<K, Versioned<V>>>(iter) {
+
+                @Override
+                public boolean matches(Pair<K, Versioned<V>> entry) {
+                    return filter.accept(entry.getFirst(), entry.getSecond());
+                }
+            };
+        }
+    }
+
+    public static <V> ClosableIterator<Pair<ByteArray, Versioned<V>>> entries(ClosableIterator<Pair<ByteArray, Versioned<V>>> iter,
+                                                                              final StoreDefinition storeDef,
+                                                                              final Collection<Integer> partitions) {
+        // If there are no partitions, just return the input value
+        if(partitions == null || partitions.size() <= 0) {
+            return iter;
+        } else {
+            final RoutingStrategy strategy = storeDef.getRoutingStrategy();
+            return new ClosableFilterIterator<Pair<ByteArray, Versioned<V>>>(iter) {
+
+                @Override
+                public boolean matches(Pair<ByteArray, Versioned<V>> entry) {
+                    int partition = strategy.getPrimaryPartition(entry.getFirst().get());
+                    return partitions.contains(partition);
+                }
+            };
+        }
+    }
+
+    public static <K, V, T> void deletePartitions(final StorageEngine<K, V, T> engine,
+                                                  final Collection<Integer> partitions) {
+        ClosableIterator<Pair<K, Versioned<V>>> entries = engine.entries(partitions, null, null);
+        try {
+            while(entries.hasNext()) {
+                try {
+                    Pair<K, Versioned<V>> entry = entries.next();
+                    K key = entry.getFirst();
+                    Versioned<V> versioned = entry.getSecond();
+                    engine.delete(key, versioned.getVersion());
+                } catch(VoldemortException e) {
+
+                }
+            }
+        } finally {
+            entries.close();
+        }
+
+    }
+
+    public static <K, V, T> void deleteEntries(final StorageEngine<K, V, T> engine,
+                                               final VoldemortFilter<K, V> filter) {
+        ClosableIterator<Pair<K, Versioned<V>>> entries = engine.entries(null, filter, null);
+        try {
+            while(entries.hasNext()) {
+                try {
+                    Pair<K, Versioned<V>> entry = entries.next();
+                    K key = entry.getFirst();
+                    Versioned<V> versioned = entry.getSecond();
+                    engine.delete(key, versioned.getVersion());
+                } catch(VoldemortException e) {
+
+                }
+            }
+        } finally {
+            entries.close();
+        }
+
     }
 
     /**

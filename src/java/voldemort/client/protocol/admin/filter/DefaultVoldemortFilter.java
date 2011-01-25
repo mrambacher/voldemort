@@ -19,9 +19,13 @@ package voldemort.client.protocol.admin.filter;
 import voldemort.client.protocol.VoldemortFilter;
 import voldemort.versioning.Versioned;
 
-public class DefaultVoldemortFilter implements VoldemortFilter {
+public class DefaultVoldemortFilter<K, V> implements VoldemortFilter<K, V> {
 
-    public boolean accept(Object key, Versioned<?> value) {
+    public static <K, V> DefaultVoldemortFilter<K, V> create() {
+        return new DefaultVoldemortFilter<K, V>();
+    }
+
+    public boolean accept(K key, Versioned<V> value) {
         return true;
     }
 }

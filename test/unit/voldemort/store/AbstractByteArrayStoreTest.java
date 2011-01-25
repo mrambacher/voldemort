@@ -82,19 +82,6 @@ public abstract class AbstractByteArrayStoreTest extends
         assertEquals("797189 value matches", testFetchedEqualsPut(storeName, key2, value2), 1);
     }
 
-    /**
-     * A modified version of abs that always returns a non-negative value.
-     * Math.abs returns Integer.MIN_VALUE if a == Integer.MIN_VALUE and this
-     * method returns Integer.MAX_VALUE in that case.
-     */
-    private static int abs(int a) {
-        if(a >= 0)
-            return a;
-        else if(a != Integer.MIN_VALUE)
-            return -a;
-        return Integer.MAX_VALUE;
-    }
-
     @Test
     public void testOneKilobyteValueSizes() {
         testValueSizes("50-byte keys and with value size = 1024 bytes (1kb).", 1024, 50, null);

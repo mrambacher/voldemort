@@ -30,7 +30,7 @@ import voldemort.versioning.Versioned;
  * so that it can be loaded w/o parent object if needed. </i>
  * 
  */
-public interface VoldemortFilter {
+public interface VoldemortFilter<K, V> {
 
     /**
      * Extend this function to implement custom filter strategies.
@@ -39,5 +39,5 @@ public interface VoldemortFilter {
      * @param value
      * @return true: if the pair should be kept.
      */
-    public boolean accept(Object key, Versioned<?> value);
+    public boolean accept(K key, Versioned<V> value);
 }

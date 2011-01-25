@@ -12,6 +12,7 @@ import voldemort.client.protocol.VoldemortFilter;
 import voldemort.store.StorageEngine;
 import voldemort.store.StoreCapabilityType;
 import voldemort.store.StoreDefinition;
+import voldemort.store.StoreUtils;
 import voldemort.store.memory.InMemoryStorageEngine;
 import voldemort.utils.ByteArray;
 import voldemort.utils.ClosableIterator;
@@ -84,16 +85,24 @@ public class PausableStorageEngine implements StorageEngine<ByteArray, byte[], b
     }
 
     public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(final Collection<Integer> partitions,
-                                                                        final VoldemortFilter filter,
+                                                                        final VoldemortFilter<ByteArray, byte[]> filter,
                                                                         final byte[] transforms) {
         blockIfNecessary();
         return inner.entries(partitions, filter, transforms);
     }
 
     public ClosableIterator<ByteArray> keys(final Collection<Integer> partitions,
-                                            final VoldemortFilter filter) {
+                                            final VoldemortFilter<ByteArray, byte[]> filter) {
         blockIfNecessary();
         return inner.keys(partitions, filter);
+    }
+
+    public void deletePartitions(Collection<Integer> partitions) {
+        StoreUtils.deletePartitions(this, partitions);
+    }
+
+    public void deleteEntries(VoldemortFilter<ByteArray, byte[]> filter) {
+        StoreUtils.deleteEntries(this, filter);
     }
 
     public void truncate() {

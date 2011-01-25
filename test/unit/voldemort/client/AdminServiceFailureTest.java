@@ -153,8 +153,10 @@ public class AdminServiceFailureTest extends TestCase {
 
         for(StreamOperations operation: StreamOperations.values()) {
             try {
-                doOperation(operation, 0, failingStorageEngine.getName(), Arrays.asList(0, 1));
-                fail("Unit test should fail for " + operation);
+                if(operation != StreamOperations.DELETE_PARTITIONS) {
+                    doOperation(operation, 0, failingStorageEngine.getName(), Arrays.asList(0, 1));
+                    fail("Unit test should fail for " + operation);
+                }
             } catch(Exception e) {
                 // ignore
             }

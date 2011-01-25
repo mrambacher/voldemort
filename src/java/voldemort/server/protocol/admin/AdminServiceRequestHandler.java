@@ -605,10 +605,13 @@ public class AdminServiceRequestHandler implements RequestHandler {
     public VAdminProto.AsyncOperationStatusResponse handleFetchAndUpdate(VAdminProto.InitiateFetchAndUpdateRequest request) {
         final int nodeId = request.getNodeId();
         final List<Integer> partitions = request.getPartitionsList();
-        final VoldemortFilter filter = request.hasFilter() ? getFilterFromRequest(request.getFilter(),
-                                                                                  voldemortConfig,
-                                                                                  networkClassLoader)
-                                                          : new DefaultVoldemortFilter();
+        final VoldemortFilter<ByteArray, byte[]> filter;
+        if(request.hasFilter()) {
+            filter = getFilterFromRequest(request.getFilter(), voldemortConfig, networkClassLoader);
+        } else {
+            filter = new DefaultVoldemortFilter<ByteArray, byte[]>();
+        }
+
         final String storeName = request.getStore();
 
         int requestId = asyncService.getUniqueRequestId();
@@ -717,32 +720,31 @@ public class AdminServiceRequestHandler implements RequestHandler {
         ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iterator = null;
         try {
             String storeName = request.getStore();
-            List<Integer> partitions = request.getPartitionsList();
+            final List<Integer> partitions = request.getPartitionsList();
             StorageEngine<ByteArray, byte[], byte[]> storageEngine = getStorageEngine(storeRepository,
                                                                                       storeName);
-            VoldemortFilter filter = (request.hasFilter()) ? getFilterFromRequest(request.getFilter(),
-                                                                                  voldemortConfig,
-                                                                                  networkClassLoader)
-                                                          : new DefaultVoldemortFilter();
-            RoutingStrategy routingStrategy = metadataStore.getRoutingStrategy(storageEngine.getName());
+            if(request.hasFilter()) {
+                final RoutingStrategy strategy = metadataStore.getRoutingStrategy(storageEngine.getName());
+                final VoldemortFilter<ByteArray, byte[]> input = getFilterFromRequest(request.getFilter(),
+                                                                                      voldemortConfig,
+                                                                                      networkClassLoader);
+                VoldemortFilter<ByteArray, byte[]> filter = new VoldemortFilter<ByteArray, byte[]>() {
 
-            EventThrottler throttler = new EventThrottler(voldemortConfig.getStreamMaxReadBytesPerSec());
-            iterator = storageEngine.entries(partitions, filter, null);
-            int deleteSuccess = 0;
-
-            while(iterator.hasNext()) {
-                Pair<ByteArray, Versioned<byte[]>> entry = iterator.next();
-
-                ByteArray key = entry.getFirst();
-                Versioned<byte[]> value = entry.getSecond();
-                throttler.maybeThrottle(key.length() + valueSize(value));
-                if(checkKeyBelongsToDeletePartition(key.get(), partitions, routingStrategy)) {
-                    if(storageEngine.delete(key, value.getVersion()))
-                        deleteSuccess++;
-                }
+                    public boolean accept(ByteArray key, Versioned<byte[]> value) {
+                        if(!input.accept(key, value)) {
+                            return false;
+                        } else {
+                            return checkKeyBelongsToDeletePartition(key.get(), partitions, strategy);
+                        }
+                    }
+                };
+                storageEngine.deleteEntries(filter);
+            } else {
+                storageEngine.deletePartitions(partitions);
             }
-            response.setCount(deleteSuccess);
+            response.setCount(0);
         } catch(VoldemortException e) {
+            response.setCount(-1);
             response.setError(ProtoUtils.encodeError(errorCodeMapper, e));
             logger.error("handleDeletePartitionEntries failed for request(" + request.toString()
                          + ")", e);
@@ -980,10 +982,11 @@ public class AdminServiceRequestHandler implements RequestHandler {
         }
     }
 
-    static VoldemortFilter getFilterFromRequest(VAdminProto.VoldemortFilter request,
-                                                VoldemortConfig voldemortConfig,
-                                                NetworkClassLoader networkClassLoader) {
-        VoldemortFilter filter = null;
+    @SuppressWarnings("unchecked")
+    static <K, V> VoldemortFilter<K, V> getFilterFromRequest(VAdminProto.VoldemortFilter request,
+                                                             VoldemortConfig voldemortConfig,
+                                                             NetworkClassLoader networkClassLoader) {
+        VoldemortFilter<K, V> filter = null;
 
         byte[] classBytes = ProtoUtils.decodeBytes(request.getData()).get();
         String className = request.getName();
@@ -999,10 +1002,10 @@ public class AdminServiceRequestHandler implements RequestHandler {
                                                            classBytes,
                                                            0,
                                                            classBytes.length);
-                filter = (VoldemortFilter) cl.newInstance();
+                filter = (VoldemortFilter<K, V>) cl.newInstance();
             } else {
                 Class<?> cl = Thread.currentThread().getContextClassLoader().loadClass(className);
-                filter = (VoldemortFilter) cl.newInstance();
+                filter = (VoldemortFilter<K, V>) cl.newInstance();
             }
         } catch(Exception e) {
             throw new VoldemortException("Failed to load and instantiate the filter class", e);

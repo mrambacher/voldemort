@@ -24,7 +24,7 @@ public class RandomlyFailingDelegatingStore<K, V, T> extends DelegatingStore<K, 
     }
 
     public ClosableIterator<Pair<K, Versioned<V>>> entries(final Collection<Integer> partitions,
-                                                           final VoldemortFilter filter,
+                                                           final VoldemortFilter<K, V> filter,
                                                            final T transforms) {
         return new ClosableIterator<Pair<K, Versioned<V>>>() {
 
@@ -52,7 +52,7 @@ public class RandomlyFailingDelegatingStore<K, V, T> extends DelegatingStore<K, 
     }
 
     public ClosableIterator<K> keys(final Collection<Integer> partitions,
-                                    final VoldemortFilter filter) {
+                                    final VoldemortFilter<K, V> filter) {
         return new ClosableIterator<K>() {
 
             ClosableIterator<K> iterator = innerStorageEngine.keys(partitions, filter);
@@ -74,6 +74,14 @@ public class RandomlyFailingDelegatingStore<K, V, T> extends DelegatingStore<K, 
 
             public void remove() {}
         };
+    }
+
+    public void deletePartitions(Collection<Integer> partitions) {
+        StoreUtils.deletePartitions(this, partitions);
+    }
+
+    public void deleteEntries(VoldemortFilter<K, V> filter) {
+        StoreUtils.deleteEntries(this, filter);
     }
 
     public void truncate() {

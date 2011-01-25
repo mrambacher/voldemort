@@ -39,14 +39,37 @@ public class DelegatingStorageEngine<K, V, T> implements StorageEngine<K, V, T> 
         return inner.getStoreDefinition();
     }
 
+    protected StorageEngine<K, V, T> getInnerEngine() {
+        return inner;
+    }
+
     public ClosableIterator<Pair<K, Versioned<V>>> entries(Collection<Integer> partitions,
-                                                           VoldemortFilter filter,
+                                                           VoldemortFilter<K, V> filter,
                                                            T transforms) {
         return inner.entries(partitions, filter, transforms);
     }
 
-    public ClosableIterator<K> keys(Collection<Integer> partitions, VoldemortFilter filter) {
+    public ClosableIterator<K> keys(Collection<Integer> partitions, VoldemortFilter<K, V> filter) {
         return inner.keys(partitions, filter);
+    }
+
+    /**
+     * Deletes all of the keys in the specified partitions
+     * 
+     * @param partitions The partitions to remove
+     */
+    public void deletePartitions(Collection<Integer> partitions) {
+        inner.deletePartitions(partitions);
+    }
+
+    /**
+     * Deletes all of the keys that match the specified filter
+     * 
+     * @param filter The filter to compare values to. All matching values are
+     *        removed
+     */
+    public void deleteEntries(VoldemortFilter<K, V> filter) {
+        inner.deleteEntries(filter);
     }
 
     public void truncate() {

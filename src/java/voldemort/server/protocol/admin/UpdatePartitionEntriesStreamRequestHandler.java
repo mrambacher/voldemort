@@ -41,7 +41,7 @@ public class UpdatePartitionEntriesStreamRequestHandler implements StreamRequest
 
     private final EventThrottler throttler;
 
-    private final VoldemortFilter filter;
+    private final VoldemortFilter<ByteArray, byte[]> filter;
 
     private final StorageEngine<ByteArray, byte[], byte[]> storageEngine;
 
@@ -62,10 +62,13 @@ public class UpdatePartitionEntriesStreamRequestHandler implements StreamRequest
         storageEngine = AdminServiceRequestHandler.getStorageEngine(storeRepository,
                                                                     request.getStore());
         throttler = new EventThrottler(voldemortConfig.getStreamMaxReadBytesPerSec());
-        filter = (request.hasFilter()) ? AdminServiceRequestHandler.getFilterFromRequest(request.getFilter(),
-                                                                                         voldemortConfig,
-                                                                                         networkClassLoader)
-                                      : new DefaultVoldemortFilter();
+        if(request.hasFilter()) {
+            filter = AdminServiceRequestHandler.getFilterFromRequest(request.getFilter(),
+                                                                     voldemortConfig,
+                                                                     networkClassLoader);
+        } else {
+            filter = new DefaultVoldemortFilter<ByteArray, byte[]>();
+        }
         startTime = System.currentTimeMillis();
     }
 

@@ -93,6 +93,14 @@ public class KratiStorageEngine implements StorageEngine<ByteArray, byte[], byte
         return StoreUtils.getVersions(get(key, null));
     }
 
+    public void deletePartitions(Collection<Integer> partitions) {
+        StoreUtils.deletePartitions(this, partitions);
+    }
+
+    public void deleteEntries(VoldemortFilter<ByteArray, byte[]> filter) {
+        StoreUtils.deleteEntries(this, filter);
+    }
+
     public void truncate() {
         try {
             datastore.clear();
@@ -113,7 +121,7 @@ public class KratiStorageEngine implements StorageEngine<ByteArray, byte[], byte
     }
 
     public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(final java.util.Collection<Integer> partitions,
-                                                                        final VoldemortFilter filter,
+                                                                        final VoldemortFilter<ByteArray, byte[]> filter,
                                                                         final byte[] transforms) {
         RoutingStrategy routingStrategy = this.storeDef.getRoutingStrategy();
         List<Pair<ByteArray, Versioned<byte[]>>> returnedList = new ArrayList<Pair<ByteArray, Versioned<byte[]>>>();
@@ -148,7 +156,7 @@ public class KratiStorageEngine implements StorageEngine<ByteArray, byte[], byte
                             Versioned<byte[]> currentVersion = iterVersions.next();
                             if(partitions == null
                                || partitions.contains(routingStrategy.getPrimaryPartition(key))) {
-                                if(filter.accept(currentKey, currentVersion)) {
+                                if(filter == null || filter.accept(currentKey, currentVersion)) {
                                     returnedList.add(Pair.create(currentKey, currentVersion));
                                 }
                             }
@@ -160,7 +168,8 @@ public class KratiStorageEngine implements StorageEngine<ByteArray, byte[], byte
         return new KratiClosableIterator(returnedList);
     }
 
-    public ClosableIterator<ByteArray> keys(Collection<Integer> partitions, VoldemortFilter filter) {
+    public ClosableIterator<ByteArray> keys(Collection<Integer> partitions,
+                                            VoldemortFilter<ByteArray, byte[]> filter) {
         return StoreUtils.keys(entries(partitions, filter, null));
     }
 

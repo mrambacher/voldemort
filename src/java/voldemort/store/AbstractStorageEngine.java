@@ -27,9 +27,7 @@ import org.apache.log4j.Logger;
 
 import voldemort.VoldemortException;
 import voldemort.client.protocol.VoldemortFilter;
-import voldemort.routing.RoutingStrategy;
 import voldemort.utils.ByteArray;
-import voldemort.utils.ClosableFilterIterator;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
 import voldemort.utils.Utils;
@@ -208,72 +206,43 @@ public abstract class AbstractStorageEngine implements StorageEngine<ByteArray, 
     }
 
     public ClosableIterator<ByteArray> keys(ClosableIterator<ByteArray> iter,
-                                            final VoldemortFilter filter) {
-        if(filter == null) {
-            // If there is no filter, return the input
-            return iter;
-        } else {
-            return new ClosableFilterIterator<ByteArray>(iter) {
-
-                @Override
-                public boolean matches(ByteArray key) {
-                    return filter.accept(key, null);
-                }
-            };
-        }
+                                            final VoldemortFilter<ByteArray, byte[]> filter) {
+        return StoreUtils.keys(iter, filter);
     }
 
     public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iter,
-                                                                        final VoldemortFilter filter) {
-        if(filter == null) {
-            // If there is no filter, return the input
-            return iter;
-        } else {
-            return new ClosableFilterIterator<Pair<ByteArray, Versioned<byte[]>>>(iter) {
-
-                @Override
-                public boolean matches(Pair<ByteArray, Versioned<byte[]>> entry) {
-                    return filter.accept(entry.getFirst(), entry.getSecond());
-                }
-            };
-        }
+                                                                        final VoldemortFilter<ByteArray, byte[]> filter) {
+        return StoreUtils.entries(iter, filter);
     }
 
     public ClosableIterator<ByteArray> keys(ClosableIterator<ByteArray> iter,
                                             final Collection<Integer> partitions) {
-        // If there are no partitions, just return the input value
-        if(partitions == null || partitions.size() <= 0) {
-            return iter;
-        } else {
-            final RoutingStrategy strategy = storeDef.getRoutingStrategy();
-            return new ClosableFilterIterator<ByteArray>(iter) {
-
-                @Override
-                public boolean matches(ByteArray key) {
-                    int partition = strategy.getPrimaryPartition(key.get());
-                    return partitions.contains(partition);
-                }
-            };
-        }
+        return StoreUtils.keys(iter, storeDef, partitions);
     }
 
     public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iter,
                                                                         final Collection<Integer> partitions) {
-        // If there are no partitions, just return the input value
-        if(partitions == null || partitions.size() <= 0) {
-            return iter;
-        } else {
-            final RoutingStrategy strategy = storeDef.getRoutingStrategy();
-            return new ClosableFilterIterator<Pair<ByteArray, Versioned<byte[]>>>(iter) {
+        return StoreUtils.entries(iter, getStoreDefinition(), partitions);
+    }
 
-                @Override
-                public boolean matches(Pair<ByteArray, Versioned<byte[]>> entry) {
-                    ByteArray key = entry.getFirst();
-                    int partition = strategy.getPrimaryPartition(key.get());
-                    return partitions.contains(partition);
-                }
-            };
-        }
+    /**
+     * Deletes all of the keys that match the specified filter
+     * 
+     * @param filter The filter to compare values to. All matching values are
+     *        removed
+     */
+    public void deletePartitions(Collection<Integer> partitions) {
+        StoreUtils.deletePartitions(this, partitions);
+    }
+
+    /**
+     * Deletes all of the keys that match the specified filter
+     * 
+     * @param filter The filter to compare values to. All matching values are
+     *        removed
+     */
+    public void deleteEntries(VoldemortFilter<ByteArray, byte[]> filter) {
+        StoreUtils.deleteEntries(this, filter);
     }
 
     protected <T> void attemptClose(StoreTransaction<T> transaction, boolean success) {

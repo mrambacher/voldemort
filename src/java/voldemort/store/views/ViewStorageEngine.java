@@ -11,6 +11,7 @@ import voldemort.annotations.Experimental;
 import voldemort.client.protocol.VoldemortFilter;
 import voldemort.client.protocol.admin.filter.DefaultVoldemortFilter;
 import voldemort.serialization.Serializer;
+import voldemort.store.DelegatingStorageEngine;
 import voldemort.store.StorageEngine;
 import voldemort.store.Store;
 import voldemort.store.StoreCapabilityType;
@@ -21,7 +22,6 @@ import voldemort.store.serialized.SerializingStore;
 import voldemort.utils.ByteArray;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
-import voldemort.utils.Utils;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
@@ -33,11 +33,10 @@ import com.google.common.collect.AbstractIterator;
  * 
  */
 @Experimental
-public class ViewStorageEngine implements StorageEngine<ByteArray, byte[], byte[]> {
+public class ViewStorageEngine extends DelegatingStorageEngine<ByteArray, byte[], byte[]> {
 
     private final StoreDefinition viewDef;
     private final Store<Object, Object, Object> serializingStore;
-    private final StorageEngine<ByteArray, byte[], byte[]> target;
     private final Serializer<Object> valSerializer;
     private final Serializer<Object> transformSerializer;
     private final Serializer<Object> targetKeySerializer;
@@ -54,8 +53,8 @@ public class ViewStorageEngine implements StorageEngine<ByteArray, byte[], byte[
                              Serializer<?> targetValSerializer,
                              CompressionStrategy valueCompressionStrategy,
                              View<?, ?, ?, ?> valueTrans) {
+        super(target);
         this.viewDef = viewDef;
-        this.target = Utils.notNull(target);
         this.serializingStore = new SerializingStore(target,
                                                      targetKeySerializer,
                                                      targetValSerializer,
@@ -70,6 +69,7 @@ public class ViewStorageEngine implements StorageEngine<ByteArray, byte[], byte[
             throw new IllegalArgumentException("View without either a key transformation or a value transformation.");
     }
 
+    @Override
     public StoreDefinition getStoreDefinition() {
         return viewDef;
     }
@@ -111,12 +111,9 @@ public class ViewStorageEngine implements StorageEngine<ByteArray, byte[], byte[
         return new Versioned<byte[]>(inflatedData, versioned.getVersion());
     }
 
-    public boolean delete(ByteArray key, Version version) throws VoldemortException {
-        return target.delete(key, version);
-    }
-
+    @Override
     public List<Versioned<byte[]>> get(ByteArray key, byte[] transforms) throws VoldemortException {
-        List<Versioned<byte[]>> values = target.get(key, null);
+        List<Versioned<byte[]>> values = super.get(key, null);
 
         List<Versioned<byte[]>> results = new ArrayList<Versioned<byte[]>>();
 
@@ -134,20 +131,19 @@ public class ViewStorageEngine implements StorageEngine<ByteArray, byte[], byte[
         return results;
     }
 
+    @Override
     public Map<ByteArray, List<Versioned<byte[]>>> getAll(Iterable<ByteArray> keys,
                                                           Map<ByteArray, byte[]> transforms)
             throws VoldemortException {
         return StoreUtils.getAll(this, keys, transforms);
     }
 
+    @Override
     public String getName() {
         return viewDef.getName();
     }
 
-    public List<Version> getVersions(ByteArray key) {
-        return target.getVersions(key);
-    }
-
+    @Override
     public Version put(ByteArray key, Versioned<byte[]> value, byte[] transforms)
             throws VoldemortException {
         if(valueCompressionStrategy != null)
@@ -158,36 +154,37 @@ public class ViewStorageEngine implements StorageEngine<ByteArray, byte[], byte[
                                                    value.getVersion());
         if(valueCompressionStrategy != null)
             result = deflateValue(result);
-        return target.put(key, result, null);
+        return super.put(key, result, null);
     }
 
+    @Override
     public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(Collection<Integer> partitions,
-                                                                        VoldemortFilter filter,
+                                                                        VoldemortFilter<ByteArray, byte[]> filter,
                                                                         byte[] transforms) {
-        return new ViewIterator(target.entries(partitions, filter, null), transforms);
+        return new ViewIterator(super.entries(partitions, filter, null), transforms);
     }
 
-    public ClosableIterator<ByteArray> keys(Collection<Integer> partitions, VoldemortFilter filter) {
-        return target.keys(partitions, filter);
-    }
-
+    @Override
     public void truncate() {
-        ViewIterator iterator = new ViewIterator(target.entries(null,
-                                                                new DefaultVoldemortFilter(),
-                                                                null), null);
+        ViewIterator iterator = new ViewIterator(super.entries(null,
+                                                               new DefaultVoldemortFilter<ByteArray, byte[]>(),
+                                                               null),
+                                                 null);
         while(iterator.hasNext()) {
             Pair<ByteArray, Versioned<byte[]>> pair = iterator.next();
-            target.delete(pair.getFirst(), pair.getSecond().getVersion());
+            delete(pair.getFirst(), pair.getSecond().getVersion());
         }
     }
 
+    @Override
     public Object getCapability(StoreCapabilityType capability) {
         if(capability == StoreCapabilityType.VIEW_TARGET)
-            return this.target;
+            return this.getInnerEngine();
         else
-            return null;
+            return super.getCapability(capability);
     }
 
+    @Override
     public void close() throws VoldemortException {}
 
     private byte[] valueFromViewSchema(ByteArray key, byte[] value, byte[] transforms) {

@@ -139,7 +139,7 @@ public class MysqlStorageEngine extends AbstractStorageEngine {
     }
 
     public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(Collection<Integer> partitions,
-                                                                        VoldemortFilter filter,
+                                                                        VoldemortFilter<ByteArray, byte[]> filter,
                                                                         byte[] transforms) {
         String sql = "select key_, version_, value_, metadata_ from " + getName();
         try {
@@ -152,7 +152,8 @@ public class MysqlStorageEngine extends AbstractStorageEngine {
         }
     }
 
-    public ClosableIterator<ByteArray> keys(Collection<Integer> partitions, VoldemortFilter filter) {
+    public ClosableIterator<ByteArray> keys(Collection<Integer> partitions,
+                                            VoldemortFilter<ByteArray, byte[]> filter) {
         String sql = "select key_ from " + getName();
         try {
             StoreRow rows = new MysqlRow(getName(), this.datasource, sql);

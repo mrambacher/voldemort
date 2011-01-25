@@ -36,7 +36,7 @@ public abstract class FetchStreamRequestHandler implements StreamRequestHandler 
 
     protected final List<Integer> partitionList;
 
-    protected final VoldemortFilter filter;
+    protected final VoldemortFilter<ByteArray, byte[]> filter;
 
     protected final StorageEngine<ByteArray, byte[], byte[]> storageEngine;
 
@@ -69,9 +69,10 @@ public abstract class FetchStreamRequestHandler implements StreamRequestHandler 
                                                                      networkClassLoader);
         } else {
             if(request.hasFetchMasterEntries() && request.getFetchMasterEntries()) {
-                filter = new MasterOnlyVoldemortFilter(routingStrategy, request.getPartitionsList());
+                filter = new MasterOnlyVoldemortFilter<byte[]>(routingStrategy,
+                                                               request.getPartitionsList());
             } else {
-                filter = new DefaultVoldemortFilter();
+                filter = new DefaultVoldemortFilter<ByteArray, byte[]>();
             }
         }
         startTime = System.currentTimeMillis();

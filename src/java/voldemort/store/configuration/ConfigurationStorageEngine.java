@@ -27,13 +27,10 @@ import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
 
 import voldemort.VoldemortException;
-import voldemort.client.protocol.VoldemortFilter;
 import voldemort.store.Store;
 import voldemort.store.StoreCapabilityType;
 import voldemort.store.StoreUtils;
 import voldemort.store.metadata.MetadataStore;
-import voldemort.utils.ClosableIterator;
-import voldemort.utils.Pair;
 import voldemort.versioning.ObsoleteVersionException;
 import voldemort.versioning.Occured;
 import voldemort.versioning.Version;
@@ -58,10 +55,6 @@ public class ConfigurationStorageEngine implements Store<String, String, String>
         if(!this.directory.exists() && this.directory.canRead())
             throw new IllegalArgumentException("Directory " + this.directory.getAbsolutePath()
                                                + " does not exist or can not be read.");
-    }
-
-    public ClosableIterator<Pair<String, Versioned<String>>> entries(VoldemortFilter filter) {
-        throw new VoldemortException("Iteration  not supported in ConfigurationStorageEngine");
     }
 
     public void close() throws VoldemortException {
@@ -235,13 +228,5 @@ public class ConfigurationStorageEngine implements Store<String, String, String>
 
     public Object getCapability(StoreCapabilityType capability) {
         throw new VoldemortException("No extra capability.");
-    }
-
-    public ClosableIterator<String> keys(VoldemortFilter filter) {
-        throw new VoldemortException("keys iteration not supported.");
-    }
-
-    public void truncate() {
-        throw new VoldemortException("Truncate not supported in ConfigurationStorageEngine");
     }
 }

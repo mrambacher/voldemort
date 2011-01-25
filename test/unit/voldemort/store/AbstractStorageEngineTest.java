@@ -117,7 +117,7 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
 
     protected <K, V, T> Multimap<K, Versioned<V>> testGetEntries(StorageEngine<K, V, T> engine,
                                                                  List<Integer> partitions,
-                                                                 VoldemortFilter filter) {
+                                                                 VoldemortFilter<K, V> filter) {
         ClosableIterator<Pair<K, Versioned<V>>> it = null;
         Multimap<K, Versioned<V>> result = LinkedHashMultimap.create();
         try {
@@ -133,8 +133,8 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
     }
 
     protected <K, V, T> Collection<K> testGetKeys(StorageEngine<K, V, T> engine,
-                                                  List<Integer> partitions,
-                                                  VoldemortFilter filter) {
+                                                  Collection<Integer> partitions,
+                                                  VoldemortFilter<K, V> filter) {
         Set<K> keys = new HashSet<K>();
         ClosableIterator<K> it = null;
         try {
@@ -158,7 +158,7 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
         StorageEngine<ByteArray, byte[], byte[]> engine = getStorageEngine();
         assertEquals("There shouldn't be any entries in this store.",
                      0,
-                     testGetEntries(engine, null, new DefaultVoldemortFilter()).size());
+                     testGetEntries(engine, null, new DefaultVoldemortFilter<ByteArray, byte[]>()).size());
     }
 
     @Test
@@ -166,7 +166,7 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
         StorageEngine<ByteArray, byte[], byte[]> engine = getStorageEngine();
         assertEquals("There shouldn't be any keys in this store.",
                      0,
-                     testGetKeys(engine, null, new DefaultVoldemortFilter()).size());
+                     testGetKeys(engine, null, new DefaultVoldemortFilter<ByteArray, byte[]>()).size());
     }
 
     @Test
@@ -179,7 +179,9 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
         Set<String> keys = ImmutableSet.of("a", "b", "c", "d", "e");
         for(String key: keys)
             stringStore.put(key, new Versioned<String>(key), null);
-        Collection<String> results = testGetKeys(stringStore, null, new DefaultVoldemortFilter());
+        Collection<String> results = testGetKeys(stringStore,
+                                                 null,
+                                                 new DefaultVoldemortFilter<String, String>());
         assertEquals(keys.size(), results.size());
         assertTrue(keys.containsAll(results));
     }
@@ -195,7 +197,9 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
             engine.put(key, new Versioned<byte[]>(values.get(i), version), null);
         }
 
-        Collection<ByteArray> results = testGetKeys(engine, null, new DefaultVoldemortFilter());
+        Collection<ByteArray> results = testGetKeys(engine,
+                                                    null,
+                                                    new DefaultVoldemortFilter<ByteArray, byte[]>());
         assertEquals(keys.size(), results.size());
         assertTrue(results.containsAll(keys));
     }
@@ -213,11 +217,11 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
 
         Multimap<ByteArray, Versioned<byte[]>> results = testGetEntries(engine,
                                                                         null,
-                                                                        new DefaultVoldemortFilter());
+                                                                        new DefaultVoldemortFilter<ByteArray, byte[]>());
         assertEquals(values.size(), results.size());
     }
 
-    private static int ITERATION_KEY_COUNT = 2000;
+    private static int ITERATION_KEY_COUNT = 10;
 
     @Test
     public void testKeyIterationWithFilter() {
@@ -230,10 +234,10 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
             engine.put(key, new Versioned<byte[]>(values.get(i)), null);
         }
 
-        VoldemortFilter keyFilter = new VoldemortFilter() {
+        VoldemortFilter<ByteArray, byte[]> keyFilter = new VoldemortFilter<ByteArray, byte[]>() {
 
-            public boolean accept(Object obj, Versioned<?> value) {
-                int index = keys.indexOf(obj);
+            public boolean accept(ByteArray key, Versioned<byte[]> value) {
+                int index = keys.indexOf(key);
                 return (index % SKIP) != 0;
             }
         };
@@ -266,7 +270,7 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
             long started = System.currentTimeMillis();
             Collection<ByteArray> results = testGetKeys(engine,
                                                         Collections.singletonList(p),
-                                                        new DefaultVoldemortFilter());
+                                                        new DefaultVoldemortFilter<ByteArray, byte[]>());
             int count = 0;
             for(ByteArray key: keys) {
                 int partition = strategy.getPrimaryPartition(key.get());
@@ -293,11 +297,11 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
             versioneds.put(key, new Versioned<byte[]>(values.get(i), version));
         }
 
-        VoldemortFilter entryFilter = new VoldemortFilter() {
+        VoldemortFilter<ByteArray, byte[]> entryFilter = new VoldemortFilter<ByteArray, byte[]>() {
 
-            public boolean accept(Object obj, Versioned<?> value) {
+            public boolean accept(ByteArray key, Versioned<byte[]> value) {
                 for(int index = 0; index < values.size(); index++) {
-                    if(valuesEqual(values.get(index), (byte[]) value.getValue())) {
+                    if(valuesEqual(values.get(index), value.getValue())) {
                         return (index % SKIP) != 0;
                     }
                 }
@@ -327,7 +331,9 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
             Version version = stringStore.put(key, value, null);
             values.put(key, new Versioned<String>(value.getValue(), version, value.getMetadata()));
         }
-        int count = this.testGetEntries(stringStore, null, new DefaultVoldemortFilter()).size();
+        int count = this.testGetEntries(stringStore,
+                                        null,
+                                        new DefaultVoldemortFilter<String, String>()).size();
         assertEquals(count, values.size());
     }
 
@@ -350,7 +356,7 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
             long started = System.currentTimeMillis();
             Multimap<ByteArray, Versioned<byte[]>> results = testGetEntries(engine,
                                                                             Collections.singletonList(p),
-                                                                            new DefaultVoldemortFilter());
+                                                                            new DefaultVoldemortFilter<ByteArray, byte[]>());
             int count = 0;
             for(ByteArray key: keys) {
                 if(strategy.getPrimaryPartition(key.get()) == p) {
@@ -362,6 +368,56 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
             System.out.println("Partition " + p + " contains " + count + " keys in "
                                + (System.currentTimeMillis() - started) + " ms");
             assertEquals(count, results.size());
+        }
+    }
+
+    @Test
+    public void testDeletePartitions() {
+        final List<ByteArray> keys = this.getKeys(ITERATION_KEY_COUNT);
+        List<byte[]> values = this.getValues(ITERATION_KEY_COUNT);
+        StorageEngine<ByteArray, byte[], byte[]> engine = getStorageEngine();
+        Cluster cluster = getCluster();
+        engine.getStoreDefinition().updateRoutingStrategy(cluster);
+        for(int i = 0; i < keys.size(); i++) {
+            ByteArray key = keys.get(i);
+            engine.put(key, new Versioned<byte[]>(values.get(i)), null);
+        }
+
+        for(int p = 0; p < cluster.getNumberOfPartitions(); p++) {
+            Collection<Integer> partitions = Collections.singleton(p);
+            engine.deletePartitions(partitions);
+            Collection<ByteArray> results = testGetKeys(engine,
+                                                        partitions,
+                                                        new DefaultVoldemortFilter<ByteArray, byte[]>());
+            assertEquals(0, results.size());
+        }
+    }
+
+    @Test
+    public void testDeleteEntries() {
+        final int SKIP = 2;
+        final List<ByteArray> keys = this.getKeys(ITERATION_KEY_COUNT);
+        List<byte[]> values = this.getValues(ITERATION_KEY_COUNT);
+        StorageEngine<ByteArray, byte[], byte[]> engine = getStorageEngine();
+        for(int i = 0; i < keys.size(); i++) {
+            ByteArray key = keys.get(i);
+            engine.put(key, new Versioned<byte[]>(values.get(i)), null);
+        }
+
+        VoldemortFilter<ByteArray, byte[]> keyFilter = new VoldemortFilter<ByteArray, byte[]>() {
+
+            public boolean accept(ByteArray key, Versioned<byte[]> value) {
+                int index = keys.indexOf(key);
+                boolean good = (index % SKIP) != 0;
+                return good;
+            }
+        };
+
+        engine.deleteEntries(keyFilter);
+        Collection<ByteArray> results = testGetKeys(engine, null, null);
+        assertEquals(ITERATION_KEY_COUNT / SKIP, results.size());
+        for(ByteArray key: results) {
+            assertFalse(keyFilter.accept(key, null));
         }
     }
 
@@ -380,7 +436,7 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
         engine.put(key3, v3, null);
         engine.truncate();
 
-        int count = testGetEntries(engine, null, new DefaultVoldemortFilter()).size();
+        int count = testGetEntries(engine, null, new DefaultVoldemortFilter<ByteArray, byte[]>()).size();
         assertEquals("There shouldn't be any entries in this store.", 0, count);
     }
 

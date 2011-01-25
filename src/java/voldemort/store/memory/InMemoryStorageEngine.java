@@ -27,9 +27,9 @@ import voldemort.annotations.concurrency.NotThreadsafe;
 import voldemort.client.protocol.VoldemortFilter;
 import voldemort.routing.RoutingStrategy;
 import voldemort.store.StoreDefinition;
+import voldemort.store.StoreUtils;
 import voldemort.store.WrappedStorageEngine;
 import voldemort.utils.ByteArray;
-import voldemort.utils.ClosableFilterIterator;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
 import voldemort.versioning.Versioned;
@@ -61,55 +61,50 @@ public class InMemoryStorageEngine extends WrappedStorageEngine<ByteArray, byte[
         return delete(key, null);
     }
 
-    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(final Collection<Integer> partitions,
-                                                                        final VoldemortFilter filter,
-                                                                        final byte[] transforms) {
-        InMemoryStore<ByteArray, byte[], byte[]> memory = (InMemoryStore<ByteArray, byte[], byte[]>) getStore();
-        ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries = new InMemoryIterator<ByteArray, byte[]>(memory.map);
-        if(partitions != null && partitions.size() > 0) {
-            final RoutingStrategy strategy = storeDef.getRoutingStrategy();
-            entries = new ClosableFilterIterator<Pair<ByteArray, Versioned<byte[]>>>(entries) {
+    public <R> ClosableIterator<R> toIterator(final Iterator<R> iter) {
+        return new ClosableIterator<R>() {
 
-                @Override
-                protected boolean matches(Pair<ByteArray, Versioned<byte[]>> entry) {
-                    ByteArray key = entry.getFirst();
-                    int partition = strategy.getPrimaryPartition(key.get());
-                    return partitions.contains(partition);
-                }
-            };
-        }
-        return new ClosableFilterIterator<Pair<ByteArray, Versioned<byte[]>>>(entries) {
+            public boolean hasNext() {
+                return iter.hasNext();
+            }
 
-            @Override
-            protected boolean matches(Pair<ByteArray, Versioned<byte[]>> entry) {
-                return filter.accept(entry.getFirst(), entry.getSecond());
+            public R next() {
+                return iter.next();
+            }
+
+            public void remove() {
+                iter.remove();
+            }
+
+            public void close() {
+                // Do Nothing
             }
         };
     }
 
-    public ClosableIterator<ByteArray> keys(final Collection<Integer> partitions,
-                                            final VoldemortFilter filter) {
+    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(final Collection<Integer> partitions,
+                                                                        final VoldemortFilter<ByteArray, byte[]> filter,
+                                                                        final byte[] transforms) {
         InMemoryStore<ByteArray, byte[], byte[]> memory = (InMemoryStore<ByteArray, byte[], byte[]>) getStore();
-        Iterator<ByteArray> keys = memory.map.keySet().iterator();
-        if(partitions != null && partitions.size() > 0) {
-            final RoutingStrategy strategy = storeDef.getRoutingStrategy();
-            keys = new ClosableFilterIterator<ByteArray>(keys) {
+        ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries = new InMemoryIterator<ByteArray, byte[]>(memory.map);
+        entries = StoreUtils.entries(entries, storeDef, partitions);
+        return StoreUtils.entries(entries, filter);
+    }
 
-                @Override
-                protected boolean matches(ByteArray key) {
-                    int partition = strategy.getPrimaryPartition(key.get());
-                    return partitions.contains(partition);
-                }
-            };
-        }
-        ClosableIterator<ByteArray> iter = new ClosableFilterIterator<ByteArray>(keys) {
+    public ClosableIterator<ByteArray> keys(final Collection<Integer> partitions,
+                                            final VoldemortFilter<ByteArray, byte[]> filter) {
+        InMemoryStore<ByteArray, byte[], byte[]> memory = (InMemoryStore<ByteArray, byte[], byte[]>) getStore();
+        ClosableIterator<ByteArray> keys = toIterator(memory.map.keySet().iterator());
+        keys = StoreUtils.keys(keys, storeDef, partitions);
+        return StoreUtils.keys(keys, filter);
+    }
 
-            @Override
-            protected boolean matches(ByteArray key) {
-                return filter.accept(key, null);
-            }
-        };
-        return iter;
+    public void deleteEntries(VoldemortFilter<ByteArray, byte[]> filter) {
+        StoreUtils.deleteEntries(this, filter);
+    }
+
+    public void deletePartitions(Collection<Integer> partitions) {
+        StoreUtils.deletePartitions(this, partitions);
     }
 
     public void truncate() {

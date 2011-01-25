@@ -61,16 +61,35 @@ public class ReadOnlyStorageEngine extends ReadOnlyStore implements
         return storeDef;
     }
 
-    public ClosableIterator<ByteArray> keys(Collection<Integer> partitions, VoldemortFilter filter) {
+    public ClosableIterator<ByteArray> keys(Collection<Integer> partitions,
+                                            VoldemortFilter<ByteArray, byte[]> filter) {
         throw new UnsupportedOperationException("Iteration is not supported for "
                                                 + getClass().getName());
     }
 
     public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(Collection<Integer> partitions,
-                                                                        VoldemortFilter filter,
+                                                                        VoldemortFilter<ByteArray, byte[]> filter,
                                                                         byte[] transforms) {
         throw new UnsupportedOperationException("Iteration is not supported for "
                                                 + getClass().getName());
+    }
+
+    /**
+     * Deletes all of the keys that match the specified filter
+     * 
+     * @param filter The filter to compare values to. All matching values are
+     *        removed
+     */
+    public void deleteEntries(VoldemortFilter<ByteArray, byte[]> filter) {
+        throw new UnsupportedOperationException("DeleteEntries is not supported for "
+                                                + getClass().getName());
+
+    }
+
+    public void deletePartitions(Collection<Integer> partitions) {
+        throw new UnsupportedOperationException("Delete partitions is not supported for "
+                                                + getClass().getName());
+
     }
 
     public void truncate() {

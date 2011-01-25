@@ -160,7 +160,7 @@ public class BdbStorageEngine extends AbstractStorageEngine {
     }
 
     public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(Collection<Integer> partitions,
-                                                                        VoldemortFilter filter,
+                                                                        VoldemortFilter<ByteArray, byte[]> filter,
                                                                         byte[] transforms) {
         try {
             Database db = getBdbDatabase();
@@ -180,7 +180,8 @@ public class BdbStorageEngine extends AbstractStorageEngine {
 
     }
 
-    public ClosableIterator<ByteArray> keys(Collection<Integer> partitions, VoldemortFilter filter) {
+    public ClosableIterator<ByteArray> keys(Collection<Integer> partitions,
+                                            VoldemortFilter<ByteArray, byte[]> filter) {
         try {
             Database db = getBdbDatabase();
             if(cursorPreload) {

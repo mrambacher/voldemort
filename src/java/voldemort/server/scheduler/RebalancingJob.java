@@ -60,10 +60,10 @@ public class RebalancingJob implements Runnable {
         for(StorageEngine<ByteArray, byte[], byte[]> engine: storeRepository.getAllStorageEngines()) {
             logger.info("Rebalancing " + engine.getName());
             Store<ByteArray, byte[], byte[]> remote = storeRepository.getRoutedStore(engine.getName());
-            VoldemortFilter rebalanceFilter = new VoldemortFilter() {
+            VoldemortFilter<ByteArray, byte[]> rebalanceFilter = new VoldemortFilter<ByteArray, byte[]>() {
 
-                public boolean accept(Object key, Versioned<?> value) {
-                    return needsRebalancing((ByteArray) key);
+                public boolean accept(ByteArray key, Versioned<byte[]> value) {
+                    return needsRebalancing(key);
                 }
             };
             ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iterator = engine.entries(null,

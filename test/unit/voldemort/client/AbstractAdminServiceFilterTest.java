@@ -32,7 +32,7 @@ public abstract class AbstractAdminServiceFilterTest extends TestCase {
         Store<ByteArray, byte[], byte[]> store = getStore(0, testStoreName);
         assertNotSame("Store '" + testStoreName + "' should not be null", null, store);
 
-        VoldemortFilter filter = new VoldemortFilterImpl();
+        VoldemortFilter<ByteArray, byte[]> filter = new VoldemortFilterImpl();
         int shouldFilterCount = 0;
         for(Pair<ByteArray, Versioned<byte[]>> pair: createEntries()) {
             store.put(pair.getFirst(), pair.getSecond(), null);
@@ -67,7 +67,7 @@ public abstract class AbstractAdminServiceFilterTest extends TestCase {
 
         Set<Pair<ByteArray, Versioned<byte[]>>> entrySet = createEntries();
 
-        VoldemortFilter filter = new VoldemortFilterImpl();
+        VoldemortFilter<ByteArray, byte[]> filter = new VoldemortFilterImpl();
         for(Pair<ByteArray, Versioned<byte[]>> pair: entrySet) {
             store.put(pair.getFirst(), pair.getSecond(), null);
         }
@@ -97,7 +97,7 @@ public abstract class AbstractAdminServiceFilterTest extends TestCase {
 
     @Test
     public void testUpdateAsStreamWithFilter() {
-        VoldemortFilter filter = new VoldemortFilterImpl();
+        VoldemortFilter<ByteArray, byte[]> filter = new VoldemortFilterImpl();
         Set<Pair<ByteArray, Versioned<byte[]>>> entrySet = createEntries();
 
         // make update stream call with filter
@@ -125,10 +125,10 @@ public abstract class AbstractAdminServiceFilterTest extends TestCase {
         }
     }
 
-    public static class VoldemortFilterImpl implements VoldemortFilter {
+    public static class VoldemortFilterImpl implements VoldemortFilter<ByteArray, byte[]> {
 
-        public boolean accept(Object key, Versioned<?> value) {
-            String keyString = ByteUtils.getString(((ByteArray) key).get(), "UTF-8");
+        public boolean accept(ByteArray key, Versioned<byte[]> value) {
+            String keyString = ByteUtils.getString(key.get(), "UTF-8");
             if(Integer.parseInt(keyString) % 10 == 3) {
                 return false;
             }

@@ -61,15 +61,19 @@ public class NoopStorageEngine implements StorageEngine<ByteArray, byte[], byte[
     }
 
     public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(final Collection<Integer> partitions,
-                                                                        final VoldemortFilter filter,
+                                                                        final VoldemortFilter<ByteArray, byte[]> filter,
                                                                         final byte[] transforms) {
         return null;
     }
 
     public ClosableIterator<ByteArray> keys(final Collection<Integer> partitions,
-                                            final VoldemortFilter filter) {
+                                            final VoldemortFilter<ByteArray, byte[]> filter) {
         return null;
     }
+
+    public void deletePartitions(Collection<Integer> partitions) {}
+
+    public void deleteEntries(VoldemortFilter<ByteArray, byte[]> filter) {}
 
     public void truncate() {
 

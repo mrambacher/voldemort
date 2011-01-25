@@ -407,17 +407,40 @@ public class MetadataStore implements StorageEngine<ByteArray, byte[], byte[]> {
     }
 
     public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(Collection<Integer> partitions,
-                                                                        VoldemortFilter filter,
+                                                                        VoldemortFilter<ByteArray, byte[]> filter,
                                                                         byte[] transforms) {
         throw new VoldemortException("You cannot iterate over all entries in Metadata");
     }
 
-    public ClosableIterator<ByteArray> keys(Collection<Integer> partitions, VoldemortFilter filter) {
+    public ClosableIterator<ByteArray> keys(Collection<Integer> partitions,
+                                            VoldemortFilter<ByteArray, byte[]> filter) {
         throw new VoldemortException("You cannot iterate over all keys in Metadata");
     }
 
     public void truncate() {
         throw new VoldemortException("You cannot truncate entries in Metadata");
+    }
+
+    /**
+     * Deletes all of the keys that match the specified filter
+     * 
+     * @param filter The filter to compare values to. All matching values are
+     *        removed
+     */
+    public void deleteEntries(VoldemortFilter<ByteArray, byte[]> filter) {
+        throw new VoldemortException("You cannot deleteEntries in Metadata");
+
+    }
+
+    /**
+     * Deletes all of the keys that match the specified filter
+     * 
+     * @param filter The filter to compare values to. All matching values are
+     *        removed
+     */
+    public void deletePartitions(Collection<Integer> partitions) {
+        throw new VoldemortException("You cannot delete partitions in Metadata");
+
     }
 
     public boolean delete(ByteArray key, Version version) throws VoldemortException {

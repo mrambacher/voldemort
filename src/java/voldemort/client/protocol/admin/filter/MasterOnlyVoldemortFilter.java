@@ -8,7 +8,7 @@ import voldemort.utils.ByteArray;
 import voldemort.utils.Utils;
 import voldemort.versioning.Versioned;
 
-public class MasterOnlyVoldemortFilter implements VoldemortFilter {
+public class MasterOnlyVoldemortFilter<V> implements VoldemortFilter<ByteArray, V> {
 
     RoutingStrategy routingStrategy = null;
     List<Integer> partitionsList = null;
@@ -18,8 +18,8 @@ public class MasterOnlyVoldemortFilter implements VoldemortFilter {
         this.partitionsList = Utils.notNull(partitionsList);
     }
 
-    public boolean accept(Object key, Versioned<?> value) {
-        List<Integer> partitionIds = this.routingStrategy.getPartitionList(((ByteArray) key).get());
+    public boolean accept(ByteArray key, Versioned<V> value) {
+        List<Integer> partitionIds = this.routingStrategy.getPartitionList(key.get());
         if(partitionsList.contains(partitionIds.get(0))) {
             return true;
         }

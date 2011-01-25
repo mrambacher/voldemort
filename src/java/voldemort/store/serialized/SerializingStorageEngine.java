@@ -61,18 +61,43 @@ public class SerializingStorageEngine<K, V, T> extends SerializingStore<K, V, T>
         return storageEngine.getStoreDefinition();
     }
 
-    public ClosableIterator<Pair<K, Versioned<V>>> entries(Collection<Integer> partitions,
-                                                           VoldemortFilter filter,
-                                                           T transforms) {
-        return new EntriesIterator(storageEngine.entries(partitions, filter, null));
+    private VoldemortFilter<ByteArray, byte[]> toFilter(final VoldemortFilter<K, V> filter) {
+        return new VoldemortFilter<ByteArray, byte[]>() {
+
+            public boolean accept(ByteArray key, Versioned<byte[]> value) {
+                K k = getKeySerializer().toObject(key.get());
+                if(value != null) {
+                    Versioned<V> v = new Versioned<V>(getValueSerializer().toObject(value.getValue()),
+                                                      value.getVersion(),
+                                                      value.getMetadata());
+                    return filter.accept(k, v);
+                } else {
+                    return filter.accept(k, null);
+                }
+            }
+        };
     }
 
-    public ClosableIterator<K> keys(Collection<Integer> partitions, VoldemortFilter filter) {
-        return new KeysIterator(storageEngine.keys(partitions, filter));
+    public ClosableIterator<Pair<K, Versioned<V>>> entries(Collection<Integer> partitions,
+                                                           VoldemortFilter<K, V> filter,
+                                                           T transforms) {
+        return new EntriesIterator(storageEngine.entries(partitions, toFilter(filter), null));
+    }
+
+    public ClosableIterator<K> keys(Collection<Integer> partitions, VoldemortFilter<K, V> filter) {
+        return new KeysIterator(storageEngine.keys(partitions, toFilter(filter)));
     }
 
     public void truncate() {
         storageEngine.truncate();
+    }
+
+    public void deleteEntries(VoldemortFilter<K, V> filter) {
+        storageEngine.deleteEntries(toFilter(filter));
+    }
+
+    public void deletePartitions(Collection<Integer> partitions) {
+        storageEngine.deletePartitions(partitions);
     }
 
     private class KeysIterator implements ClosableIterator<K> {

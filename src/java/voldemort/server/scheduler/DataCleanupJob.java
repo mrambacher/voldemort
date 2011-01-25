@@ -22,9 +22,7 @@ import org.apache.log4j.Logger;
 
 import voldemort.client.protocol.VoldemortFilter;
 import voldemort.store.StorageEngine;
-import voldemort.utils.ClosableIterator;
 import voldemort.utils.EventThrottler;
-import voldemort.utils.Pair;
 import voldemort.utils.Time;
 import voldemort.utils.Utils;
 import voldemort.versioning.Version;
@@ -57,56 +55,41 @@ public class DataCleanupJob<K, V, T> implements Runnable {
         this.throttler = throttler;
     }
 
-    public void run() {
-        acquireCleanupPermit();
-        ClosableIterator<Pair<K, Versioned<V>>> iterator = null;
-        try {
-            logger.info("Starting data cleanup on store \"" + store.getName() + "\"...");
-            int deleted = 0;
-            final long now = time.getMilliseconds();
-            VoldemortFilter filter = new VoldemortFilter() {
+    private class DeleteOldEntriesFilter implements VoldemortFilter<K, V> {
 
-                public boolean accept(Object key, Versioned<?> value) {
-                    Version clock = value.getVersion();
-                    return (now - clock.getTimestamp() > maxAgeMs);
-                }
-            };
-            iterator = store.entries(null, filter, null);
+        private final long now;
+        int deleted = 0;
 
-            while(iterator.hasNext()) {
-                // check if we have been interrupted
-                if(Thread.currentThread().isInterrupted()) {
-                    logger.info("Datacleanup job halted.");
-                    return;
-                }
+        DeleteOldEntriesFilter() {
+            now = time.getMilliseconds();
+        }
 
-                Pair<K, Versioned<V>> keyAndVal = iterator.next();
-                Version clock = keyAndVal.getSecond().getVersion();
-                store.delete(keyAndVal.getFirst(), clock);
+        public boolean accept(K key, Versioned<V> value) {
+            Version clock = value.getVersion();
+            if(now - clock.getTimestamp() > maxAgeMs) {
                 deleted++;
                 if(deleted % 10000 == 0)
                     logger.debug("Deleted item " + deleted);
-
-                // throttle on number of entries.
-                throttler.maybeThrottle(1);
+                return true;
             }
-            logger.info("Data cleanup on store \"" + store.getName() + "\" is complete; " + deleted
-                        + " items deleted.");
-        } catch(Exception e) {
-            logger.error("Error in data cleanup job for store " + store.getName() + ": ", e);
-        } finally {
-            closeIterator(iterator);
-            logger.info("Releasing lock  after data cleanup on \"" + store.getName() + "\".");
-            this.cleanupPermits.release();
+            throttler.maybeThrottle(1);
+            return false;
         }
     }
 
-    private void closeIterator(ClosableIterator<Pair<K, Versioned<V>>> iterator) {
+    public void run() {
+        acquireCleanupPermit();
         try {
-            if(iterator != null)
-                iterator.close();
+            logger.info("Starting data cleanup on store \"" + store.getName() + "\"...");
+            DeleteOldEntriesFilter filter = new DeleteOldEntriesFilter();
+            store.deleteEntries(filter);
+            logger.info("Data cleanup on store \"" + store.getName() + "\" is complete; "
+                        + filter.deleted + " items deleted.");
         } catch(Exception e) {
-            logger.error("Error in closing iterator " + store.getName() + " ", e);
+            logger.error("Error in data cleanup job for store " + store.getName() + ": ", e);
+        } finally {
+            logger.info("Releasing lock  after data cleanup on \"" + store.getName() + "\".");
+            this.cleanupPermits.release();
         }
     }
 

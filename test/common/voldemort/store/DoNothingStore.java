@@ -81,7 +81,7 @@ public class DoNothingStore<K, V, T> implements StorageEngine<K, V, T> {
         return null;
     }
 
-    private class DoNothingIterator<T> implements ClosableIterator<T> {
+    private class DoNothingIterator<R> implements ClosableIterator<R> {
 
         public void close() {
             // Do nothing
@@ -95,19 +95,27 @@ public class DoNothingStore<K, V, T> implements StorageEngine<K, V, T> {
             // Do nothing
         }
 
-        public T next() {
+        public R next() {
             throw new IllegalArgumentException("oops");
         }
     }
 
     public ClosableIterator<Pair<K, Versioned<V>>> entries(Collection<Integer> partitions,
-                                                           VoldemortFilter filter,
+                                                           VoldemortFilter<K, V> filter,
                                                            T transforms) {
         return new DoNothingIterator<Pair<K, Versioned<V>>>();
     }
 
-    public ClosableIterator<K> keys(Collection<Integer> partitions, VoldemortFilter filter) {
+    public ClosableIterator<K> keys(Collection<Integer> partitions, VoldemortFilter<K, V> filter) {
         return new DoNothingIterator<K>();
+    }
+
+    public void deletePartitions(Collection<Integer> partitions) {
+        // Do nothing
+    }
+
+    public void deleteEntries(VoldemortFilter<K, V> filter) {
+        // Do nothing
     }
 
     public void truncate() {
