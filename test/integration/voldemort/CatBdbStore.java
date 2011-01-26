@@ -24,7 +24,6 @@ import voldemort.serialization.StringSerializer;
 import voldemort.server.VoldemortConfig;
 import voldemort.store.StorageEngine;
 import voldemort.store.bdb.BdbStorageConfiguration;
-import voldemort.store.bdb.BdbStorageEngine;
 import voldemort.store.serialized.SerializingStorageEngine;
 import voldemort.utils.ByteArray;
 import voldemort.utils.Pair;
@@ -32,9 +31,7 @@ import voldemort.utils.Props;
 import voldemort.utils.Utils;
 import voldemort.versioning.Versioned;
 
-import com.sleepycat.je.Database;
 import com.sleepycat.je.DatabaseConfig;
-import com.sleepycat.je.Environment;
 import com.sleepycat.je.EnvironmentConfig;
 
 public class CatBdbStore {
@@ -49,28 +46,28 @@ public class CatBdbStore {
         String serverProperties = args[2];
 
         VoldemortConfig config = new VoldemortConfig(new Props(new File(serverProperties)));
+        config.setBdbCursorPreload(false);
 
         EnvironmentConfig environmentConfig = new EnvironmentConfig();
         environmentConfig.setTxnNoSync(true);
         environmentConfig.setAllowCreate(true);
         environmentConfig.setTransactional(config.isBdbWriteTransactionsEnabled());
-        Environment environment = new Environment(new File(bdbDir), environmentConfig);
         DatabaseConfig databaseConfig = new DatabaseConfig();
         databaseConfig.setAllowCreate(true);
         databaseConfig.setTransactional(config.isBdbWriteTransactionsEnabled());
         databaseConfig.setSortedDuplicates(config.isBdbSortedDuplicatesEnabled());
-        Database database = environment.openDatabase(null, storeName, databaseConfig);
 
-        StorageEngine<ByteArray, byte[], byte[]> store = new BdbStorageEngine(TestUtils.getStoreDef(storeName,
-                                                                                                    BdbStorageConfiguration.TYPE_NAME),
-                                                                              environment,
-                                                                              database);
+        BdbStorageConfiguration storeConfiguration = new BdbStorageConfiguration(config,
+                                                                                 environmentConfig,
+                                                                                 databaseConfig);
+        StorageEngine<ByteArray, byte[], byte[]> store = storeConfiguration.getStore(TestUtils.getStoreDef(storeName,
+                                                                                                           BdbStorageConfiguration.TYPE_NAME));
         StorageEngine<String, String, String> stringStore = SerializingStorageEngine.wrap(store,
                                                                                           new StringSerializer(),
                                                                                           new StringSerializer(),
                                                                                           new StringSerializer());
         Iterator<Pair<String, Versioned<String>>> iter = stringStore.entries(null,
-                                                                             new DefaultVoldemortFilter(),
+                                                                             new DefaultVoldemortFilter<String, String>(),
                                                                              null);
         while(iter.hasNext()) {
             Pair<String, Versioned<String>> entry = iter.next();

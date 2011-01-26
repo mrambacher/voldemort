@@ -21,10 +21,6 @@ abstract public class WrappedStorageEngine<K, V, T> implements StorageEngine<K, 
         return store;
     }
 
-    public StoreDefinition getStoreDefinition() {
-        return storeDef;
-    }
-
     public List<Versioned<V>> get(K key, T transforms) throws VoldemortException {
         return store.get(key, transforms);
     }

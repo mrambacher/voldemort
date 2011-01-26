@@ -19,12 +19,20 @@ package voldemort.store.metadata;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import junit.framework.TestCase;
 import voldemort.ServerTestUtils;
+import voldemort.TestUtils;
 import voldemort.client.rebalance.RebalancePartitionsInfo;
+import voldemort.cluster.Cluster;
+import voldemort.cluster.Node;
+import voldemort.routing.RoutingStrategy;
 import voldemort.server.rebalance.RebalancerState;
+import voldemort.store.StoreDefinition;
 import voldemort.store.metadata.MetadataStore.VoldemortState;
 import voldemort.utils.ByteArray;
 import voldemort.utils.ByteUtils;
@@ -183,6 +191,129 @@ public class MetadataStoreTest extends TestCase {
                              + ByteUtils.getString(key.get(), "UTF-8") + ")",
                      new String(value.getValue()),
                      new String(list.get(0).getValue()));
+    }
+
+    public void testAddingStore() {
+        List<StoreDefinition> storeDefs = ServerTestUtils.getStoreDefs(2);
+        incrementVersionAndPut(metadataStore, MetadataStore.STORES_KEY, storeDefs);
+        for(StoreDefinition expected: storeDefs) {
+            StoreDefinition actual = metadataStore.getStoreDef(expected.getName());
+            assertEquals("Definitions match", expected, actual);
+        }
+    }
+
+    public void testRemovingStore() {
+        metadataStore = ServerTestUtils.createMetadataStore(ServerTestUtils.getLocalCluster(1),
+                                                            ServerTestUtils.getStoreDefs(2));
+        List<StoreDefinition> storeDefs = ServerTestUtils.getStoreDefs(1);
+        incrementVersionAndPut(metadataStore, MetadataStore.STORES_KEY, storeDefs);
+        assertEquals("Proper store count", storeDefs.size(), metadataStore.getStoreDefList().size());
+        for(StoreDefinition expected: storeDefs) {
+            StoreDefinition actual = metadataStore.getStoreDef(expected.getName());
+            assertEquals("Definitions match", expected, actual);
+        }
+
+    }
+
+    protected void checkStores(Map<Integer, ByteArray> keys,
+                               RoutingStrategy strategy,
+                               Cluster cluster) {
+        for(Node node: cluster.getNodes()) {
+            for(int partition: node.getPartitionIds()) {
+                ByteArray key = keys.get(partition);
+                int primary = strategy.getPrimaryPartition(key.get());
+                List<Node> route = strategy.routeRequest(key.get());
+                assertTrue(partition == primary);
+                assertEquals(node, route.get(0));
+            }
+        }
+
+    }
+
+    public void testAddingNode() {
+        Cluster cluster = ServerTestUtils.getLocalCluster(3, new int[][] { { 0, 1, 2, 3 },
+                { 4, 5, 6, 7 }, { 8, 9, 10, 11 } });
+        List<StoreDefinition> stores = ServerTestUtils.getStoreDefs(1);
+        metadataStore = ServerTestUtils.createMetadataStore(cluster, stores);
+        RoutingStrategy strategy = metadataStore.getRoutingStrategy(stores.get(0).getName());
+        Map<Integer, ByteArray> keys = TestUtils.getKeysForPartitions(strategy,
+                                                                      cluster.getNumberOfPartitions());
+
+        checkStores(keys, strategy, cluster);
+        Cluster updated = ServerTestUtils.getLocalCluster(4, new int[][] { { 0, 1, 2, 3 },
+                { 4, 5, 6, 7 }, { 8, 9 }, { 10, 11 } });
+        incrementVersionAndPut(metadataStore, MetadataStore.CLUSTER_KEY, updated);
+        Cluster retrieved = metadataStore.getCluster();
+        for(Node node: retrieved.getNodes()) {
+            assertEquals(updated.getNodeById(node.getId()), node);
+        }
+        checkStores(keys, metadataStore.getRoutingStrategy(stores.get(0).getName()), updated);
+    }
+
+    public void testRemovingNode() {
+        Cluster cluster = ServerTestUtils.getLocalCluster(4, new int[][] { { 0, 1, 2, 3 },
+                { 4, 5, 6, 7 }, { 8, 9 }, { 10, 11 } });
+        List<StoreDefinition> stores = ServerTestUtils.getStoreDefs(1);
+        metadataStore = ServerTestUtils.createMetadataStore(cluster, stores);
+        RoutingStrategy strategy = metadataStore.getRoutingStrategy(stores.get(0).getName());
+        Map<Integer, ByteArray> keys = TestUtils.getKeysForPartitions(strategy,
+                                                                      cluster.getNumberOfPartitions());
+
+        checkStores(keys, strategy, cluster);
+
+        Cluster updated = ServerTestUtils.getLocalCluster(3, new int[][] { { 0, 1, 2, 3 },
+                { 4, 5, 6, 7 }, { 8, 9, 10, 11 } });
+        incrementVersionAndPut(metadataStore, MetadataStore.CLUSTER_KEY, updated);
+        Cluster retrieved = metadataStore.getCluster();
+        for(Node node: retrieved.getNodes()) {
+            assertEquals(updated.getNodeById(node.getId()), node);
+        }
+        checkStores(keys, metadataStore.getRoutingStrategy(stores.get(0).getName()), updated);
+    }
+
+    public void testMovingPartitions() {
+        Cluster cluster = ServerTestUtils.getLocalCluster(4, new int[][] { { 0, 1, 2, 3 },
+                { 4, 5, 6, 7 }, { 8, 9 }, { 10, 11 } });
+        List<StoreDefinition> stores = ServerTestUtils.getStoreDefs(1);
+        metadataStore = ServerTestUtils.createMetadataStore(cluster, stores);
+        RoutingStrategy strategy = metadataStore.getRoutingStrategy(stores.get(0).getName());
+        Map<Integer, ByteArray> keys = TestUtils.getKeysForPartitions(strategy,
+                                                                      cluster.getNumberOfPartitions());
+
+        checkStores(keys, strategy, cluster);
+        Cluster updated = ServerTestUtils.getLocalCluster(4, new int[][] { { 2, 3, 4 },
+                { 11, 5, 6, 7 }, { 8, 9 }, { 0, 1, 10 } });
+        incrementVersionAndPut(metadataStore, MetadataStore.CLUSTER_KEY, updated);
+        Cluster retrieved = metadataStore.getCluster();
+        for(Node node: retrieved.getNodes()) {
+            assertEquals(updated.getNodeById(node.getId()), node);
+        }
+        checkStores(keys, metadataStore.getRoutingStrategy(stores.get(0).getName()), retrieved);
+    }
+
+    public void testMetadataListeners() {
+        Cluster cluster = ServerTestUtils.getLocalCluster(4, new int[][] { { 0, 1, 2, 3 },
+                { 4, 5, 6, 7 }, { 8, 9 }, { 10, 11 } });
+        List<StoreDefinition> storeDefs = ServerTestUtils.getStoreDefs(2);
+        metadataStore = ServerTestUtils.createMetadataStore(cluster, storeDefs);
+        final Set<String> listeners = new HashSet<String>();
+        for(final StoreDefinition storeDef: storeDefs) {
+            metadataStore.addMetadataListener(storeDef.getName(), new MetadataStoreListener() {
+
+                public void updateRoutingStrategy(RoutingStrategy strategy) {
+                    listeners.add(storeDef.getName());
+                }
+            });
+        }
+        Cluster updated = ServerTestUtils.getLocalCluster(3, new int[][] { { 0, 1, 2, 3 },
+                { 4, 5, 6, 7 }, { 8, 9, 10, 11 } });
+        incrementVersionAndPut(metadataStore, MetadataStore.CLUSTER_KEY, updated);
+        assertTrue("Listeners invoked when cluster is updated", 2 == listeners.size());
+        listeners.clear();
+        incrementVersionAndPut(metadataStore,
+                               MetadataStore.STORES_KEY,
+                               ServerTestUtils.getStoreDefs(3));
+        assertTrue("Listeners invoked when stores are added", 2 == listeners.size());
     }
 
     /**

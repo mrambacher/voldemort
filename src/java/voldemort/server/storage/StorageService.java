@@ -48,8 +48,6 @@ import voldemort.cluster.Node;
 import voldemort.cluster.failuredetector.FailureDetector;
 import voldemort.cluster.failuredetector.FailureDetectorConfig;
 import voldemort.cluster.failuredetector.ServerStoreVerifier;
-import voldemort.routing.RoutingStrategy;
-import voldemort.routing.RoutingStrategyFactory;
 import voldemort.routing.RoutingStrategyType;
 import voldemort.serialization.SerializerDefinition;
 import voldemort.server.AbstractService;
@@ -74,7 +72,6 @@ import voldemort.store.invalidmetadata.InvalidMetadataCheckingStore;
 import voldemort.store.logging.LoggingStore;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.store.metadata.MetadataStoreListener;
-import voldemort.store.readonly.ReadOnlyStorageConfiguration;
 import voldemort.store.readonly.ReadOnlyStorageEngine;
 import voldemort.store.rebalancing.RebootstrappingStore;
 import voldemort.store.rebalancing.RedirectingStore;
@@ -282,23 +279,11 @@ public class StorageService extends AbstractService {
                                              + " but " + storeDef.getType()
                                              + " storage engine of type " + storeDef.getType()
                                              + " has not been enabled.");
-
-        storeDef.updateRoutingStrategy(metadata.getCluster());
-        if(storeDef.getType().compareTo(ReadOnlyStorageConfiguration.TYPE_NAME) == 0) {
-            final RoutingStrategy routingStrategy = new RoutingStrategyFactory().updateRoutingStrategy(storeDef,
-                                                                                                       metadata.getCluster());
-            ((ReadOnlyStorageConfiguration) config).setRoutingStrategy(routingStrategy);
-        }
-
         final StorageEngine<ByteArray, byte[], byte[]> engine = config.getStore(storeDef);
         // Update the routing strategy + add listener to metadata
-        if(storeDef.getType().compareTo(ReadOnlyStorageConfiguration.TYPE_NAME) == 0) {
-            metadata.addMetadataStoreListener(storeDef.getName(), new MetadataStoreListener() {
-
-                public void updateRoutingStrategy(RoutingStrategy updatedRoutingStrategy) {
-                    ((ReadOnlyStorageEngine) engine).setRoutingStrategy(updatedRoutingStrategy);
-                }
-            });
+        if(engine instanceof MetadataStoreListener) {
+            MetadataStoreListener listener = (MetadataStoreListener) engine;
+            metadata.addMetadataListener(storeDef.getName(), listener);
         }
 
         // openStore() should have atomic semantics
@@ -374,7 +359,7 @@ public class StorageService extends AbstractService {
             store = new LoggingStore<ByteArray, byte[], byte[]>(store,
                                                                 cluster.getName(),
                                                                 SystemTime.INSTANCE);
-        if(!isSlop) {
+        if(!isSlop && !store.getName().equals(metadata.getName())) {
             if(voldemortConfig.isRedirectRoutingEnabled())
                 store = new RedirectingStore(store,
                                              metadata,
@@ -704,7 +689,7 @@ public class StorageService extends AbstractService {
     private DataSetStats calculateStats(StorageEngine<ByteArray, byte[], byte[]> store) {
         DataSetStats stats = new DataSetStats();
         ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iter = store.entries(null,
-                                                                                  new DefaultVoldemortFilter(),
+                                                                                  new DefaultVoldemortFilter<ByteArray, byte[]>(),
                                                                                   null);
         try {
             int count = 0;

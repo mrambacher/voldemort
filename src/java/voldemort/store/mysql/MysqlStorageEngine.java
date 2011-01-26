@@ -51,10 +51,12 @@ public class MysqlStorageEngine extends AbstractStorageEngine {
     private static final Logger logger = Logger.getLogger(MysqlStorageEngine.class);
 
     private final DataSource datasource;
+    private final MysqlStorageConfiguration configuration;
 
-    public MysqlStorageEngine(StoreDefinition storeDef, DataSource datasource) {
+    public MysqlStorageEngine(StoreDefinition storeDef, MysqlStorageConfiguration configuration) {
         super(storeDef);
-        this.datasource = datasource;
+        this.configuration = configuration;
+        this.datasource = configuration.getDataSource();
 
         if(!tableExists()) {
             create();
@@ -141,11 +143,13 @@ public class MysqlStorageEngine extends AbstractStorageEngine {
     public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(Collection<Integer> partitions,
                                                                         VoldemortFilter<ByteArray, byte[]> filter,
                                                                         byte[] transforms) {
-        String sql = "select key_, version_, value_, metadata_ from " + getName();
+        String storeName = getName();
+        String sql = "select key_, version_, value_, metadata_ from " + storeName;
         try {
-            StoreRow rows = new MysqlRow(getName(), this.datasource, sql);
+            StoreRow rows = new MysqlRow(storeName, this.datasource, sql);
             ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iter = new StoreEntriesIterator(rows);
-            iter = super.entries(iter, partitions); // Filter by partition
+            // First filter by partition
+            iter = configuration.entries(storeName, iter, partitions);
             return super.entries(iter, filter); // Filter by filter
         } catch(SQLException e) {
             throw new PersistenceFailureException("Fix me!", e);
@@ -154,11 +158,13 @@ public class MysqlStorageEngine extends AbstractStorageEngine {
 
     public ClosableIterator<ByteArray> keys(Collection<Integer> partitions,
                                             VoldemortFilter<ByteArray, byte[]> filter) {
-        String sql = "select key_ from " + getName();
+        String storeName = getName();
+        String sql = "select key_ from " + storeName;
         try {
-            StoreRow rows = new MysqlRow(getName(), this.datasource, sql);
+            StoreRow rows = new MysqlRow(storeName, this.datasource, sql);
             ClosableIterator<ByteArray> iter = new StoreKeysIterator(rows);
-            iter = super.keys(iter, partitions); // Filter by partition
+            // First filter by partition
+            iter = configuration.keys(storeName, iter, partitions);
             return super.keys(iter, filter); // Filter by filter
         } catch(SQLException e) {
             throw new PersistenceFailureException("Fix me!", e);

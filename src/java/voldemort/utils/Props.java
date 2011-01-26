@@ -322,6 +322,21 @@ public class Props implements Map<String, String> {
         return getList(key, null);
     }
 
+    public Props subset(String prefix, boolean clip) {
+        Props result = new Props();
+
+        for(String key: keySet()) {
+            if(key.startsWith(prefix)) {
+                if(clip) {
+                    result.put(key.substring(prefix.length()), get(key));
+                } else {
+                    result.put(key, get(key));
+                }
+            }
+        }
+        return result;
+    }
+
     public Properties toProperties() {
         Properties properties = new Properties();
         for(String key: this.keySet()) {

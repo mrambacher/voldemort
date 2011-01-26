@@ -18,7 +18,6 @@ package voldemort.server;
 
 import static voldemort.utils.Utils.croak;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.SynchronousQueue;
@@ -82,8 +81,7 @@ public class VoldemortServer extends AbstractService {
         super(ServiceType.VOLDEMORT);
         this.voldemortConfig = config;
         this.storeRepository = new StoreRepository();
-        this.metadata = MetadataStore.readFromDirectory(new File(this.voldemortConfig.getMetadataDirectory()),
-                                                        voldemortConfig.getNodeId());
+        this.metadata = voldemortConfig.getMetadata();
         this.identityNode = metadata.getCluster().getNodeById(voldemortConfig.getNodeId());
         this.services = createServices();
     }

@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 
 import junit.framework.TestCase;
+import voldemort.ServerTestUtils;
 import voldemort.TestUtils;
 import voldemort.serialization.Serializer;
 import voldemort.serialization.StringSerializer;
@@ -28,8 +29,8 @@ import com.google.common.collect.ImmutableMap;
 public class ViewStorageEngineTest extends TestCase {
 
     private AddStrViewTrans transform = new AddStrViewTrans("42");
-    private InMemoryStorageEngine targetRaw1 = new InMemoryStorageEngine(TestUtils.getStoreDef("target1",
-                                                                                               InMemoryStorageConfiguration.TYPE_NAME));
+    private InMemoryStorageEngine targetRaw1 = ServerTestUtils.createMemoryEngine(TestUtils.getStoreDef("target1",
+                                                                                                        InMemoryStorageConfiguration.TYPE_NAME));
     private Store<String, String, String> target1 = SerializingStore.wrap(targetRaw1,
                                                                           new StringSerializer(),
                                                                           new StringSerializer(),
@@ -39,8 +40,8 @@ public class ViewStorageEngineTest extends TestCase {
     private Serializer<List<Integer>> valueSer = new IntegerListSerializer();
     private Serializer<List<Integer>> transSer = new IntegerListSerializer();
 
-    private InMemoryStorageEngine targetRaw2 = new InMemoryStorageEngine(TestUtils.getStoreDef("target2",
-                                                                                               InMemoryStorageConfiguration.TYPE_NAME));
+    private InMemoryStorageEngine targetRaw2 = ServerTestUtils.createMemoryEngine(TestUtils.getStoreDef("target2",
+                                                                                                        InMemoryStorageConfiguration.TYPE_NAME));
 
     private Store<Integer, List<Integer>, List<Integer>> target2 = SerializingStore.wrap(targetRaw2,
                                                                                          keySer,

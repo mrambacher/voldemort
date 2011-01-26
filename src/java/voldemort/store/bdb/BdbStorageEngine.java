@@ -58,21 +58,27 @@ public class BdbStorageEngine extends AbstractStorageEngine {
 
     private static final Logger logger = Logger.getLogger(BdbStorageEngine.class);
 
+    private final BdbStorageConfiguration configuration;
     private Database bdbDatabase;
-    private final Environment environment;
+    final Environment environment;
     private final AtomicBoolean isOpen;
     private final boolean cursorPreload;
     private final AtomicBoolean isTruncating = new AtomicBoolean(false);
 
-    public BdbStorageEngine(StoreDefinition def, Environment environment, Database database) {
-        this(def, environment, database, false);
+    public BdbStorageEngine(StoreDefinition def,
+                            BdbStorageConfiguration configuration,
+                            Environment environment,
+                            Database database) {
+        this(def, configuration, environment, database, false);
     }
 
     public BdbStorageEngine(StoreDefinition storeDef,
+                            BdbStorageConfiguration configuration,
                             Environment environment,
                             Database database,
                             boolean cursorPreload) {
         super(storeDef);
+        this.configuration = configuration;
         this.bdbDatabase = Utils.notNull(database);
         this.environment = Utils.notNull(environment);
         this.isOpen = new AtomicBoolean(true);
@@ -171,7 +177,8 @@ public class BdbStorageEngine extends AbstractStorageEngine {
             }
             StoreRow rows = new BdbStoreRow(db, LockMode.READ_UNCOMMITTED);
             ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iter = new StoreEntriesIterator(rows);
-            iter = super.entries(iter, partitions); // Filter on partitions
+            // First filter by partition
+            iter = configuration.entries(getName(), iter, partitions);
             return super.entries(iter, filter); // Filter on filter
         } catch(DatabaseException e) {
             logger.error(e);
@@ -191,7 +198,8 @@ public class BdbStorageEngine extends AbstractStorageEngine {
             }
             StoreRow rows = new BdbStoreRow(db, LockMode.READ_UNCOMMITTED);
             ClosableIterator<ByteArray> iter = new StoreKeysIterator(rows);
-            iter = super.keys(iter, partitions); // Filter on partitions
+            // First filter by partition
+            iter = configuration.keys(getName(), iter, partitions);
             return super.keys(iter, filter); // Filter on filter
         } catch(DatabaseException e) {
             logger.error(e);

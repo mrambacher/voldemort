@@ -19,17 +19,16 @@ package voldemort.store.bdb;
 import java.io.File;
 import java.util.Map;
 
-import org.apache.log4j.Logger;
-
 import voldemort.VoldemortException;
 import voldemort.annotations.jmx.JmxOperation;
 import voldemort.server.VoldemortConfig;
-import voldemort.store.StorageConfiguration;
+import voldemort.store.AbstractStorageConfiguration;
 import voldemort.store.StorageEngine;
 import voldemort.store.StorageInitializationException;
 import voldemort.store.StoreDefinition;
 import voldemort.utils.ByteArray;
 import voldemort.utils.Time;
+import voldemort.utils.Utils;
 
 import com.google.common.collect.Maps;
 import com.sleepycat.je.Database;
@@ -48,12 +47,10 @@ import com.sleepycat.je.StatsConfig;
  * 
  */
 @SuppressWarnings("deprecation")
-public class BdbStorageConfiguration implements StorageConfiguration {
+public class BdbStorageConfiguration extends AbstractStorageConfiguration {
 
     public static final String TYPE_NAME = "bdb";
     private static final String SHARED_ENV_KEY = "shared";
-
-    private static Logger logger = Logger.getLogger(BdbStorageConfiguration.class);
 
     private final Object lock = new Object();
     private final Map<String, Environment> environments = Maps.newHashMap();
@@ -61,10 +58,9 @@ public class BdbStorageConfiguration implements StorageConfiguration {
     private final DatabaseConfig databaseConfig;
     private final String bdbMasterDir;
     private final boolean useOneEnvPerStore;
-    private final VoldemortConfig voldemortConfig;
 
     public BdbStorageConfiguration(VoldemortConfig config) {
-        this.voldemortConfig = config;
+        super(config);
         environmentConfig = new EnvironmentConfig();
         environmentConfig.setTransactional(true);
         environmentConfig.setCacheSize(config.getBdbCacheSize());
@@ -99,7 +95,19 @@ public class BdbStorageConfiguration implements StorageConfiguration {
             environmentConfig.setSharedCache(true);
     }
 
+    public BdbStorageConfiguration(VoldemortConfig config,
+                                   EnvironmentConfig envConfig,
+                                   DatabaseConfig dbConfig) {
+        super(config);
+        this.environmentConfig = envConfig;
+        this.databaseConfig = dbConfig;
+        bdbMasterDir = config.getBdbDataDirectory();
+        useOneEnvPerStore = config.isBdbOneEnvPerStore();
+    }
+
     public StorageEngine<ByteArray, byte[], byte[]> getStore(StoreDefinition storeDef) {
+        Utils.assertNotNull(storeDef);
+        Utils.assertNotNull(storeDef.getName());
         synchronized(lock) {
             try {
                 String storeName = storeDef.getName();
@@ -111,6 +119,7 @@ public class BdbStorageConfiguration implements StorageConfiguration {
                     db.preload(preloadConfig);
                 }
                 BdbStorageEngine engine = new BdbStorageEngine(storeDef,
+                                                               this,
                                                                environment,
                                                                db,
                                                                voldemortConfig.getBdbCursorPreload());
@@ -140,9 +149,9 @@ public class BdbStorageConfiguration implements StorageConfiguration {
                 environments.put(storeName, environment);
                 return environment;
             } else {
-                if(!environments.isEmpty())
+                if(!environments.isEmpty()) {
                     return environments.get(SHARED_ENV_KEY);
-
+                }
                 File bdbDir = new File(bdbMasterDir);
                 createBdbDirIfNecessary(bdbDir);
 
@@ -206,6 +215,7 @@ public class BdbStorageConfiguration implements StorageConfiguration {
             } catch(DatabaseException e) {
                 throw new VoldemortException(e);
             }
+            environments.clear();
         }
     }
 

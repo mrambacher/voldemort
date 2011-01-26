@@ -19,8 +19,9 @@ package voldemort.store.memory;
 import java.util.List;
 
 import voldemort.TestUtils;
+import voldemort.server.VoldemortConfig;
+import voldemort.store.StorageConfiguration;
 import voldemort.store.StorageEngine;
-import voldemort.store.StoreDefinition;
 import voldemort.utils.ByteArray;
 import voldemort.versioning.Versioned;
 
@@ -41,10 +42,8 @@ public class CacheStorageEngineTest extends InMemoryStorageEngineTest {
     }
 
     @Override
-    public StorageEngine<ByteArray, byte[], byte[]> getStorageEngine() {
-        StoreDefinition storeDef = TestUtils.getStoreDef("test",
-                                                         CacheStorageConfiguration.TYPE_NAME);
-        return new CacheStorageConfiguration().getStore(storeDef);
+    public StorageConfiguration createStorageConfiguration(VoldemortConfig config) {
+        return new CacheStorageConfiguration(config);
     }
 
     public void testNoPressureBehavior() {

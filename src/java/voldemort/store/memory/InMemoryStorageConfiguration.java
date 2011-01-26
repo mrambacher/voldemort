@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 import voldemort.server.VoldemortConfig;
-import voldemort.store.StorageConfiguration;
+import voldemort.store.AbstractStorageConfiguration;
 import voldemort.store.StorageEngine;
 import voldemort.store.StoreDefinition;
 import voldemort.utils.ByteArray;
@@ -31,17 +31,17 @@ import voldemort.versioning.Versioned;
  * 
  * 
  */
-public class InMemoryStorageConfiguration implements StorageConfiguration {
+public class InMemoryStorageConfiguration extends AbstractStorageConfiguration {
 
     public static final String TYPE_NAME = "memory";
 
-    public InMemoryStorageConfiguration() {}
-
-    @SuppressWarnings("unused")
-    public InMemoryStorageConfiguration(VoldemortConfig config) {}
+    public InMemoryStorageConfiguration(VoldemortConfig config) {
+        super(config);
+    }
 
     public StorageEngine<ByteArray, byte[], byte[]> getStore(StoreDefinition storeDef) {
         return new InMemoryStorageEngine(storeDef,
+                                         this,
                                          new ConcurrentHashMap<ByteArray, List<Versioned<byte[]>>>());
     }
 

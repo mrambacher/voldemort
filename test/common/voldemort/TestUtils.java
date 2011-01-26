@@ -25,6 +25,7 @@ import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -48,11 +49,14 @@ import voldemort.store.readonly.JsonStoreBuilder;
 import voldemort.store.readonly.ReadOnlyStorageConfiguration;
 import voldemort.store.readonly.ReadOnlyStorageFormat;
 import voldemort.utils.ByteArray;
+import voldemort.utils.ByteUtils;
 import voldemort.utils.Utils;
 import voldemort.versioning.Metadata;
 import voldemort.versioning.Version;
 import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
+
+import com.google.common.collect.Maps;
 
 /**
  * Helper utilities for tests
@@ -79,6 +83,62 @@ public class TestUtils {
         Version clock = VersionFactory.newVersion();
         increment(clock, nodes);
         return clock;
+    }
+
+    public static ByteArray getKeyForPartition(RoutingStrategy strategy, int partition) {
+        byte[] key = null;
+        do {
+            ByteUtils.md5(Integer.toString((int) (Math.random() * Integer.MAX_VALUE)).getBytes());
+        } while(strategy.getPrimaryPartition(key) != partition);
+        return new ByteArray(key);
+    }
+
+    /**
+     * Creates a map of partitions to keys. The returned map contains keys that
+     * map to each partition
+     * 
+     * @param strategy The routing strategy to use
+     * @param partitions The number of partitions to create keys for.
+     * @return
+     */
+    public static Map<Integer, ByteArray> getKeysForPartitions(RoutingStrategy strategy,
+                                                               int partitions) {
+        Map<Integer, ByteArray> partitionToKeyMap = Maps.newHashMap();
+        int count = 0;
+        do {
+            byte[] bytes = ByteUtils.md5(Integer.toString((int) (Math.random() * Integer.MAX_VALUE))
+                                                .getBytes());
+            int partition = strategy.getPrimaryPartition(bytes);
+            if(!partitionToKeyMap.containsKey(partition)) {
+                count++;
+                partitionToKeyMap.put(partition, new ByteArray(bytes));
+            }
+        } while(count < partitions);
+        return partitionToKeyMap;
+    }
+
+    /**
+     * Creates a map of partitions to keys. The returned map contains keys that
+     * map to each partition
+     * 
+     * @param strategy The routing strategy to use
+     * @param partitions The number of partitions to create keys for.
+     * @return
+     */
+    public static Map<Integer, ByteArray> getKeysForPartitions(RoutingStrategy strategy,
+                                                               Collection<Integer> partitions) {
+        Map<Integer, ByteArray> partitionToKeyMap = Maps.newHashMap();
+        int count = 0;
+        do {
+            byte[] bytes = ByteUtils.md5(Integer.toString((int) (Math.random() * Integer.MAX_VALUE))
+                                                .getBytes());
+            int partition = strategy.getPrimaryPartition(bytes);
+            if(partitions.contains(partition) && !partitionToKeyMap.containsKey(partition)) {
+                count++;
+                partitionToKeyMap.put(partition, new ByteArray(bytes));
+            }
+        } while(count < partitions.size());
+        return partitionToKeyMap;
     }
 
     /**

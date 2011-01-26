@@ -61,9 +61,7 @@ public class InvalidMetadataCheckingStore extends DelegatingStore<ByteArray, byt
 
     private void checkValidMetadata(ByteArray key) {
         StoreUtils.assertValidKey(key);
-        StoreUtils.assertValidMetadata(key,
-                                       metadata.getRoutingStrategy(getName()),
-                                       metadata.getCluster().getNodeById(nodeId));
+        StoreUtils.assertValidMetadata(key, metadata.getRoutingStrategy(getName()), nodeId);
     }
 
     @Override

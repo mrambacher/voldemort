@@ -27,13 +27,10 @@ import voldemort.server.VoldemortConfig;
 import voldemort.utils.Props;
 import voldemort.versioning.Versioned;
 
-import com.sleepycat.je.Database;
 import com.sleepycat.je.DatabaseConfig;
 import com.sleepycat.je.DatabaseException;
-import com.sleepycat.je.Environment;
 import com.sleepycat.je.EnvironmentConfig;
 import com.sleepycat.je.EnvironmentStats;
-import com.sleepycat.je.StatsConfig;
 
 /**
  * checks that
@@ -63,20 +60,28 @@ public class BdbSplitStorageEngineTest extends TestCase {
             if(bdbStorage != null)
                 bdbStorage.close();
         } finally {
-            FileDeleteStrategy.FORCE.delete(bdbMasterDir);
+            try {
+                FileDeleteStrategy.FORCE.delete(bdbMasterDir);
+            } catch(Exception e) {
+                System.out.println("Failed to delete " + bdbMasterDir + ": " + e.getMessage());
+            }
         }
     }
 
-    public void testNoMultipleEnvironment() {
+    protected VoldemortConfig getVoldemortConfig(boolean oneEnvPerStore) {
         // lets use all the default values.
         Props props = new Props();
         props.put("node.id", 1);
-        props.put("voldemort.home", "test/common/voldemort/config");
+        props.put("voldemort.home", this.bdbMasterDir.toURI().getPath());
         VoldemortConfig voldemortConfig = new VoldemortConfig(props);
         voldemortConfig.setBdbCacheSize(1 * 1024 * 1024);
         voldemortConfig.setBdbDataDirectory(bdbMasterDir.toURI().getPath());
-        voldemortConfig.setBdbOneEnvPerStore(false);
+        voldemortConfig.setBdbOneEnvPerStore(oneEnvPerStore);
+        return voldemortConfig;
+    }
 
+    public void testNoMultipleEnvironment() {
+        VoldemortConfig voldemortConfig = getVoldemortConfig(false);
         bdbStorage = new BdbStorageConfiguration(voldemortConfig);
         BdbStorageEngine storeA = (BdbStorageEngine) bdbStorage.getStore(TestUtils.getStoreDef("storeA",
                                                                                                BdbStorageConfiguration.TYPE_NAME));
@@ -115,14 +120,7 @@ public class BdbSplitStorageEngineTest extends TestCase {
     }
 
     public void testMultipleEnvironment() {
-        // lets use all the default values.
-        Props props = new Props();
-        props.put("node.id", 1);
-        props.put("voldemort.home", "test/common/voldemort/config");
-        VoldemortConfig voldemortConfig = new VoldemortConfig(props);
-        voldemortConfig.setBdbCacheSize(1 * 1024 * 1024);
-        voldemortConfig.setBdbOneEnvPerStore(true);
-        voldemortConfig.setBdbDataDirectory(bdbMasterDir.toURI().getPath());
+        VoldemortConfig voldemortConfig = this.getVoldemortConfig(true);
 
         bdbStorage = new BdbStorageConfiguration(voldemortConfig);
         BdbStorageEngine storeA = (BdbStorageEngine) bdbStorage.getStore(TestUtils.getStoreDef("storeA",
@@ -173,9 +171,9 @@ public class BdbSplitStorageEngineTest extends TestCase {
         databaseConfig.setTransactional(true);
         databaseConfig.setSortedDuplicates(true);
 
-        long maxCacheSize = getMaxCacheUsage(environmentConfig, databaseConfig);
+        long maxCacheSize = getMaxCacheUsage(environmentConfig, databaseConfig, true);
 
-        assertEquals("MaxCacheSize > CACHE_SIZE", true, maxCacheSize > CACHE_SIZE);
+        assertEquals("" + maxCacheSize + ">" + CACHE_SIZE, true, maxCacheSize > CACHE_SIZE);
         assertEquals("MaxCacheSize < 2 * CACHE_SIZE", true, maxCacheSize < 2 * CACHE_SIZE);
     }
 
@@ -184,41 +182,29 @@ public class BdbSplitStorageEngineTest extends TestCase {
         environmentConfig.setTxnNoSync(true);
         environmentConfig.setAllowCreate(true);
         environmentConfig.setTransactional(true);
-        environmentConfig.setSharedCache(true);
         environmentConfig.setCacheSize(CACHE_SIZE);
+        environmentConfig.setSharedCache(true);
 
         DatabaseConfig databaseConfig = new DatabaseConfig();
         databaseConfig.setAllowCreate(true);
         databaseConfig.setTransactional(true);
         databaseConfig.setSortedDuplicates(true);
 
-        long maxCacheSize = getMaxCacheUsage(environmentConfig, databaseConfig);
+        long maxCacheSize = getMaxCacheUsage(environmentConfig, databaseConfig, true);
         assertEquals("MaxCacheSize <= CACHE_SIZE", true, maxCacheSize <= CACHE_SIZE);
     }
 
-    private long getMaxCacheUsage(EnvironmentConfig environmentConfig, DatabaseConfig databaseConfig)
-            throws DatabaseException {
-        File dirA = new File(bdbMasterDir + "/" + "storeA");
-        if(!dirA.exists()) {
-            dirA.mkdirs();
-        }
-        Environment environmentA = new Environment(dirA, environmentConfig);
-        Database databaseA = environmentA.openDatabase(null, "storeA", databaseConfig);
-        BdbStorageEngine storeA = new BdbStorageEngine(TestUtils.getStoreDef("storeA",
-                                                                             BdbStorageConfiguration.TYPE_NAME),
-                                                       environmentA,
-                                                       databaseA);
+    private long getMaxCacheUsage(EnvironmentConfig environmentConfig,
+                                  DatabaseConfig databaseConfig,
+                                  boolean onePerStore) throws DatabaseException {
+        VoldemortConfig voldemortConfig = this.getVoldemortConfig(onePerStore);
 
-        File dirB = new File(bdbMasterDir + "/" + "storeB");
-        if(!dirB.exists()) {
-            dirB.mkdirs();
-        }
-        Environment environmentB = new Environment(dirB, environmentConfig);
-        Database databaseB = environmentB.openDatabase(null, "storeB", databaseConfig);
-        BdbStorageEngine storeB = new BdbStorageEngine(TestUtils.getStoreDef("storeB",
-                                                                             BdbStorageConfiguration.TYPE_NAME),
-                                                       environmentB,
-                                                       databaseB);
+        bdbStorage = new BdbStorageConfiguration(voldemortConfig, environmentConfig, databaseConfig);
+        BdbStorageEngine storeA = (BdbStorageEngine) bdbStorage.getStore(TestUtils.getStoreDef("storeA",
+                                                                                               BdbStorageConfiguration.TYPE_NAME));
+
+        BdbStorageEngine storeB = (BdbStorageEngine) bdbStorage.getStore(TestUtils.getStoreDef("storeB",
+                                                                                               BdbStorageConfiguration.TYPE_NAME));
 
         long maxCacheUsage = 0;
         for(int i = 0; i <= 4; i++) {
@@ -231,19 +217,20 @@ public class BdbSplitStorageEngineTest extends TestCase {
             storeB.put(TestUtils.toByteArray(i + "B"), new Versioned<byte[]>(value), null);
             storeB.get(TestUtils.toByteArray(i + "B"), null);
 
-            EnvironmentStats statsA = environmentA.getStats(new StatsConfig());
-            EnvironmentStats statsB = environmentB.getStats(new StatsConfig());
+            EnvironmentStats statsA = bdbStorage.getStats("storeA");
+            EnvironmentStats statsB = bdbStorage.getStats("storeB");
 
             long totalCacheSize = statsA.getCacheTotalBytes() + statsB.getCacheTotalBytes();
             System.out.println("A.size:" + statsA.getCacheTotalBytes() + " B.size:"
                                + statsB.getCacheTotalBytes() + " total:" + totalCacheSize + " max:"
                                + maxCacheUsage + " cacheMax:"
-                               + environmentA.getConfig().getCacheSize());
+                               + storeA.environment.getConfig().getCacheSize());
             System.out.println("Shared.A:" + statsA.getSharedCacheTotalBytes() + " nSharedEnv:"
                                + statsA.getNSharedCacheEnvironments());
             maxCacheUsage = Math.max(maxCacheUsage, totalCacheSize);
         }
-
+        storeA.close();
+        storeB.close();
         return maxCacheUsage;
     }
 }

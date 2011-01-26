@@ -31,12 +31,12 @@ import voldemort.VoldemortException;
 import voldemort.cluster.Cluster;
 import voldemort.cluster.Node;
 import voldemort.routing.RoutingStrategy;
-import voldemort.routing.RoutingStrategyFactory;
 import voldemort.routing.RoutingStrategyType;
 import voldemort.serialization.Compression;
 import voldemort.serialization.SerializerDefinition;
 import voldemort.store.Store;
 import voldemort.store.StoreDefinition;
+import voldemort.store.metadata.MetadataStore;
 import voldemort.utils.Utils;
 import voldemort.versioning.Versioned;
 
@@ -63,6 +63,7 @@ public class ReadOnlyStorageEngineTest {
     private StoreDefinition storeDef;
     private Node node;
     private RoutingStrategy routingStrategy;
+    private Cluster cluster;
     private ReadOnlyStorageFormat storageType;
 
     public ReadOnlyStorageEngineTest(SearchStrategy strategy, ReadOnlyStorageFormat storageType) {
@@ -80,10 +81,11 @@ public class ReadOnlyStorageEngineTest {
                                                     1,
                                                     1,
                                                     RoutingStrategyType.CONSISTENT_STRATEGY);
-        Cluster cluster = ServerTestUtils.getLocalCluster(1);
+        this.cluster = ServerTestUtils.getLocalCluster(1);
+        MetadataStore metadata = ServerTestUtils.createMetadataStore(cluster, storeDef);
         this.node = cluster.getNodeById(0);
         this.storageType = storageType;
-        this.routingStrategy = new RoutingStrategyFactory().updateRoutingStrategy(storeDef, cluster);
+        this.routingStrategy = metadata.getRoutingStrategy(storeDef.getName());
     }
 
     @After
@@ -432,10 +434,11 @@ public class ReadOnlyStorageEngineTest {
     @Test
     public void testTruncate() throws IOException {
         createStoreFiles(dir, ReadOnlyUtils.INDEX_ENTRY_SIZE * 5, 4 * 5 * 10, node, 2);
-        ReadOnlyStorageEngine engine = new ReadOnlyStorageEngine(TestUtils.getStoreDef("test",
-                                                                                       ReadOnlyStorageConfiguration.TYPE_NAME),
+        StoreDefinition storeDef = TestUtils.getStoreDef("test",
+                                                         ReadOnlyStorageConfiguration.TYPE_NAME);
+        ReadOnlyStorageEngine engine = new ReadOnlyStorageEngine(storeDef,
                                                                  strategy,
-                                                                 routingStrategy,
+                                                                 this.routingStrategy,
                                                                  0,
                                                                  dir,
                                                                  2);

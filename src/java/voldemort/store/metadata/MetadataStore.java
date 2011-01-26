@@ -40,7 +40,6 @@ import voldemort.annotations.jmx.JmxOperation;
 import voldemort.client.protocol.VoldemortFilter;
 import voldemort.client.rebalance.RebalancePartitionsInfo;
 import voldemort.cluster.Cluster;
-import voldemort.routing.RouteToAllStrategy;
 import voldemort.routing.RoutingStrategy;
 import voldemort.routing.RoutingStrategyFactory;
 import voldemort.server.rebalance.RebalancePartitionsInfoLiveCycle;
@@ -119,12 +118,12 @@ public class MetadataStore implements StorageEngine<ByteArray, byte[], byte[]> {
         RUNNING
     }
 
+    private final RoutingStrategyFactory routingFactory;
     private final Store<String, String, String> innerStore;
     private final HashMap<String, Versioned<Object>> metadataCache;
 
     private static final ClusterMapper clusterMapper = new ClusterMapper();
     private static final StoreDefinitionsMapper storeMapper = new StoreDefinitionsMapper();
-    private static final RoutingStrategyFactory routingFactory = new RoutingStrategyFactory();
 
     // Guards mutations made to non-scalar objects e.g., lists stored in
     // innerStore
@@ -132,30 +131,32 @@ public class MetadataStore implements StorageEngine<ByteArray, byte[], byte[]> {
     public final Lock readLock = lock.readLock();
     public final Lock writeLock = lock.writeLock();
 
-    private final ConcurrentHashMap<String, MetadataStoreListener> storeNameTolisteners;
+    private final ConcurrentHashMap<String, MetadataStoreListener> metadataListeners;
+    private ConcurrentHashMap<String, RoutingStrategy> routingStrategies;
 
     private static final Logger logger = Logger.getLogger(MetadataStore.class);
 
     public MetadataStore(Store<String, String, String> innerStore, int nodeId) {
         this.innerStore = innerStore;
         this.metadataCache = new HashMap<String, Versioned<Object>>();
-        this.storeNameTolisteners = new ConcurrentHashMap<String, MetadataStoreListener>();
-
+        this.routingStrategies = new ConcurrentHashMap<String, RoutingStrategy>();
+        this.metadataListeners = new ConcurrentHashMap<String, MetadataStoreListener>();
+        this.routingFactory = new RoutingStrategyFactory();
         init(nodeId);
     }
 
-    public void addMetadataStoreListener(String storeName, MetadataStoreListener listener) {
-        if(this.storeNameTolisteners == null)
+    public void addMetadataListener(String name, MetadataStoreListener listener) {
+        if(this.metadataListeners == null)
             throw new VoldemortException("MetadataStoreListener must be non-null");
 
-        this.storeNameTolisteners.put(storeName, listener);
+        this.metadataListeners.put(name, listener);
     }
 
-    public void remoteMetadataStoreListener(String storeName) {
-        if(this.storeNameTolisteners == null)
+    public void removeMetadataListeners(String name) {
+        if(this.metadataListeners == null)
             throw new VoldemortException("MetadataStoreListener must be non-null");
 
-        this.storeNameTolisteners.remove(storeName);
+        this.metadataListeners.remove(name);
     }
 
     public static MetadataStore readFromDirectory(File dir, int nodeId) {
@@ -344,11 +345,10 @@ public class MetadataStore implements StorageEngine<ByteArray, byte[], byte[]> {
 
     public StoreDefinition getStoreDef(String storeName) {
         List<StoreDefinition> storeDefs = getStoreDefList();
-        for(StoreDefinition storeDef: storeDefs) {
-            if(storeDef.getName().equals(storeName))
-                return storeDef;
+        StoreDefinition storeDef = StoreUtils.getStoreDef(storeDefs, storeName);
+        if(storeDef != null) {
+            return storeDef;
         }
-
         throw new VoldemortException("Store " + storeName + " not found in MetadataStore");
     }
 
@@ -368,42 +368,35 @@ public class MetadataStore implements StorageEngine<ByteArray, byte[], byte[]> {
             return StoreState.REBALANCING;
     }
 
-    @SuppressWarnings("unchecked")
     public RoutingStrategy getRoutingStrategy(String storeName) {
-        Map<String, RoutingStrategy> routingStrategyMap = (Map<String, RoutingStrategy>) metadataCache.get(ROUTING_STRATEGY_KEY)
-                                                                                                      .getValue();
-        return routingStrategyMap.get(storeName);
-    }
-
-    public void updateRoutingStrategies(Cluster cluster, List<StoreDefinition> storeDefs) {
-        VectorClock clock = new VectorClock();
-        if(metadataCache.containsKey(ROUTING_STRATEGY_KEY))
-            clock = (VectorClock) metadataCache.get(ROUTING_STRATEGY_KEY).getVersion();
-
-        HashMap<String, RoutingStrategy> routingStrategyMap = createRoutingStrategyMap(cluster,
-                                                                                       storeDefs);
-        this.metadataCache.put(ROUTING_STRATEGY_KEY,
-                               new Versioned<Object>(routingStrategyMap,
-                                                     clock.incremented(getNodeId(),
-                                                                       System.currentTimeMillis())));
-
-        for(String storeName: storeNameTolisteners.keySet()) {
-            RoutingStrategy updatedRoutingStrategy = routingStrategyMap.get(storeName);
-            if(updatedRoutingStrategy != null) {
-                try {
-                    storeNameTolisteners.get(storeName)
-                                        .updateRoutingStrategy(updatedRoutingStrategy);
-                } catch(Exception e) {
-                    if(logger.isEnabledFor(Level.WARN))
-                        logger.warn(e, e);
-                }
-            }
-
+        RoutingStrategy strategy = routingStrategies.get(storeName);
+        if(strategy == null) {
+            Cluster cluster = getCluster();
+            StoreDefinition storeDef = getStoreDef(storeName);
+            strategy = routingFactory.updateRoutingStrategy(storeDef, cluster);
+            routingStrategies.put(storeName, strategy);
         }
+        return strategy;
     }
 
-    public StoreDefinition getStoreDefinition() {
-        throw new VoldemortException("Metadata has no store definition");
+    private void updateRoutingStrategies(Cluster cluster, List<StoreDefinition> storeDefs) {
+        routingStrategies.clear();
+
+        for(String name: metadataListeners.keySet()) {
+            try {
+                StoreDefinition storeDef = StoreUtils.getStoreDef(storeDefs, name);
+                if(storeDef != null) {
+                    RoutingStrategy strategy = routingFactory.updateRoutingStrategy(storeDef,
+                                                                                    cluster);
+                    routingStrategies.put(name, strategy);
+                    MetadataStoreListener listener = metadataListeners.get(name);
+                    listener.updateRoutingStrategy(strategy);
+                }
+            } catch(Exception e) {
+                if(logger.isEnabledFor(Level.WARN))
+                    logger.warn(e, e);
+            }
+        }
     }
 
     public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(Collection<Integer> partitions,
@@ -492,20 +485,6 @@ public class MetadataStore implements StorageEngine<ByteArray, byte[], byte[]> {
             // put default value if failed to init
             this.put(key, new Versioned<Object>(defaultValue));
         }
-    }
-
-    private HashMap<String, RoutingStrategy> createRoutingStrategyMap(Cluster cluster,
-                                                                      List<StoreDefinition> storeDefs) {
-        HashMap<String, RoutingStrategy> map = new HashMap<String, RoutingStrategy>();
-
-        for(StoreDefinition store: storeDefs) {
-            map.put(store.getName(), routingFactory.updateRoutingStrategy(store, cluster));
-        }
-
-        // add metadata Store route to ALL routing strategy.
-        map.put(METADATA_STORE_NAME, new RouteToAllStrategy(getCluster().getNodes()));
-
-        return map;
     }
 
     /**

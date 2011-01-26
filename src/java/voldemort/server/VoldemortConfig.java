@@ -28,6 +28,7 @@ import voldemort.server.scheduler.slop.StreamingSlopPusherJob;
 import voldemort.store.bdb.BdbStorageConfiguration;
 import voldemort.store.memory.CacheStorageConfiguration;
 import voldemort.store.memory.InMemoryStorageConfiguration;
+import voldemort.store.metadata.MetadataStore;
 import voldemort.store.mysql.MysqlStorageConfiguration;
 import voldemort.store.readonly.BinarySearchStrategy;
 import voldemort.store.readonly.ReadOnlyStorageConfiguration;
@@ -161,6 +162,8 @@ public class VoldemortConfig implements Serializable {
     private int rebalancingTimeoutInSeconds;
     private int rebalancingServicePeriod;
     private int maxParallelStoresRebalancing;
+
+    private MetadataStore metadata;
 
     public VoldemortConfig(Properties props) {
         this(new Props(props));
@@ -1199,6 +1202,11 @@ public class VoldemortConfig implements Serializable {
         this(new Props().with("node.id", nodeId).with("voldemort.home", voldemortHome));
     }
 
+    public VoldemortConfig(Props props, MetadataStore metadata) {
+        this(props.with("node.id", metadata.getNodeId()));
+        this.metadata = metadata;
+    }
+
     public boolean isGossipEnabled() {
         return enableGossip;
     }
@@ -1244,17 +1252,18 @@ public class VoldemortConfig implements Serializable {
     }
 
     public Props getProperties(String prefix, boolean clip) {
-        Props result = new Props();
+        return allProps.subset(prefix, clip);
+    }
 
-        for(String key: allProps.keySet()) {
-            if(key.startsWith(prefix)) {
-                if(clip) {
-                    result.put(key.substring(prefix.length()), allProps.get(key));
-                } else {
-                    result.put(key, allProps.get(key));
+    public MetadataStore getMetadata() {
+        if(metadata == null) {
+            synchronized(this) {
+                if(metadata == null) {
+                    this.metadata = MetadataStore.readFromDirectory(new File(getMetadataDirectory()),
+                                                                    getNodeId());
                 }
             }
         }
-        return result;
+        return metadata;
     }
 }

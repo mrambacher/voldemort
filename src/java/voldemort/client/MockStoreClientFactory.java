@@ -17,23 +17,30 @@
 package voldemort.client;
 
 import java.io.StringReader;
+import java.util.Collections;
 import java.util.List;
 
+import voldemort.cluster.Cluster;
+import voldemort.cluster.Node;
 import voldemort.cluster.failuredetector.FailureDetector;
 import voldemort.cluster.failuredetector.NoopFailureDetector;
 import voldemort.serialization.DefaultSerializerFactory;
 import voldemort.serialization.Serializer;
+import voldemort.server.VoldemortConfig;
 import voldemort.store.StorageEngine;
 import voldemort.store.Store;
 import voldemort.store.StoreDefinition;
 import voldemort.store.StoreUtils;
-import voldemort.store.memory.InMemoryStorageEngine;
+import voldemort.store.memory.InMemoryStorageConfiguration;
 import voldemort.store.memory.InMemoryStore;
+import voldemort.store.metadata.MetadataStore;
 import voldemort.store.serialized.SerializingStore;
 import voldemort.store.versioned.InconsistencyResolvingStore;
 import voldemort.store.versioned.VersionIncrementingStore;
 import voldemort.store.views.ViewStorageConfiguration;
 import voldemort.store.views.ViewStorageEngine;
+import voldemort.utils.ByteArray;
+import voldemort.utils.Props;
 import voldemort.utils.SystemTime;
 import voldemort.utils.Time;
 import voldemort.versioning.ChainedResolver;
@@ -41,7 +48,10 @@ import voldemort.versioning.InconsistencyResolver;
 import voldemort.versioning.TimeBasedInconsistencyResolver;
 import voldemort.versioning.VectorClockInconsistencyResolver;
 import voldemort.versioning.Versioned;
+import voldemort.xml.ClusterMapper;
 import voldemort.xml.StoreDefinitionsMapper;
+
+import com.google.common.collect.Lists;
 
 /**
  * A store client that produces non-persistent, in-memory stores. This is useful
@@ -134,6 +144,29 @@ public class MockStoreClientFactory implements StoreClientFactory {
         return consistentStore;
     }
 
+    public Cluster getCluster() {
+        Node node = new Node(nodeId, "localhost", 6666, 8081, 6667, Lists.newArrayList(0, 1));
+        return new Cluster("mock", Collections.singletonList(node));
+    }
+
+    private StorageEngine<ByteArray, byte[], byte[]> getMemoryEngine(StoreDefinition storeDef) {
+        List<StoreDefinition> storeDefs = storeMapper.readStoreList(new StringReader(storesXml));
+        Cluster cluster = getCluster();
+
+        Store<String, String, String> innerStore = InMemoryStore.create("inner-metadata");
+        innerStore.put(MetadataStore.CLUSTER_KEY,
+                       new Versioned<String>(new ClusterMapper().writeCluster(cluster)),
+                       null);
+        innerStore.put(MetadataStore.STORES_KEY,
+                       new Versioned<String>(new StoreDefinitionsMapper().writeStoreList(storeDefs)),
+                       null);
+        MetadataStore metadata = new MetadataStore(innerStore, this.nodeId);
+        Props props = new Props().with("voldemort.home", System.getProperty("java.io.tmpdir"));
+        VoldemortConfig config = new VoldemortConfig(props, metadata);
+        InMemoryStorageConfiguration storeConfiguration = new InMemoryStorageConfiguration(config);
+        return storeConfiguration.getStore(storeDef);
+    }
+
     private <K1, V1, T1> Store<K1, V1, T1> getRawStore(String storeName) {
         List<StoreDefinition> storeDefs = storeMapper.readStoreList(new StringReader(storesXml));
         StoreDefinition storeDef = null;
@@ -160,7 +193,7 @@ public class MockStoreClientFactory implements StoreClientFactory {
         if(storeDef.isView()) {
             String targetName = storeDef.getViewTargetStoreName();
             StoreDefinition targetDef = StoreUtils.getStoreDef(storeDefs, targetName);
-            engine = new InMemoryStorageEngine(targetDef);
+            engine = getMemoryEngine(targetDef);
             // instantiate view
 
             engine = new ViewStorageEngine(storeDef,
@@ -176,7 +209,7 @@ public class MockStoreClientFactory implements StoreClientFactory {
                                            null,
                                            ViewStorageConfiguration.loadTransformation(storeDef.getValueTransformation()));
         } else {
-            engine = new InMemoryStorageEngine(storeDef);
+            engine = getMemoryEngine(storeDef);
         }
 
         Store store = new VersionIncrementingStore(engine, nodeId, time);

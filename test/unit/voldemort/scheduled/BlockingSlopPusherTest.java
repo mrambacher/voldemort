@@ -32,7 +32,6 @@ import voldemort.server.StoreRepository;
 import voldemort.server.scheduler.slop.BlockingSlopPusherJob;
 import voldemort.store.FailingStore;
 import voldemort.store.async.AsyncUtils;
-import voldemort.store.memory.InMemoryStorageEngine;
 import voldemort.store.memory.InMemoryStore;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.store.slop.Slop;
@@ -54,16 +53,17 @@ public class BlockingSlopPusherTest extends TestCase {
     protected void setUp() throws Exception {
         Cluster cluster = makeCluster(3);
         repo = new StoreRepository();
-        repo.setSlopStore(new SlopStorageEngine(new InMemoryStorageEngine(TestUtils.getStoreDef("slop",
-                                                                                                "slop")),
+        MetadataStore metadataStore = ServerTestUtils.createMetadataStore(cluster,
+                                                                          ServerTestUtils.getStoreDefs(1));
+        repo.setSlopStore(new SlopStorageEngine(ServerTestUtils.createMemoryEngine(metadataStore,
+                                                                                   TestUtils.getStoreDef("slop",
+                                                                                                         "slop")),
                                                 cluster));
         repo.addNodeStore(0, new InMemoryStore<ByteArray, byte[], byte[]>(STORE_NAME));
         repo.addNodeStore(1, new InMemoryStore<ByteArray, byte[], byte[]>(STORE_NAME));
         repo.addNodeStore(2,
                           AsyncUtils.asStore(new FailingStore<ByteArray, byte[], byte[]>(STORE_NAME)));
 
-        MetadataStore metadataStore = ServerTestUtils.createMetadataStore(cluster,
-                                                                          ServerTestUtils.getStoreDefs(1));
         pusher = new BlockingSlopPusherJob(repo,
                                            metadataStore,
                                            new NoopFailureDetector(),

@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.concurrent.ConcurrentMap;
 
 import voldemort.server.VoldemortConfig;
-import voldemort.store.StorageConfiguration;
+import voldemort.store.AbstractStorageConfiguration;
 import voldemort.store.StorageEngine;
 import voldemort.store.StoreDefinition;
 import voldemort.utils.ByteArray;
@@ -35,21 +35,20 @@ import com.google.common.collect.MapMaker;
  * 
  * 
  */
-public class CacheStorageConfiguration implements StorageConfiguration {
+public class CacheStorageConfiguration extends AbstractStorageConfiguration {
 
     public static final String TYPE_NAME = "cache";
 
-    public CacheStorageConfiguration() {}
-
-    @SuppressWarnings("unused")
-    public CacheStorageConfiguration(VoldemortConfig config) {}
+    public CacheStorageConfiguration(VoldemortConfig config) {
+        super(config);
+    }
 
     public void close() {}
 
     public StorageEngine<ByteArray, byte[], byte[]> getStore(StoreDefinition storeDef) {
         ConcurrentMap<ByteArray, List<Versioned<byte[]>>> backingMap = new MapMaker().softValues()
                                                                                      .makeMap();
-        return new InMemoryStorageEngine(storeDef, backingMap);
+        return new InMemoryStorageEngine(storeDef, this, backingMap);
     }
 
     public String getType() {

@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.io.StringReader;
 import java.net.ServerSocket;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -64,6 +65,7 @@ import voldemort.store.UnreachableStoreException;
 import voldemort.store.async.StoreFuture;
 import voldemort.store.http.HttpStore;
 import voldemort.store.memory.InMemoryStorageConfiguration;
+import voldemort.store.memory.InMemoryStorageEngine;
 import voldemort.store.memory.InMemoryStore;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.store.slop.Slop;
@@ -323,6 +325,28 @@ public class ServerTestUtils {
         MetadataStore metadata = createMetadataStore(new ClusterMapper().readCluster(new StringReader(clusterXml)),
                                                      new StoreDefinitionsMapper().readStoreList(new StringReader(storesXml)));
         return metadata;
+    }
+
+    public static InMemoryStorageEngine createMemoryEngine(StoreDefinition storeDef) {
+        Cluster cluster = getLocalCluster(1);
+        MetadataStore metadataStore = createMetadataStore(cluster,
+                                                          Collections.singletonList(storeDef));
+        return createMemoryEngine(metadataStore, storeDef);
+    }
+
+    public static InMemoryStorageEngine createMemoryEngine(MetadataStore metadataStore,
+                                                           StoreDefinition storeDef) {
+        Props props = new Props();
+        props.with("node.id", metadataStore.getNodeId());
+        props.with("voldemort.home", System.getProperty("java.io.tmpdir"));
+
+        VoldemortConfig config = new VoldemortConfig(props, metadataStore);
+        InMemoryStorageConfiguration storeConfig = new InMemoryStorageConfiguration(config);
+        return (InMemoryStorageEngine) storeConfig.getStore(storeDef);
+    }
+
+    public static MetadataStore createMetadataStore(Cluster cluster, StoreDefinition storeDef) {
+        return createMetadataStore(cluster, Collections.singletonList(storeDef));
     }
 
     public static MetadataStore createMetadataStore(Cluster cluster, List<StoreDefinition> storeDefs) {

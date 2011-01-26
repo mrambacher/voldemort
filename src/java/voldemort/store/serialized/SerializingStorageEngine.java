@@ -21,7 +21,6 @@ import java.util.Collection;
 import voldemort.client.protocol.VoldemortFilter;
 import voldemort.serialization.Serializer;
 import voldemort.store.StorageEngine;
-import voldemort.store.StoreDefinition;
 import voldemort.utils.ByteArray;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
@@ -55,10 +54,6 @@ public class SerializingStorageEngine<K, V, T> extends SerializingStore<K, V, T>
                                                                          Serializer<V1> v,
                                                                          Serializer<T1> t) {
         return new SerializingStorageEngine<K1, V1, T1>(s, k, v, t);
-    }
-
-    public StoreDefinition getStoreDefinition() {
-        return storageEngine.getStoreDefinition();
     }
 
     private VoldemortFilter<ByteArray, byte[]> toFilter(final VoldemortFilter<K, V> filter) {

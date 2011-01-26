@@ -25,7 +25,7 @@ import java.util.concurrent.ConcurrentMap;
 
 import voldemort.annotations.concurrency.NotThreadsafe;
 import voldemort.client.protocol.VoldemortFilter;
-import voldemort.routing.RoutingStrategy;
+import voldemort.store.AbstractStorageConfiguration;
 import voldemort.store.StoreDefinition;
 import voldemort.store.StoreUtils;
 import voldemort.store.WrappedStorageEngine;
@@ -41,15 +41,18 @@ import voldemort.versioning.Versioned;
  */
 public class InMemoryStorageEngine extends WrappedStorageEngine<ByteArray, byte[], byte[]> {
 
-    protected RoutingStrategy routingStrategy;
+    private final AbstractStorageConfiguration config;
 
-    public InMemoryStorageEngine(StoreDefinition def) {
+    public InMemoryStorageEngine(StoreDefinition def, AbstractStorageConfiguration config) {
         super(new InMemoryStore<ByteArray, byte[], byte[]>(def.getName()), def);
+        this.config = config;
     }
 
     public InMemoryStorageEngine(StoreDefinition def,
+                                 AbstractStorageConfiguration config,
                                  ConcurrentMap<ByteArray, List<Versioned<byte[]>>> map) {
         super(new InMemoryStore<ByteArray, byte[], byte[]>(def.getName(), map), def);
+        this.config = config;
     }
 
     public void deleteAll() {
@@ -87,7 +90,9 @@ public class InMemoryStorageEngine extends WrappedStorageEngine<ByteArray, byte[
                                                                         final byte[] transforms) {
         InMemoryStore<ByteArray, byte[], byte[]> memory = (InMemoryStore<ByteArray, byte[], byte[]>) getStore();
         ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries = new InMemoryIterator<ByteArray, byte[]>(memory.map);
-        entries = StoreUtils.entries(entries, storeDef, partitions);
+        if(partitions != null && partitions.size() > 0) {
+            entries = StoreUtils.entries(entries, config.getRoutingStrategy(getName()), partitions);
+        }
         return StoreUtils.entries(entries, filter);
     }
 
@@ -95,7 +100,9 @@ public class InMemoryStorageEngine extends WrappedStorageEngine<ByteArray, byte[
                                             final VoldemortFilter<ByteArray, byte[]> filter) {
         InMemoryStore<ByteArray, byte[], byte[]> memory = (InMemoryStore<ByteArray, byte[], byte[]>) getStore();
         ClosableIterator<ByteArray> keys = toIterator(memory.map.keySet().iterator());
-        keys = StoreUtils.keys(keys, storeDef, partitions);
+        if(partitions != null && partitions.size() > 0) {
+            keys = StoreUtils.keys(keys, config.getRoutingStrategy(getName()), partitions);
+        }
         return StoreUtils.keys(keys, filter);
     }
 

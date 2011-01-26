@@ -22,18 +22,19 @@ import org.apache.commons.dbcp.BasicDataSource;
 
 import voldemort.VoldemortException;
 import voldemort.server.VoldemortConfig;
-import voldemort.store.StorageConfiguration;
+import voldemort.store.AbstractStorageConfiguration;
 import voldemort.store.StorageEngine;
 import voldemort.store.StoreDefinition;
 import voldemort.utils.ByteArray;
 
-public class MysqlStorageConfiguration implements StorageConfiguration {
+public class MysqlStorageConfiguration extends AbstractStorageConfiguration {
 
     public static final String TYPE_NAME = "mysql";
 
     private BasicDataSource dataSource;
 
     public MysqlStorageConfiguration(VoldemortConfig config) {
+        super(config);
         BasicDataSource ds = new BasicDataSource();
         ds.setUrl("jdbc:mysql://" + config.getMysqlHost() + ":" + config.getMysqlPort() + "/"
                   + config.getMysqlDatabaseName());
@@ -44,7 +45,11 @@ public class MysqlStorageConfiguration implements StorageConfiguration {
     }
 
     public StorageEngine<ByteArray, byte[], byte[]> getStore(StoreDefinition storeDef) {
-        return new MysqlStorageEngine(storeDef, dataSource);
+        return new MysqlStorageEngine(storeDef, this);
+    }
+
+    BasicDataSource getDataSource() {
+        return dataSource;
     }
 
     public String getType() {

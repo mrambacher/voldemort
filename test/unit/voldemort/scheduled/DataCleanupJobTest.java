@@ -21,12 +21,12 @@ import java.util.concurrent.Semaphore;
 
 import junit.framework.TestCase;
 import voldemort.MockTime;
+import voldemort.ServerTestUtils;
 import voldemort.TestUtils;
 import voldemort.serialization.StringSerializer;
 import voldemort.server.scheduler.DataCleanupJob;
 import voldemort.store.StorageEngine;
 import voldemort.store.memory.InMemoryStorageConfiguration;
-import voldemort.store.memory.InMemoryStorageEngine;
 import voldemort.store.serialized.SerializingStorageEngine;
 import voldemort.utils.ByteArray;
 import voldemort.utils.EventThrottler;
@@ -43,8 +43,8 @@ public class DataCleanupJobTest extends TestCase {
     @Override
     public void setUp() {
         time = new MockTime();
-        StorageEngine<ByteArray, byte[], byte[]> memory = new InMemoryStorageEngine(TestUtils.getStoreDef("test",
-                                                                                                          InMemoryStorageConfiguration.TYPE_NAME));
+        StorageEngine<ByteArray, byte[], byte[]> memory = ServerTestUtils.createMemoryEngine(TestUtils.getStoreDef("test",
+                                                                                                                   InMemoryStorageConfiguration.TYPE_NAME));
 
         engine = SerializingStorageEngine.wrap(memory,
                                                new StringSerializer(),

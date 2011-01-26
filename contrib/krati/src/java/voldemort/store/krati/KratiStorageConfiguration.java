@@ -4,22 +4,17 @@ import java.io.File;
 
 import krati.cds.impl.segment.MappedSegmentFactory;
 import krati.cds.impl.segment.SegmentFactory;
-
-import org.apache.log4j.Logger;
-
 import voldemort.server.VoldemortConfig;
-import voldemort.store.StorageConfiguration;
+import voldemort.store.AbstractStorageConfiguration;
 import voldemort.store.StorageEngine;
 import voldemort.store.StoreDefinition;
 import voldemort.utils.ByteArray;
 import voldemort.utils.Props;
 import voldemort.utils.ReflectUtils;
 
-public class KratiStorageConfiguration implements StorageConfiguration {
+public class KratiStorageConfiguration extends AbstractStorageConfiguration {
 
     public static final String TYPE_NAME = "krati";
-
-    private static Logger logger = Logger.getLogger(KratiStorageConfiguration.class);
 
     private final String dataDirectory;
     private final int lockStripes;
@@ -30,6 +25,7 @@ public class KratiStorageConfiguration implements StorageConfiguration {
     private final Class<?> factoryClass;
 
     public KratiStorageConfiguration(VoldemortConfig config) {
+        super(config);
         Props props = config.getAllProps();
         File kratiDir = new File(config.getDataDirectory(), "krati");
         kratiDir.mkdirs();
@@ -55,6 +51,7 @@ public class KratiStorageConfiguration implements StorageConfiguration {
 
             SegmentFactory segmentFactory = (SegmentFactory) ReflectUtils.callConstructor(factoryClass);
             return new KratiStorageEngine(storeDef,
+                                          this,
                                           segmentFactory,
                                           segmentFileSizeMb,
                                           lockStripes,

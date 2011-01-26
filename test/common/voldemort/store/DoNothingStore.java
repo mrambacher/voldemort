@@ -41,10 +41,6 @@ public class DoNothingStore<K, V, T> implements StorageEngine<K, V, T> {
         this.storeDef = Utils.notNull(storeDef);
     }
 
-    public StoreDefinition getStoreDefinition() {
-        return storeDef;
-    }
-
     public void close() throws VoldemortException {
         // Do nothing;
     }

@@ -69,11 +69,6 @@ public class ViewStorageEngine extends DelegatingStorageEngine<ByteArray, byte[]
             throw new IllegalArgumentException("View without either a key transformation or a value transformation.");
     }
 
-    @Override
-    public StoreDefinition getStoreDefinition() {
-        return viewDef;
-    }
-
     private List<Versioned<byte[]>> inflateValues(List<Versioned<byte[]>> result) {
         List<Versioned<byte[]>> inflated = new ArrayList<Versioned<byte[]>>(result.size());
         for(Versioned<byte[]> item: result) {

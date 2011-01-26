@@ -25,26 +25,24 @@ import java.util.Properties;
 
 import javax.sql.DataSource;
 
-import org.apache.commons.dbcp.BasicDataSource;
 import org.junit.Test;
 
 import voldemort.TestUtils;
+import voldemort.server.VoldemortConfig;
 import voldemort.store.AbstractStorageEngineTest;
+import voldemort.store.StorageConfiguration;
 import voldemort.store.StorageEngine;
 import voldemort.store.StoreDefinition;
 import voldemort.utils.ByteArray;
+import voldemort.utils.Props;
 
 public class MysqlStorageEngineTest extends AbstractStorageEngineTest {
-
-    protected String databaseJDBCHost = null;
-    protected String databaseJDBCUser = null;
-    protected String databaseJDBCPswd = null;
 
     protected final static String DBCONN_PROPS = "configs/DBConnection.properties";
     protected final static String DBCONN_HOST_ENV_NAME = "VOLD_JDBC_HOST";
     protected final static String DBCONN_USER_ENV_NAME = "VOLD_JDBC_USER";
     protected final static String DBCONN_PSWD_ENV_NAME = "VOLD_JDBC_PSWD";
-    protected final static String DEFAULT_JDBC_HOST = "localhost:3306/test";
+    protected final static String DEFAULT_JDBC_HOST = "fred";
     protected final static String DEFAULT_JDBC_USER = "root";
     protected final static String DEFAULT_JDBC_PSWD = "";
 
@@ -55,15 +53,6 @@ public class MysqlStorageEngineTest extends AbstractStorageEngineTest {
     public MysqlStorageEngineTest() {
         super("test_store_" + System.getProperty("user.name", "mysql"),
               MysqlStorageConfiguration.TYPE_NAME);
-    }
-
-    @Override
-    public void setUp() throws Exception {
-        configureDatabaseProperties();
-        StorageEngine<ByteArray, byte[], byte[]> engine = getStorageEngine();
-        destroyEngine(engine);
-        createEngine(engine);
-        super.setUp();
     }
 
     protected void destroyEngine(StorageEngine<ByteArray, byte[], byte[]> engine) {
@@ -85,7 +74,8 @@ public class MysqlStorageEngineTest extends AbstractStorageEngineTest {
      * Finally, use the static constants from this class as the ultimate
      * fallback option
      */
-    protected void configureDatabaseProperties() {
+    @Override
+    protected Props getServerProperties() {
 
         String defaultJDBCHost = null;
         String defaultJDBCUser = null;
@@ -130,14 +120,22 @@ public class MysqlStorageEngineTest extends AbstractStorageEngineTest {
             pswd = defaultJDBCPswd;
         }
 
-        databaseJDBCHost = host;
-        databaseJDBCUser = user;
-        databaseJDBCPswd = pswd;
+        Props serverProps = super.getServerProperties();
+        serverProps.with("mysql.user", user);
+        serverProps.with("mysql.password", pswd);
+        serverProps.with("mysql.host", host);
+        serverProps.with("mysql.database", "test");
+        return serverProps;
+    }
+
+    @Override
+    public StorageConfiguration createStorageConfiguration(VoldemortConfig config) {
+        return new MysqlStorageConfiguration(config);
     }
 
     @Override
     public StorageEngine<ByteArray, byte[], byte[]> createStorageEngine(StoreDefinition storeDef) {
-        MysqlStorageEngine engine = new MysqlStorageEngine(storeDef, getDataSource());
+        MysqlStorageEngine engine = (MysqlStorageEngine) super.createStorageEngine(storeDef);
         engine.destroy();
         engine.create();
         return engine;
@@ -158,12 +156,8 @@ public class MysqlStorageEngineTest extends AbstractStorageEngineTest {
     }
 
     protected DataSource getDataSource() {
-        BasicDataSource ds = new BasicDataSource();
-        ds.setUrl("jdbc:mysql://" + databaseJDBCHost);
-        ds.setUsername(databaseJDBCUser);
-        ds.setPassword(databaseJDBCPswd);
-        ds.setDriverClassName("com.mysql.jdbc.Driver");
-        return ds;
+        MysqlStorageConfiguration sqlConfig = (MysqlStorageConfiguration) this.configuration;
+        return sqlConfig.getDataSource();
     }
 
     public boolean executeQuery(String query) throws SQLException {

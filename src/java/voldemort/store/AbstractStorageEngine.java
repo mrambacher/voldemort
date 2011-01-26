@@ -48,10 +48,6 @@ public abstract class AbstractStorageEngine implements StorageEngine<ByteArray, 
         this.storeDef = Utils.notNull(def);
     }
 
-    public StoreDefinition getStoreDefinition() {
-        return storeDef;
-    }
-
     public String getName() {
         return storeDef.getName();
     }
@@ -213,16 +209,6 @@ public abstract class AbstractStorageEngine implements StorageEngine<ByteArray, 
     public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iter,
                                                                         final VoldemortFilter<ByteArray, byte[]> filter) {
         return StoreUtils.entries(iter, filter);
-    }
-
-    public ClosableIterator<ByteArray> keys(ClosableIterator<ByteArray> iter,
-                                            final Collection<Integer> partitions) {
-        return StoreUtils.keys(iter, storeDef, partitions);
-    }
-
-    public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iter,
-                                                                        final Collection<Integer> partitions) {
-        return StoreUtils.entries(iter, getStoreDefinition(), partitions);
     }
 
     /**

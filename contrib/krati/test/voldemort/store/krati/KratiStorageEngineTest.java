@@ -2,12 +2,13 @@ package voldemort.store.krati;
 
 import java.io.File;
 
-import krati.cds.impl.segment.MappedSegmentFactory;
 import voldemort.TestUtils;
+import voldemort.server.VoldemortConfig;
 import voldemort.store.AbstractStorageEngineTest;
+import voldemort.store.StorageConfiguration;
 import voldemort.store.StorageEngine;
-import voldemort.store.StoreDefinition;
 import voldemort.utils.ByteArray;
+import voldemort.utils.Props;
 
 public class KratiStorageEngineTest extends AbstractStorageEngineTest {
 
@@ -26,14 +27,20 @@ public class KratiStorageEngineTest extends AbstractStorageEngineTest {
     }
 
     @Override
-    public StorageEngine<ByteArray, byte[], byte[]> createStorageEngine(StoreDefinition storeDef) {
-        return new KratiStorageEngine(storeDef,
-                                      new MappedSegmentFactory(),
-                                      10,
-                                      10,
-                                      0.75,
-                                      0,
-                                      storeDir);
+    protected Props getServerProperties() {
+        Props props = super.getServerProperties();
+        props.with("voldemort.home", storeDir.getAbsolutePath());
+        props.with("krati.segment.filesize.mb", 10);
+        props.with("krati.lock.stripes", 10);
+        props.with("krati.load.factor", 0.75);
+        props.with("krati.initlevel", 2);
+
+        return props;
+    }
+
+    @Override
+    public StorageConfiguration createStorageConfiguration(VoldemortConfig config) {
+        return new KratiStorageConfiguration(config);
     }
 
     @Override

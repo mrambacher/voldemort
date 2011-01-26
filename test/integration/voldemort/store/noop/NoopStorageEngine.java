@@ -56,10 +56,6 @@ public class NoopStorageEngine implements StorageEngine<ByteArray, byte[], byte[
         this.dataReflect = reflect;
     }
 
-    public StoreDefinition getStoreDefinition() {
-        return storeDef;
-    }
-
     public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(final Collection<Integer> partitions,
                                                                         final VoldemortFilter<ByteArray, byte[]> filter,
                                                                         final byte[] transforms) {

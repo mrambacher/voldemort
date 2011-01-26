@@ -16,22 +16,22 @@
 
 package voldemort.store.invalidmetadata;
 
-import java.util.Arrays;
-import java.util.List;
+import java.util.Map;
 
 import junit.framework.TestCase;
 import voldemort.ServerTestUtils;
+import voldemort.TestUtils;
+import voldemort.VoldemortException;
 import voldemort.cluster.Cluster;
 import voldemort.cluster.Node;
 import voldemort.routing.RoutingStrategy;
-import voldemort.routing.RoutingStrategyFactory;
 import voldemort.store.DoNothingStore;
 import voldemort.store.InvalidMetadataException;
 import voldemort.store.Store;
 import voldemort.store.StoreDefinition;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.utils.ByteArray;
-import voldemort.utils.ByteUtils;
+import voldemort.versioning.VersionFactory;
 import voldemort.versioning.Versioned;
 
 import com.google.common.collect.ImmutableList;
@@ -41,25 +41,41 @@ import com.google.common.collect.ImmutableList;
  */
 public class InvalidMetadataCheckingStoreTest extends TestCase {
 
-    private static int LOOP_COUNT = 1000;
-
-    public void testValidMetaData() {
+    public void testValidMetadata() {
         Cluster cluster = ServerTestUtils.getLocalCluster(3, new int[][] { { 0, 1, 2, 3 },
                 { 4, 5, 6, 7 }, { 8, 9, 10, 11 } });
         StoreDefinition storeDef = ServerTestUtils.getStoreDefs(1).get(0);
-
-        MetadataStore metadata = ServerTestUtils.createMetadataStore(cluster,
-                                                                     Arrays.asList(storeDef));
-
+        MetadataStore metadataStore = ServerTestUtils.createMetadataStore(cluster, storeDef);
+        RoutingStrategy strategy = metadataStore.getRoutingStrategy(storeDef.getName());
         InvalidMetadataCheckingStore store = new InvalidMetadataCheckingStore(0,
                                                                               new DoNothingStore<ByteArray, byte[], byte[]>(storeDef),
-                                                                              metadata);
+                                                                              metadataStore);
+        this.testOperation(cluster.getNodeById(0),
+                           metadataStore,
+                           store,
+                           TestUtils.getKeysForPartitions(strategy, cluster.getNodeById(0)
+                                                                           .getPartitionIds()));
+    }
 
-        try {
-            doOperations(0, store, metadata, storeDef);
-        } catch(InvalidMetadataException e) {
-            throw new RuntimeException("Should not see any InvalidMetaDataException", e);
-        }
+    public void testInvalidMetadata() {
+        Cluster cluster = ServerTestUtils.getLocalCluster(3, new int[][] { { 0, 1, 2, 3 },
+                { 4, 5, 6, 7 }, { 8, 9, 10, 11 } });
+        StoreDefinition storeDef = ServerTestUtils.getStoreDefs(1).get(0);
+        MetadataStore metadataStore = ServerTestUtils.createMetadataStore(cluster, storeDef);
+        RoutingStrategy strategy = metadataStore.getRoutingStrategy(storeDef.getName());
+        InvalidMetadataCheckingStore store = new InvalidMetadataCheckingStore(0,
+                                                                              new DoNothingStore<ByteArray, byte[], byte[]>(storeDef),
+                                                                              metadataStore);
+        this.testOperation(cluster.getNodeById(0),
+                           strategy,
+                           store,
+                           TestUtils.getKeysForPartitions(strategy, cluster.getNodeById(1)
+                                                                           .getPartitionIds()));
+        this.testOperation(cluster.getNodeById(0),
+                           strategy,
+                           store,
+                           TestUtils.getKeysForPartitions(strategy, cluster.getNodeById(2)
+                                                                           .getPartitionIds()));
     }
 
     /**
@@ -72,24 +88,18 @@ public class InvalidMetadataCheckingStoreTest extends TestCase {
         Cluster cluster = ServerTestUtils.getLocalCluster(3, new int[][] { { 0, 1, 2, 3 },
                 { 4, 5, 6, 7 }, { 8, 9, 10 } });
 
-        MetadataStore metadata = ServerTestUtils.createMetadataStore(cluster,
-                                                                     Arrays.asList(storeDef));
-
+        MetadataStore metadataStore = ServerTestUtils.createMetadataStore(cluster, storeDef);
+        Map<Integer, ByteArray> keys = TestUtils.getKeysForPartitions(metadataStore.getRoutingStrategy(storeDef.getName()),
+                                                                      cluster.getNumberOfPartitions());
         InvalidMetadataCheckingStore store = new InvalidMetadataCheckingStore(0,
                                                                               new DoNothingStore<ByteArray, byte[], byte[]>(storeDef),
-                                                                              metadata);
-        try {
-            // add partitions to node 0 on client side.
-            Cluster updatedCluster = ServerTestUtils.getLocalCluster(3, new int[][] {
-                    { 0, 1, 2, 3, 4, 5, 10 }, { 6, 7 }, { 8, 9 } });
-
-            MetadataStore updatedMetadata = ServerTestUtils.createMetadataStore(updatedCluster,
-                                                                                Arrays.asList(storeDef));
-            doOperations(0, store, updatedMetadata, storeDef);
-            fail("Should see InvalidMetadataExceptions");
-        } catch(InvalidMetadataException e) {
-            // ignore
-        }
+                                                                              metadataStore);
+        this.testOperation(cluster.getNodeById(0), metadataStore, store, keys);
+        // add partitions to node 0 on client side.
+        Cluster updated = ServerTestUtils.getLocalCluster(3, new int[][] {
+                { 0, 1, 2, 3, 4, 5, 10 }, { 6, 7 }, { 8, 9 } });
+        metadataStore.put(MetadataStore.CLUSTER_KEY, updated);
+        this.testOperation(updated.getNodeById(0), metadataStore, store, keys);
     }
 
     public void testRemovingPartition() {
@@ -97,65 +107,62 @@ public class InvalidMetadataCheckingStoreTest extends TestCase {
 
         Cluster cluster = ServerTestUtils.getLocalCluster(3, new int[][] { { 0, 1, 2, 3 },
                 { 4, 5, 6, 7 }, { 8, 9, 10 } });
-
-        MetadataStore metadata = ServerTestUtils.createMetadataStore(cluster,
-                                                                     Arrays.asList(storeDef));
+        MetadataStore metadataStore = ServerTestUtils.createMetadataStore(cluster, storeDef);
+        Map<Integer, ByteArray> keys = TestUtils.getKeysForPartitions(metadataStore.getRoutingStrategy(storeDef.getName()),
+                                                                      cluster.getNumberOfPartitions());
 
         InvalidMetadataCheckingStore store = new InvalidMetadataCheckingStore(0,
                                                                               new DoNothingStore<ByteArray, byte[], byte[]>(storeDef),
-                                                                              metadata);
-        try {
-            // remove partitions to node 0 on client side.
-            Cluster updatedCluster = ServerTestUtils.getLocalCluster(3, new int[][] { { 0, 1 },
-                    { 2, 4, 5, 6, 7 }, { 3, 8, 9, 10 } });
+                                                                              metadataStore);
+        this.testOperation(cluster.getNodeById(0), metadataStore, store, keys);
 
-            MetadataStore updatedMetadata = ServerTestUtils.createMetadataStore(updatedCluster,
-                                                                                Arrays.asList(storeDef));
-
-            doOperations(0, store, updatedMetadata, storeDef);
-        } catch(InvalidMetadataException e) {
-            throw new RuntimeException("Should not see any InvalidMetaDataException", e);
-        }
+        // remove partitions to node 0 on client side.
+        Cluster updated = ServerTestUtils.getLocalCluster(3, new int[][] { { 0, 1 },
+                { 2, 4, 5, 6, 7 }, { 3, 8, 9, 10 } });
+        metadataStore.put(MetadataStore.CLUSTER_KEY, updated);
+        this.testOperation(updated.getNodeById(0), metadataStore, store, keys);
     }
 
-    private boolean containsNodeId(List<Node> nodes, int nodeId) {
-        for(Node node: nodes) {
-            if(nodeId == node.getId()) {
-                return true;
-            }
-        }
-        return false;
+    private void testOperation(Node node,
+                               MetadataStore metadata,
+                               Store<ByteArray, byte[], byte[]> store,
+                               Map<Integer, ByteArray> keys) {
+        testOperation(node, metadata.getRoutingStrategy(store.getName()), store, keys);
     }
 
-    private void doOperations(int nodeId,
-                              Store<ByteArray, byte[], byte[]> store,
-                              MetadataStore metadata,
-                              StoreDefinition storeDef) {
-        for(int i = 0; i < LOOP_COUNT;) {
-            ByteArray key = new ByteArray(ByteUtils.md5(Integer.toString((int) (Math.random() * Integer.MAX_VALUE))
-                                                               .getBytes()));
-            byte[] value = "value".getBytes();
-            RoutingStrategy routingStrategy = new RoutingStrategyFactory().updateRoutingStrategy(storeDef,
-                                                                                                 metadata.getCluster());
-
-            if(containsNodeId(routingStrategy.routeRequest(key.get()), nodeId)) {
-                i++; // increment count
-                switch(i % 4) {
-                    case 0:
-                        store.get(key, null);
-                        break;
-                    case 1:
-                        store.delete(key, null);
-                        break;
-                    case 2:
-                        store.put(key, new Versioned<byte[]>(value), null);
-                        break;
-                    case 3:
-                        store.getAll(ImmutableList.of(key), null);
-                        break;
-                }
+    private void testOperation(Node node,
+                               RoutingStrategy strategy,
+                               Store<ByteArray, byte[], byte[]> store,
+                               Map<Integer, ByteArray> keys) {
+        for(ByteArray key: keys.values()) {
+            try {
+                store.get(key, null);
+                assertTrue(strategy.routeRequest(key.get()).contains(node));
+            } catch(VoldemortException ex) {
+                assertEquals("Unexpected Exception", InvalidMetadataException.class, ex.getClass());
+                assertFalse(strategy.routeRequest(key.get()).contains(node));
+            }
+            try {
+                store.delete(key, VersionFactory.newVersion());
+                assertTrue(strategy.routeRequest(key.get()).contains(node));
+            } catch(VoldemortException ex) {
+                assertEquals("Unexpected Exception", InvalidMetadataException.class, ex.getClass());
+                assertFalse(strategy.routeRequest(key.get()).contains(node));
+            }
+            try {
+                store.put(key, new Versioned<byte[]>(key.get()), null);
+                assertTrue(strategy.routeRequest(key.get()).contains(node));
+            } catch(VoldemortException ex) {
+                assertEquals("Unexpected Exception", InvalidMetadataException.class, ex.getClass());
+                assertFalse(strategy.routeRequest(key.get()).contains(node));
+            }
+            try {
+                store.getAll(ImmutableList.of(key), null);
+                assertTrue(strategy.routeRequest(key.get()).contains(node));
+            } catch(VoldemortException ex) {
+                assertEquals("Unexpected Exception", InvalidMetadataException.class, ex.getClass());
+                assertFalse(strategy.routeRequest(key.get()).contains(node));
             }
         }
-
     }
 }

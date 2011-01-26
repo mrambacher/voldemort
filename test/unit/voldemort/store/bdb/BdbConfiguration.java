@@ -12,9 +12,9 @@ import com.sleepycat.je.EnvironmentConfig;
 
 public class BdbConfiguration {
 
-    private Environment environment;
-    private EnvironmentConfig envConfig;
-    private DatabaseConfig databaseConfig;
+    Environment environment;
+    EnvironmentConfig envConfig;
+    DatabaseConfig databaseConfig;
 
     public BdbConfiguration(File directory, String dbName) throws DatabaseException {
         this.envConfig = new EnvironmentConfig();
@@ -32,7 +32,8 @@ public class BdbConfiguration {
         if(storeDef == null)
             throw new IllegalArgumentException("Store must not be null");
         Database database = environment.openDatabase(null, storeDef.getName(), databaseConfig);
-        return new BdbStorageEngine(storeDef, this.environment, database);
+        return null; // new BdbStorageEngine(storeDef, this.environment,
+                     // database);
     }
 
     public void close() throws DatabaseException {

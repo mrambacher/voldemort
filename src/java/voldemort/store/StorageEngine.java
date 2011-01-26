@@ -89,6 +89,4 @@ public interface StorageEngine<K, V, T> extends Store<K, V, T> {
      * Truncate all entries in the store
      */
     public void truncate();
-
-    public StoreDefinition getStoreDefinition();
 }

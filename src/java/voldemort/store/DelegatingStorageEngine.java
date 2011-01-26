@@ -35,10 +35,6 @@ public class DelegatingStorageEngine<K, V, T> implements StorageEngine<K, V, T> 
         this.inner = inner;
     }
 
-    public StoreDefinition getStoreDefinition() {
-        return inner.getStoreDefinition();
-    }
-
     protected StorageEngine<K, V, T> getInnerEngine() {
         return inner;
     }

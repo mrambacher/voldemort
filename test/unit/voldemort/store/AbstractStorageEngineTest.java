@@ -26,8 +26,10 @@ import java.util.Map;
 import java.util.Set;
 
 import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 
+import voldemort.ServerTestUtils;
 import voldemort.TestUtils;
 import voldemort.client.protocol.VoldemortFilter;
 import voldemort.client.protocol.admin.filter.DefaultVoldemortFilter;
@@ -35,10 +37,13 @@ import voldemort.cluster.Cluster;
 import voldemort.cluster.Node;
 import voldemort.routing.RoutingStrategy;
 import voldemort.serialization.StringSerializer;
+import voldemort.server.VoldemortConfig;
+import voldemort.store.metadata.MetadataStore;
 import voldemort.store.serialized.SerializingStorageEngine;
 import voldemort.utils.ByteArray;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
+import voldemort.utils.Props;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
@@ -51,12 +56,22 @@ import com.google.common.collect.Multimap;
 public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTest {
 
     protected Map<String, StorageEngine<ByteArray, byte[], byte[]>> engines;
+    protected StorageConfiguration configuration;
+    private VoldemortConfig serverConfig;
     private final String storeType;
 
     public AbstractStorageEngineTest(String name, String type) {
         super(name);
         this.storeType = type;
         engines = new HashMap<String, StorageEngine<ByteArray, byte[], byte[]>>();
+    }
+
+    @Before
+    @Override
+    public void setUp() throws Exception {
+        serverConfig = getServerConfig();
+        configuration = createStorageConfiguration(serverConfig);
+        super.setUp();
     }
 
     @After
@@ -67,6 +82,19 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
         for(String name: engines.keySet()) {
             closeStorageEngine(engines.get(name));
         }
+        configuration.close();
+    }
+
+    protected Props getServerProperties() {
+        return new Props().with("voldemort.home", System.getProperty("java.io.tmpdir"));
+    }
+
+    protected VoldemortConfig getServerConfig() {
+        Cluster cluster = getCluster();
+        StoreDefinition storeDef = this.getStoreDef(this.storeName);
+        MetadataStore metadata = ServerTestUtils.createMetadataStore(cluster,
+                                                                     Collections.singletonList(storeDef));
+        return new VoldemortConfig(getServerProperties(), metadata);
     }
 
     protected void closeStorageEngine(StorageEngine<ByteArray, byte[], byte[]> engine) {
@@ -88,6 +116,10 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
 
     protected StoreDefinition getStoreDef(String name) {
         return TestUtils.getStoreDef(name, this.storeType);
+    }
+
+    protected StorageEngine<ByteArray, byte[], byte[]> createStorageEngine(StoreDefinition storeDef) {
+        return configuration.getStore(storeDef);
     }
 
     public StorageEngine<ByteArray, byte[], byte[]> getStorageEngine(String name) {
@@ -113,7 +145,7 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
         return getStorageEngine(name);
     }
 
-    public abstract StorageEngine<ByteArray, byte[], byte[]> createStorageEngine(StoreDefinition storeDef);
+    public abstract StorageConfiguration createStorageConfiguration(VoldemortConfig config);
 
     protected <K, V, T> Multimap<K, Versioned<V>> testGetEntries(StorageEngine<K, V, T> engine,
                                                                  List<Integer> partitions,
@@ -259,13 +291,13 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
         final List<ByteArray> keys = this.getKeys(ITERATION_KEY_COUNT);
         List<byte[]> values = this.getValues(ITERATION_KEY_COUNT);
         StorageEngine<ByteArray, byte[], byte[]> engine = getStorageEngine();
-        Cluster cluster = getCluster();
-        RoutingStrategy strategy = engine.getStoreDefinition().updateRoutingStrategy(cluster);
+        RoutingStrategy strategy = this.serverConfig.getMetadata()
+                                                    .getRoutingStrategy(engine.getName());
         for(int i = 0; i < keys.size(); i++) {
             ByteArray key = keys.get(i);
             engine.put(key, new Versioned<byte[]>(values.get(i)), null);
         }
-
+        Cluster cluster = getCluster();
         for(int p = 0; p < cluster.getNumberOfPartitions(); p++) {
             long started = System.currentTimeMillis();
             Collection<ByteArray> results = testGetKeys(engine,
@@ -343,7 +375,8 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
         List<byte[]> values = this.getValues(ITERATION_KEY_COUNT);
         Cluster cluster = getCluster();
         StorageEngine<ByteArray, byte[], byte[]> engine = getStorageEngine();
-        RoutingStrategy strategy = engine.getStoreDefinition().updateRoutingStrategy(cluster);
+        RoutingStrategy strategy = this.serverConfig.getMetadata()
+                                                    .getRoutingStrategy(engine.getName());
         Map<ByteArray, Versioned<byte[]>> versioneds = Maps.newHashMap();
         for(int i = 0; i < keys.size(); i++) {
             ByteArray key = keys.get(i);
@@ -351,7 +384,6 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
             versioneds.put(key, new Versioned<byte[]>(values.get(i), version));
         }
 
-        System.out.println("Starting fetch");
         for(int p = 0; p < cluster.getNumberOfPartitions(); p++) {
             long started = System.currentTimeMillis();
             Multimap<ByteArray, Versioned<byte[]>> results = testGetEntries(engine,
@@ -377,7 +409,6 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
         List<byte[]> values = this.getValues(ITERATION_KEY_COUNT);
         StorageEngine<ByteArray, byte[], byte[]> engine = getStorageEngine();
         Cluster cluster = getCluster();
-        engine.getStoreDefinition().updateRoutingStrategy(cluster);
         for(int i = 0; i < keys.size(); i++) {
             ByteArray key = keys.get(i);
             engine.put(key, new Versioned<byte[]>(values.get(i)), null);

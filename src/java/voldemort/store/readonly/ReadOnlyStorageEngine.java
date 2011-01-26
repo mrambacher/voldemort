@@ -23,6 +23,7 @@ import voldemort.client.protocol.VoldemortFilter;
 import voldemort.routing.RoutingStrategy;
 import voldemort.store.StorageEngine;
 import voldemort.store.StoreDefinition;
+import voldemort.store.metadata.MetadataStoreListener;
 import voldemort.utils.ByteArray;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
@@ -35,9 +36,7 @@ import voldemort.versioning.Versioned;
  * 
  */
 public class ReadOnlyStorageEngine extends ReadOnlyStore implements
-        StorageEngine<ByteArray, byte[], byte[]> {
-
-    private final StoreDefinition storeDef;
+        StorageEngine<ByteArray, byte[], byte[]>, MetadataStoreListener {
 
     /**
      * Create an instance of the store
@@ -54,11 +53,6 @@ public class ReadOnlyStorageEngine extends ReadOnlyStore implements
                                  File storeDir,
                                  int numBackups) {
         super(storeDef.getName(), searchStrategy, routingStrategy, nodeId, storeDir, numBackups);
-        this.storeDef = storeDef;
-    }
-
-    public StoreDefinition getStoreDefinition() {
-        return storeDef;
     }
 
     public ClosableIterator<ByteArray> keys(Collection<Integer> partitions,
@@ -72,6 +66,10 @@ public class ReadOnlyStorageEngine extends ReadOnlyStore implements
                                                                         byte[] transforms) {
         throw new UnsupportedOperationException("Iteration is not supported for "
                                                 + getClass().getName());
+    }
+
+    public void updateRoutingStrategy(RoutingStrategy strategy) {
+        super.setRoutingStrategy(strategy);
     }
 
     /**

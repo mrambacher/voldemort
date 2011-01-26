@@ -45,8 +45,10 @@ public class KratiStorageEngine implements StorageEngine<ByteArray, byte[], byte
     private final StoreDefinition storeDef;
     private final DynamicDataStore datastore;
     private final StripedLock locks;
+    private final KratiStorageConfiguration configuration;
 
     public KratiStorageEngine(StoreDefinition storeDef,
+                              KratiStorageConfiguration configuration,
                               SegmentFactory segmentFactory,
                               int segmentFileSizeMB,
                               int lockStripes,
@@ -54,6 +56,7 @@ public class KratiStorageEngine implements StorageEngine<ByteArray, byte[], byte
                               int initLevel,
                               File dataDirectory) {
         this.storeDef = Utils.notNull(storeDef);
+        this.configuration = Utils.notNull(configuration);
         try {
             this.datastore = new DynamicDataStore(dataDirectory,
                                                   initLevel,
@@ -66,10 +69,6 @@ public class KratiStorageEngine implements StorageEngine<ByteArray, byte[], byte
             throw new VoldemortException("Failure initializing store.", e);
         }
 
-    }
-
-    public StoreDefinition getStoreDefinition() {
-        return storeDef;
     }
 
     public Object getCapability(StoreCapabilityType capability) {
@@ -123,7 +122,7 @@ public class KratiStorageEngine implements StorageEngine<ByteArray, byte[], byte
     public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries(final java.util.Collection<Integer> partitions,
                                                                         final VoldemortFilter<ByteArray, byte[]> filter,
                                                                         final byte[] transforms) {
-        RoutingStrategy routingStrategy = this.storeDef.getRoutingStrategy();
+        RoutingStrategy routingStrategy = configuration.getRoutingStrategy(this.getName());
         List<Pair<ByteArray, Versioned<byte[]>>> returnedList = new ArrayList<Pair<ByteArray, Versioned<byte[]>>>();
         DataArray array = datastore.getDataArray();
         for(int index = 0; index < array.length(); index++) {

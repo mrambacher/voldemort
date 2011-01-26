@@ -27,14 +27,14 @@ import javax.management.ObjectName;
 
 import voldemort.routing.RoutingStrategy;
 import voldemort.server.VoldemortConfig;
-import voldemort.store.StorageConfiguration;
+import voldemort.store.AbstractStorageConfiguration;
 import voldemort.store.StorageEngine;
 import voldemort.store.StoreDefinition;
 import voldemort.utils.ByteArray;
 import voldemort.utils.JmxUtils;
 import voldemort.utils.ReflectUtils;
 
-public class ReadOnlyStorageConfiguration implements StorageConfiguration {
+public class ReadOnlyStorageConfiguration extends AbstractStorageConfiguration {
 
     public static final String TYPE_NAME = "read-only";
 
@@ -43,9 +43,9 @@ public class ReadOnlyStorageConfiguration implements StorageConfiguration {
     private final Set<ObjectName> registeredBeans;
     private final SearchStrategy searcher;
     private final int nodeId;
-    private RoutingStrategy routingStrategy = null;
 
     public ReadOnlyStorageConfiguration(VoldemortConfig config) {
+        super(config);
         this.storageDir = new File(config.getReadOnlyDataStorageDirectory());
         this.numBackups = config.getReadOnlyBackups();
         this.registeredBeans = Collections.synchronizedSet(new HashSet<ObjectName>());
@@ -60,15 +60,12 @@ public class ReadOnlyStorageConfiguration implements StorageConfiguration {
             JmxUtils.unregisterMbean(server, name);
     }
 
-    public void setRoutingStrategy(RoutingStrategy routingStrategy) {
-        this.routingStrategy = routingStrategy;
-    }
-
     public StorageEngine<ByteArray, byte[], byte[]> getStore(StoreDefinition storeDef) {
         String name = storeDef.getName();
+        RoutingStrategy routingStrategy = super.getRoutingStrategy(name);
         ReadOnlyStorageEngine store = new ReadOnlyStorageEngine(storeDef,
                                                                 this.searcher,
-                                                                this.routingStrategy,
+                                                                routingStrategy,
                                                                 this.nodeId,
                                                                 new File(storageDir, name),
                                                                 numBackups);

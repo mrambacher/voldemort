@@ -134,10 +134,10 @@ public class StoreUtils {
      */
     public static void assertValidMetadata(ByteArray key,
                                            RoutingStrategy routingStrategy,
-                                           Node currentNode) {
+                                           int currentNode) {
         List<Node> nodes = routingStrategy.routeRequest(key.get());
         for(Node node: nodes) {
-            if(node.getId() == currentNode.getId()) {
+            if(node.getId() == currentNode) {
                 return;
             }
         }
@@ -196,13 +196,12 @@ public class StoreUtils {
     }
 
     public static ClosableIterator<ByteArray> keys(ClosableIterator<ByteArray> iter,
-                                                   final StoreDefinition storeDef,
+                                                   final RoutingStrategy strategy,
                                                    final Collection<Integer> partitions) {
         // If there are no partitions, just return the input value
         if(partitions == null || partitions.size() <= 0) {
             return iter;
         } else {
-            final RoutingStrategy strategy = storeDef.getRoutingStrategy();
             return new ClosableFilterIterator<ByteArray>(iter) {
 
                 @Override
@@ -231,13 +230,12 @@ public class StoreUtils {
     }
 
     public static <V> ClosableIterator<Pair<ByteArray, Versioned<V>>> entries(ClosableIterator<Pair<ByteArray, Versioned<V>>> iter,
-                                                                              final StoreDefinition storeDef,
+                                                                              final RoutingStrategy strategy,
                                                                               final Collection<Integer> partitions) {
         // If there are no partitions, just return the input value
         if(partitions == null || partitions.size() <= 0) {
             return iter;
         } else {
-            final RoutingStrategy strategy = storeDef.getRoutingStrategy();
             return new ClosableFilterIterator<Pair<ByteArray, Versioned<V>>>(iter) {
 
                 @Override

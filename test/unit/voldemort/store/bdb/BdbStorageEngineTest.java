@@ -29,12 +29,15 @@ import org.junit.Test;
 
 import voldemort.TestUtils;
 import voldemort.client.protocol.admin.filter.DefaultVoldemortFilter;
+import voldemort.server.VoldemortConfig;
 import voldemort.store.AbstractStorageEngineTest;
+import voldemort.store.StorageConfiguration;
 import voldemort.store.StorageEngine;
 import voldemort.store.StoreDefinition;
 import voldemort.utils.ByteArray;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
+import voldemort.utils.Props;
 import voldemort.versioning.VectorClock;
 import voldemort.versioning.Versioned;
 
@@ -42,37 +45,44 @@ import com.sleepycat.je.DatabaseException;
 
 public class BdbStorageEngineTest extends AbstractStorageEngineTest {
 
-    private BdbConfiguration configuration;
-
     public BdbStorageEngineTest() {
         super("test", BdbStorageConfiguration.TYPE_NAME);
     }
 
     private File tempDir;
-    private StorageEngine<ByteArray, byte[], byte[]> store;
 
     @Override
     public void setUp() throws Exception {
         super.setUp();
-        this.tempDir = TestUtils.createTempDir();
-        configuration = new BdbConfiguration(tempDir, "test");
-        this.store = getStorageEngine("test");
     }
 
     @Override
     public void tearDown() throws Exception {
-        super.tearDown();
         try {
-            configuration.close();
+            super.tearDown();
         } finally {
             FileDeleteStrategy.FORCE.delete(tempDir);
         }
     }
 
     @Override
-    public BdbStorageEngine createStorageEngine(StoreDefinition storeDef) {
+    protected Props getServerProperties() {
+        Props props = super.getServerProperties();
+        if(tempDir == null) {
+            this.tempDir = TestUtils.createTempDir();
+        }
+        return props.with("voldemort.home", tempDir.getAbsolutePath());
+    }
+
+    @Override
+    public StorageConfiguration createStorageConfiguration(VoldemortConfig config) {
+        return new BdbStorageConfiguration(config);
+    }
+
+    @Override
+    public StorageEngine<ByteArray, byte[], byte[]> createStorageEngine(StoreDefinition storeDef) {
         try {
-            return configuration.createStorageEngine(storeDef);
+            return super.createStorageEngine(storeDef);
         } catch(DatabaseException e) {
             assertNull("Unexpected exception", e);
             return null;
@@ -86,7 +96,7 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
         store.put(new ByteArray("abc".getBytes()), new Versioned<byte[]>("cdef".getBytes()), null);
         this.closeStore(store.getName());
         this.configuration.close();
-        this.configuration = new BdbConfiguration(this.tempDir, "test");
+        this.configuration = this.createStorageConfiguration(this.getServerConfig());
         store = getStorageEngine();
         List<Versioned<byte[]>> vals = store.get(new ByteArray("abc".getBytes()), null);
         assertEquals(1, vals.size());
@@ -96,8 +106,8 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
     @Test
     public void testEquals() {
         String name = "someName";
-        BdbStorageEngine first = createStorageEngine(getStoreDef(name));
-        BdbStorageEngine second = createStorageEngine(getStoreDef(name));
+        StorageEngine<ByteArray, byte[], byte[]> first = createStorageEngine(getStoreDef(name));
+        StorageEngine<ByteArray, byte[], byte[]> second = createStorageEngine(getStoreDef(name));
         assertEquals(first, second);
         first.close();
         second.close();
@@ -119,6 +129,7 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
         ExecutorService executor = Executors.newFixedThreadPool(2);
         final Random rand = new Random();
         final AtomicInteger count = new AtomicInteger(0);
+        final StorageEngine<ByteArray, byte[], byte[]> store = getStorageEngine();
         executor.execute(new Runnable() {
 
             public void run() {
@@ -145,9 +156,9 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
             continue;
 
         // now simultaneously do iteration
-        ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iter = this.store.entries(null,
-                                                                                       new DefaultVoldemortFilter(),
-                                                                                       null);
+        ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> iter = store.entries(null,
+                                                                                  new DefaultVoldemortFilter<ByteArray, byte[]>(),
+                                                                                  null);
         while(iter.hasNext())
             iter.next();
         iter.close();

@@ -61,7 +61,6 @@ import voldemort.store.distributed.DistributedStore;
 import voldemort.store.failuredetector.FailureDetectingStore;
 import voldemort.store.logging.LoggingStore;
 import voldemort.store.memory.InMemoryStorageConfiguration;
-import voldemort.store.memory.InMemoryStorageEngine;
 import voldemort.store.memory.InMemoryStore;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.store.slop.HintedHandoffStore;
@@ -175,6 +174,7 @@ public class HintedHandoffTest extends TestCase {
                                RoutingStrategyType.CONSISTENT_STRATEGY);
         routedStoreThreadPool = (ThreadPoolExecutor) Executors.newFixedThreadPool(NUM_THREADS);
         Map<Node, StoreRepository> repositories = Maps.newHashMap();
+        MetadataStore metadata = ServerTestUtils.createMetadataStore(cluster, storeDef);
         for(Node node: cluster.getNodes()) {
             StoreRepository storeRepo = new StoreRepository();
             VoldemortException e = new UnreachableStoreException("Node down");
@@ -187,8 +187,9 @@ public class HintedHandoffTest extends TestCase {
             AsynchronousStore<ByteArray, byte[], byte[]> async = ThreadedStore.create(failingStore,
                                                                                       routedStoreThreadPool);
             asyncStores.put(node, FailureDetectingStore.create(node, failureDetector, async));
-            StorageEngine<ByteArray, byte[], byte[]> memory = new InMemoryStorageEngine(TestUtils.getStoreDef(SLOP_STORE_NAME,
-                                                                                                              InMemoryStorageConfiguration.TYPE_NAME));
+            StorageEngine<ByteArray, byte[], byte[]> memory = ServerTestUtils.createMemoryEngine(metadata,
+                                                                                                 TestUtils.getStoreDef(SLOP_STORE_NAME,
+                                                                                                                       InMemoryStorageConfiguration.TYPE_NAME));
 
             SlopStorageEngine slopStore = new SlopStorageEngine(memory, cluster);
             slopStores.put(node,

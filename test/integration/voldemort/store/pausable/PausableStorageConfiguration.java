@@ -1,7 +1,7 @@
 package voldemort.store.pausable;
 
 import voldemort.server.VoldemortConfig;
-import voldemort.store.StorageConfiguration;
+import voldemort.store.AbstractStorageConfiguration;
 import voldemort.store.StorageEngine;
 import voldemort.store.StoreDefinition;
 import voldemort.store.memory.InMemoryStorageEngine;
@@ -12,17 +12,19 @@ import voldemort.utils.ByteArray;
  * 
  * 
  */
-public class PausableStorageConfiguration implements StorageConfiguration {
+public class PausableStorageConfiguration extends AbstractStorageConfiguration {
 
     private static final String TYPE_NAME = "pausable";
 
-    public PausableStorageConfiguration(@SuppressWarnings("unused") VoldemortConfig config) {}
+    public PausableStorageConfiguration(VoldemortConfig config) {
+        super(config);
+    }
 
     public void close() {}
 
     public StorageEngine<ByteArray, byte[], byte[]> getStore(StoreDefinition storeDef) {
 
-        return new PausableStorageEngine(new InMemoryStorageEngine(storeDef));
+        return new PausableStorageEngine(new InMemoryStorageEngine(storeDef, this));
     }
 
     public String getType() {

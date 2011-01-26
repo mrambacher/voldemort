@@ -20,9 +20,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 import voldemort.TestUtils;
+import voldemort.server.VoldemortConfig;
 import voldemort.store.AbstractStorageEngineTest;
-import voldemort.store.StorageEngine;
-import voldemort.store.StoreDefinition;
+import voldemort.store.StorageConfiguration;
 import voldemort.utils.ByteArray;
 
 public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
@@ -32,8 +32,8 @@ public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
     }
 
     @Override
-    public StorageEngine<ByteArray, byte[], byte[]> createStorageEngine(StoreDefinition def) {
-        return new InMemoryStorageEngine(def);
+    public StorageConfiguration createStorageConfiguration(VoldemortConfig config) {
+        return new InMemoryStorageConfiguration(config);
     }
 
     @Override

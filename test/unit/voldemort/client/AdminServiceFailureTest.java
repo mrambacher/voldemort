@@ -31,7 +31,6 @@ import voldemort.store.RandomlyFailingDelegatingStore;
 import voldemort.store.StorageEngine;
 import voldemort.store.StoreDefinition;
 import voldemort.store.UnreachableStoreException;
-import voldemort.store.memory.InMemoryStorageEngine;
 import voldemort.utils.ByteArray;
 import voldemort.utils.Pair;
 import voldemort.versioning.Versioned;
@@ -78,8 +77,7 @@ public class AdminServiceFailureTest extends TestCase {
     public void setUp() throws IOException {
         cluster = ServerTestUtils.getLocalCluster(2, new int[][] { { 0, 1, 2, 3 }, { 4, 5, 6, 7 } });
         List<StoreDefinition> storeDefs = ServerTestUtils.getStoreDefs(1);
-        storeDefs.get(0).updateRoutingStrategy(cluster);
-        failingStorageEngine = new RandomlyFailingDelegatingStore<ByteArray, byte[], byte[]>(new InMemoryStorageEngine(storeDefs.get(0)));
+        failingStorageEngine = new RandomlyFailingDelegatingStore<ByteArray, byte[], byte[]>(ServerTestUtils.createMemoryEngine(storeDefs.get(0)));
         adminServer = getAdminServer(cluster.getNodeById(0),
                                      cluster,
                                      storeDefs,
