@@ -121,6 +121,10 @@ public class Props implements Map<String, String> {
         return props.put(key, value.toString());
     }
 
+    public String put(String key, Boolean value) {
+        return props.put(key, value.toString());
+    }
+
     public Props with(String key, String value) {
         put(key, value);
         return this;
