@@ -42,7 +42,7 @@ public class MysqlStorageEngineTest extends AbstractStorageEngineTest {
     protected final static String DBCONN_HOST_ENV_NAME = "VOLD_JDBC_HOST";
     protected final static String DBCONN_USER_ENV_NAME = "VOLD_JDBC_USER";
     protected final static String DBCONN_PSWD_ENV_NAME = "VOLD_JDBC_PSWD";
-    protected final static String DEFAULT_JDBC_HOST = "fred";
+    protected final static String DEFAULT_JDBC_HOST = "localhost";
     protected final static String DEFAULT_JDBC_USER = "root";
     protected final static String DEFAULT_JDBC_PSWD = "";
 
