@@ -127,7 +127,7 @@ public class VoldemortConfig implements Serializable {
 
     private List<String> storageConfigurations;
 
-    private Props allProps;
+    protected Props allProps;
 
     private String slopStoreType;
     private String pusherType;
@@ -526,7 +526,7 @@ public class VoldemortConfig implements Serializable {
         return bdbCleanerMinFileUtilization;
     }
 
-    public final void setBdbCleanerMinFileUtilization(int minFileUtilization) {
+    public void setBdbCleanerMinFileUtilization(int minFileUtilization) {
         if(minFileUtilization < 0 || minFileUtilization > 50)
             throw new IllegalArgumentException("minFileUtilization should be between 0 and 50 (both inclusive)");
         this.bdbCleanerMinFileUtilization = minFileUtilization;
@@ -548,7 +548,7 @@ public class VoldemortConfig implements Serializable {
         return bdbCleanerMinUtilization;
     }
 
-    public final void setBdbCleanerMinUtilization(int minUtilization) {
+    public void setBdbCleanerMinUtilization(int minUtilization) {
         if(minUtilization < 0 || minUtilization > 90)
             throw new IllegalArgumentException("minUtilization should be between 0 and 90 (both inclusive)");
         this.bdbCleanerMinUtilization = minUtilization;
