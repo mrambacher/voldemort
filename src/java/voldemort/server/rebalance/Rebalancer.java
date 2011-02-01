@@ -55,6 +55,10 @@ public class Rebalancer implements Runnable {
         this.voldemortConfig = voldemortConfig;
     }
 
+    public AsyncOperationService getAsyncOperationService() {
+        return asyncService;
+    }
+
     public void start() {
     }
 
@@ -67,8 +71,12 @@ public class Rebalancer implements Runnable {
      * @param nodeId The node id for which we want to check if we have a permit
      * @return Returns true if permit has been taken
      */
-    public boolean hasRebalancingPermit(int nodeId) {
-        return rebalancePermits.contains(nodeId);
+    public synchronized boolean hasRebalancingPermit(int nodeId) {
+        boolean contained = rebalancePermits.contains(nodeId);
+        if (logger.isInfoEnabled())
+            logger.info("hasRebalancingPermit for nodeId: " + nodeId + ", returned: " + contained);
+
+        return contained;
     }
 
     /**
@@ -78,8 +86,12 @@ public class Rebalancer implements Runnable {
      * @return Returns true if permit acquired, false if the permit is already
      *         held by someone
      */
-    public boolean acquireRebalancingPermit(int nodeId) {
-        return rebalancePermits.add(nodeId);
+    public synchronized boolean acquireRebalancingPermit(int nodeId) {
+        boolean added = rebalancePermits.add(nodeId);
+        if (logger.isInfoEnabled())
+            logger.info("acquireRebalancingPermit for nodeId: " + nodeId + ", returned: " + added);
+
+        return added;
     }
 
     /**
@@ -87,8 +99,10 @@ public class Rebalancer implements Runnable {
      * 
      * @param nodeId The node id whose permit we want to release
      */
-    public void releaseRebalancingPermit(int nodeId) {
-        if (!rebalancePermits.remove(nodeId))
+    public synchronized void releaseRebalancingPermit(int nodeId) {
+        boolean removed = rebalancePermits.remove(nodeId);
+        logger.info("releaseRebalancingPermit for nodeId: " + nodeId + ", returned: " + removed);
+        if (!removed)
             throw new VoldemortException(new IllegalStateException("Invalid state, must hold a "
                                                                    + "permit to release"));
     }
@@ -135,12 +149,13 @@ public class Rebalancer implements Runnable {
                         }
                         else {
                             logger.warn("Rebalancing for rebalancing task " + stealInfo
-                                        + " failed multiple times, Aborting more trials.");
+                                        + " failed multiple times (max. attemps:" + voldemortConfig.getMaxRebalancingAttempt() + "), Aborting more trials.");
+
                             metadataStore.cleanRebalancingState(stealInfo);
                         }
                     } catch (Exception e) {
                         logger.error("RebalanceService rebalancing attempt " + stealInfo
-                                     + " failed with exception", e);
+                                     + " failed with exception - " + e.getMessage(), e);
                         failures.add(e);
                     }
                 }
@@ -176,7 +191,7 @@ public class Rebalancer implements Runnable {
                     RebalanceUtils.executorShutDown(swapExecutors,
                                                     voldemortConfig.getRebalancingTimeout());
                 } catch (Exception e) {
-                    logger.error("Interrupted swapping executor ", e);
+                    logger.error("Interrupted swapping executor - " + e.getMessage(), e);
                     return;
                 }
             }
@@ -219,7 +234,7 @@ public class Rebalancer implements Runnable {
         if (!acquireRebalancingPermit(stealInfo.getDonorId())) {
             final RebalancerState rebalancerState = metadataStore.getRebalancerState();
             final RebalancePartitionsInfoLiveCycle info = rebalancerState.find(stealInfo.getDonorId());
-            if (info != null) {
+            if (info != null && RebalancePartitionsInfoLifeCycleStatus.RUNNING.equals(info.getStatus())) {
                 throw new AlreadyRebalancingException("Node "
                                                       + metadataStore.getCluster()
                                                                      .getNodeById(info.getRebalancePartitionsInfo().getStealerId())
@@ -276,6 +291,8 @@ public class Rebalancer implements Runnable {
 
                 final RebalancePartitionsInfo stealInfo = stealInfoLiveCycle.getRebalancePartitionsInfo();
                 final int donorId = stealInfo.getDonorId();
+
+                // In case that the server crashed then the metadata will be re initialized
                 final RebalancePartitionsInfoLiveCycle previousLiveCycle = rebalancerState.find(donorId);
 
                 if (previousLiveCycle != null && RebalancePartitionsInfoLifeCycleStatus.RUNNING.equals(previousLiveCycle.getStatus())) {

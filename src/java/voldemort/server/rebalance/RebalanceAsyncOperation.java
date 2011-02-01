@@ -93,8 +93,10 @@ class RebalanceAsyncOperation extends AsyncOperation {
         final List<Exception> failures = new ArrayList<Exception>();
         final List<String> readOnlyStoresCompleted = new ArrayList<String>();
         try {
+            // This is the only place that you change the status of the task as RUNNING.
+            rebalancer.setRebalancingState(stealInfo, RebalancePartitionsInfoLifeCycleStatus.RUNNING);
             if (logger.isInfoEnabled()) {
-                logger.info("starting rebalancing task" + stealInfo);
+                logger.info("starting rebalancing task" + stealInfo + ", setting status to: " + RebalancePartitionsInfoLifeCycleStatus.RUNNING.name());
             }
 
             for (final String storeName : ImmutableList.copyOf(stealInfo.getUnbalancedStoreList())) {
@@ -111,6 +113,10 @@ class RebalanceAsyncOperation extends AsyncOperation {
                                 readOnlyStoresCompleted.add(storeName);
                             }
 
+                            if (logger.isDebugEnabled()) {
+                                logger.debug("operate() -  storeName: " + storeName + ", stealInfo: " + stealInfo);
+                            }
+
                             rebalanceStore(storeName, adminClient, stealInfo, isReadOnlyStore);
 
                             // If read-only store then don't remove from
@@ -118,19 +124,15 @@ class RebalanceAsyncOperation extends AsyncOperation {
                             if (!isReadOnlyStore) {
                                 List<String> tempUnbalancedStoreList = new ArrayList<String>(stealInfo.getUnbalancedStoreList());
                                 tempUnbalancedStoreList.remove(storeName);
+
                                 stealInfo.setUnbalancedStoreList(tempUnbalancedStoreList);
+                                if (logger.isDebugEnabled()) {
+                                    logger.debug("Not read-only store, removed from unbalanced store list: " + storeName);
+                                }
                             }
-
-                            if (logger.isDebugEnabled()) {
-                                logger.debug("RUNNING status for rebalance partitios info: " + stealInfo);
-                            }
-
-                            // This is the only place that you change the status of the task as RUNNING.
-                            rebalancer.setRebalancingState(stealInfo, RebalancePartitionsInfoLifeCycleStatus.RUNNING);
 
                         } catch (Exception e) {
-                            logger.error("rebalanceSubTask:" + stealInfo + " failed for store:"
-                                         + storeName, e);
+                            logger.error("rebalanceSubTask:" + stealInfo + " failed for store:" + storeName + " - " + e.getMessage(), e);
                             failures.add(e);
                         }
                     }
@@ -139,6 +141,11 @@ class RebalanceAsyncOperation extends AsyncOperation {
             }
 
             waitForShutdown();
+
+            rebalancer.setRebalancingState(stealInfo, RebalancePartitionsInfoLifeCycleStatus.NOT_RUNNING);
+            if (logger.isInfoEnabled()) {
+                logger.info("Not running rebalancing task" + stealInfo + ", setting status to: " + RebalancePartitionsInfoLifeCycleStatus.NOT_RUNNING.name());
+            }
 
             // If empty i.e. all were read-write stores, clean state
             List<String> unbalancedStores = Lists.newArrayList(stealInfo.getUnbalancedStoreList());
@@ -167,6 +174,10 @@ class RebalanceAsyncOperation extends AsyncOperation {
 
         } finally {
             // free the permit in all cases.
+            if (logger.isInfoEnabled()) {
+                logger.info("Releasing permit for Donor: " + stealInfo.getDonorId());
+            }
+
             rebalancer.releaseRebalancingPermit(stealInfo.getDonorId());
             adminClient.stop();
             adminClient = null;
@@ -195,10 +206,11 @@ class RebalanceAsyncOperation extends AsyncOperation {
     }
 
     private void rebalanceStore(String storeName,
-                                AdminClient adminClient,
+                                final AdminClient adminClient,
                                 RebalancePartitionsInfo stealInfo,
                                 boolean isReadOnlyStore) throws Exception {
         logger.info("starting partitions migration for store:" + storeName);
+        updateStatus("started");
 
         List<Integer> partitionList = null;
         if (isReadOnlyStore) {
@@ -214,10 +226,29 @@ class RebalanceAsyncOperation extends AsyncOperation {
                                                     null);
         rebalanceStatusList.add(asyncId);
 
+        // TODO: this is just an idea of how to give feedback to the user about the rebalance task
+        // in execution at the stealer, meaning number of keys being migrated so far.
+        //
+        // ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+        // scheduler.scheduleAtFixedRate(new Runnable() {
+        // public void run() {
+        // AsyncOperationStatus asyncRequestStatus = adminClient.getAsyncRequestStatus(metadataStore.getNodeId(),
+        // asyncId);
+        // updateStatus(asyncRequestStatus.getStatus());
+        // logger.info("updater did run...");
+        // }
+        // }, 0, 1, TimeUnit.SECONDS);
+
+        if (logger.isDebugEnabled()) {
+            logger.debug("waitForCompletion: stealer:" + metadataStore.getNodeId() + ", asyncId:" + asyncId);
+        }
         adminClient.waitForCompletion(metadataStore.getNodeId(),
                                       asyncId,
                                       voldemortConfig.getAdminSocketTimeout(),
                                       TimeUnit.SECONDS);
+
+        // scheduler.shutdownNow();
+        // scheduler = null;
 
         rebalanceStatusList.remove((Object) asyncId);
 
