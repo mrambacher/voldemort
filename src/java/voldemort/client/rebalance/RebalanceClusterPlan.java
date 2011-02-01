@@ -175,13 +175,16 @@ public class RebalanceClusterPlan {
         // Separates primaries from replicas this stealer is stealing.
         final Set<Integer> stealingPrimaries = getStealPrimaries(currentCluster, targetCluster, stealerId);
         final Set<Integer> stealingReplicas = getStealReplicas(currentCluster, targetCluster, stealerId);
+        final Set<Integer> deletingPartitions = getRemainToBeDeletedPartitions(stealerId);
+
         if (logger.isDebugEnabled()) {
             logger.debug("stealer id: " + stealerId + ", stealing primaries: " + stealingPrimaries);
             logger.debug("stealer id: " + stealerId + ", stealing replicas: " + stealingReplicas);
+            logger.debug("stealer id: " + stealerId + ", deletingPartitions: " + deletingPartitions);
         }
 
-        // If this stealer is not stealing any partitions then return.
-        if (stealingPrimaries.size() == 0 && stealingReplicas.size() == 0) {
+        // If this stealer is not stealing any partitions or it has no partition to be deleted then return.
+        if (stealingPrimaries.size() == 0 && stealingReplicas.size() == 0 && deletingPartitions.size() == 0) {
             return result;
         }
 
@@ -191,8 +194,8 @@ public class RebalanceClusterPlan {
                 continue;
 
             // If you have treated all partitions (primaries and replicas) that this
-            // stealer should stole, then you are all done.
-            if (hasAllPartitionTreated(stealingPrimaries) && hasAllPartitionTreated(stealingReplicas)) {
+            // stealer should steal, then you are all done.
+            if (hasAllPartitionTreated(stealingPrimaries) && hasAllPartitionTreated(stealingReplicas) && hasAllPartitionTreated(deletingPartitions)) {
                 break;
             }
 
@@ -207,10 +210,10 @@ public class RebalanceClusterPlan {
             donateReplicas(donorNode, stealingReplicas, trackStealPartitions);
 
             // Delete partition if at least you have donated a primary or replica
-            // Checks if this donor needs to delete replicas only
-            deleteDonatedPartitions(donorNode, trackDeletePartitions, enabledDeletePartition);
+            deleteDonatedPartitions(donorNode, deletingPartitions, trackDeletePartitions, enabledDeletePartition);
 
-            if (trackStealPartitions.size() > 0) {
+            if (trackStealPartitions.size() > 0 || trackDeletePartitions.size() > 0) {
+
                 result.add(new RebalancePartitionsInfo(stealerId,
                                                               donorNode.getId(),
                                                               new ArrayList<Integer>(trackStealPartitions),
@@ -224,6 +227,35 @@ public class RebalanceClusterPlan {
         }
 
         return result;
+    }
+
+    /**
+     * Returns a list of partition that remain to be deleted in this node.
+     * That is calculated based on Cluster and Target difference, minus all
+     * the other partitions that this node already lost at the time
+     * of invoking this method.
+     * 
+     * @param nodeId Node to be analyze.
+     * @return List of remaining partitions to be deleted on this node.
+     */
+    private Set<Integer> getRemainToBeDeletedPartitions(int nodeId) {
+        Set<Integer> delPartitions = new TreeSet<Integer>();
+        if (targetNodeIdToAllDeletedPartitions.get(nodeId) != null && targetNodeIdToAllDeletedPartitions.get(nodeId).size() > 0) {
+            // Gets all delete partition for this donor (Creates a deep copy first).
+            delPartitions = new TreeSet<Integer>(targetNodeIdToAllDeletedPartitions.get(nodeId));
+
+            // How many have you deleted so far?
+            Set<Integer> alreadyDeletedPartitions = alreadyDeletedNodeIdToPartions.get(nodeId);
+
+            // Removes any primary partitions and the ones already deleted.
+            // There is no side effect in deleting an already deleted partition,
+            // but just for the sake of clarity, let's only delete once a partition.
+            if (alreadyDeletedPartitions != null)
+                delPartitions.removeAll(alreadyDeletedPartitions);
+
+        }
+
+        return delPartitions;
     }
 
     /**
@@ -254,11 +286,10 @@ public class RebalanceClusterPlan {
         return replicasAddedInTarget;
     }
 
-    private void deleteDonatedPartitions(final Node donor, Set<Integer> trackDeletePartitions, boolean enabledDeletePartition) {
+    private void deleteDonatedPartitions(final Node donor, Set<Integer> deletingPartitions, Set<Integer> trackDeletePartitions, boolean enabledDeletePartition) {
         final int donorId = donor.getId();
-        final List<Integer> donorPrimaryPartitionIds = donor.getPartitionIds();
-        if (enabledDeletePartition) {
 
+        if (enabledDeletePartition) {
             if (targetNodeIdToAllDeletedPartitions.get(donorId) != null && targetNodeIdToAllDeletedPartitions.get(donorId).size() > 0) {
                 // Gets all delete partition for this donor (Creates a deep copy first).
                 Set<Integer> delPartitions = new TreeSet<Integer>(targetNodeIdToAllDeletedPartitions.get(donorId));
@@ -271,9 +302,6 @@ public class RebalanceClusterPlan {
                 // but just for the sake of clarity, let's only delete once a partition.
                 if (alreadyDeletedPartitions != null)
                     delPartitions.removeAll(alreadyDeletedPartitions);
-
-                if (donorPrimaryPartitionIds != null)
-                    delPartitions.removeAll(donorPrimaryPartitionIds);
 
                 // add these del partition to the set used in the RebalancePartitionsIndo.
                 trackDeletePartitions.addAll(delPartitions);
@@ -292,15 +320,18 @@ public class RebalanceClusterPlan {
         while (iter.hasNext()) {
             Integer stealingReplica = iter.next();
 
-            // only give a replica if this replica is not destiny to be deleted.
-            // failing do to that could potentially mean that your are relaying to copy a partition
-            // that can be deleted in another {@link RebalancePartitionsInfo}
-            // Remember that it's a possibility by design that you could have parallelism, meaning that
-            // different threads carry on the execution of different partition-info-plan.
-            // So there is no guarantee which thread will run first. If you delete a partition that was used
-            // as a copy from then you could end up deleting the partition first, and never able to copy
-            // the partition after that, in other words it's gone before you get a change to copy it.
-            if (donorAllParitions.contains(stealingReplica) && !targetNodeIdToAllDeletedPartitions.get(donorId).contains(stealingReplica)) {
+            // The idea here is to allow donating partitions that are about to be deleted.
+            // before I didn't allow this for 2 reasons:
+            // 1) Spread the I/O among different machines instead of one donor.
+            // 2) Deleting a partition that will be used later on in other rebalance task
+            // (different thread) could find the partition already deleted.
+            //
+            // These reasons now, based on latest code changed, are no longer valid.
+            // Even we are taking many partitions from the same donor, they are all carried out
+            // by the same thread running in the donor, so in other words the donation (reading
+            // and sending the data is sequential). Another point or side effect is that now
+            // all other nodes are not spending JVM resources donating too.
+            if (donorAllParitions.contains(stealingReplica)) {
                 trackStealPartitions.add(stealingReplica);
                 // only one node will donate this partition.
                 iter.remove();
@@ -322,8 +353,8 @@ public class RebalanceClusterPlan {
                 // This slealedPrimary partition has been donated, let's counter it out.
                 iter.remove();
 
+                // Should we suppose to delete this partition?
                 if (enabledDeletePartition) {
-                    // Should we suppose to delete this partition?
                     Set<Integer> deletedPartitions = targetNodeIdToAllDeletedPartitions.get(donorId);
                     if (deletedPartitions != null && deletedPartitions.contains(stealingPrimary)) {
                         trackDeletePartitions.add(stealingPrimary);

@@ -22,9 +22,11 @@ import voldemort.client.protocol.admin.AdminClientConfig;
 import voldemort.utils.Props;
 
 public class RebalanceClientConfig extends AdminClientConfig {
+    public final static int MAX_PARALLEL_DONOR = 2;
+    public final static int MAX_PARALLEL_REBALANCING = 2;
 
-    private int maxParallelDonors = 1;
-    private int maxParallelRebalancing = 1;
+    private int maxParallelDonors = MAX_PARALLEL_DONOR;
+    private int maxParallelRebalancing = MAX_PARALLEL_REBALANCING;
     private int rebalancingClientTimeoutSeconds = 7 * 24 * 60 * 60;
     private boolean deleteAfterRebalancingEnabled;
     private boolean enabledShowPlan;

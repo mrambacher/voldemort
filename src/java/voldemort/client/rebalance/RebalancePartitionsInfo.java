@@ -17,7 +17,7 @@ public class RebalancePartitionsInfo {
     private final int stealerId;
     private final int donorId;
     private final List<Integer> partitionList;
-    private final List<Integer> deletePartitionsList;
+    private List<Integer> deletePartitionsList;
     private List<String> unbalancedStoreList;
     private int attempt;
     private List<Integer> stealMasterPartitions;
@@ -32,14 +32,14 @@ public class RebalancePartitionsInfo {
      * @param donorId
      * @param partitionList
      * @param deletePartitionsList : selected list of partitions which only
-     *        should be deleted
+     *            should be deleted
      * @param stealMasterPartitions : partitions for which we should change the
-     *        ownership in cluster.
+     *            ownership in cluster.
      * @param unbalancedStoreList : list of store names which need rebalancing
      * @param stealerNodeStoreToRODir : map of store name to read-only store
-     *        directory on stealer node
+     *            directory on stealer node
      * @param donorNodeStoreToRODir : mapping of store name to read-only store
-     *        directory on donor node
+     *            directory on donor node
      * @param attempt : attempt number
      */
     public RebalancePartitionsInfo(int stealerNodeId,
@@ -67,7 +67,7 @@ public class RebalancePartitionsInfo {
             JsonReader reader = new JsonReader(new StringReader(line));
             Map<String, ?> map = reader.readObject();
             return create(map);
-        } catch(Exception e) {
+        } catch (Exception e) {
             throw new VoldemortException("Failed to create RebalanceStealInfo from String:" + line,
                                          e);
         }
@@ -97,6 +97,10 @@ public class RebalancePartitionsInfo {
 
     public List<Integer> getDeletePartitionsList() {
         return deletePartitionsList;
+    }
+
+    public void setDeletePartitionsList(List<Integer> deletedPartitions) {
+        deletePartitionsList = deletedPartitions;
     }
 
     public void setAttempt(int attempt) {
@@ -154,8 +158,8 @@ public class RebalancePartitionsInfo {
     @Override
     public String toString() {
         return "RebalancingStealInfo(" + getStealerId() + " <--- " + getDonorId() + " partitions:"
-               + getPartitionList() + " steal master partitions:" + getStealMasterPartitions() + " deleted:" + getDeletePartitionsList() 
-               + " stores:" + getUnbalancedStoreList() + ")";
+                + getPartitionList() + " steal master partitions:" + getStealMasterPartitions() + " deleted:" + getDeletePartitionsList()
+                + " stores:" + getUnbalancedStoreList() + ")";
     }
 
     public String toJsonString() {
@@ -184,33 +188,33 @@ public class RebalancePartitionsInfo {
 
     @Override
     public boolean equals(Object o) {
-        if(this == o)
+        if (this == o)
             return true;
-        if(o == null || getClass() != o.getClass())
+        if (o == null || getClass() != o.getClass())
             return false;
 
         RebalancePartitionsInfo that = (RebalancePartitionsInfo) o;
 
-        if(attempt != that.attempt)
+        if (attempt != that.attempt)
             return false;
-        if(donorId != that.donorId)
+        if (donorId != that.donorId)
             return false;
-        if(stealerId != that.stealerId)
+        if (stealerId != that.stealerId)
             return false;
-        if(!deletePartitionsList.equals(that.deletePartitionsList))
+        if (!deletePartitionsList.equals(that.deletePartitionsList))
             return false;
-        if(!partitionList.equals(that.partitionList))
+        if (!partitionList.equals(that.partitionList))
             return false;
-        if(stealMasterPartitions != null ? !stealMasterPartitions.equals(that.stealMasterPartitions)
+        if (stealMasterPartitions != null ? !stealMasterPartitions.equals(that.stealMasterPartitions)
                                         : that.stealMasterPartitions != null)
             return false;
-        if(unbalancedStoreList != null ? !unbalancedStoreList.equals(that.unbalancedStoreList)
+        if (unbalancedStoreList != null ? !unbalancedStoreList.equals(that.unbalancedStoreList)
                                       : that.unbalancedStoreList != null)
             return false;
-        if(stealerNodeROStoreToDir != null ? !stealerNodeROStoreToDir.equals(that.stealerNodeROStoreToDir)
+        if (stealerNodeROStoreToDir != null ? !stealerNodeROStoreToDir.equals(that.stealerNodeROStoreToDir)
                                           : that.stealerNodeROStoreToDir != null)
             return false;
-        if(donorNodeROStoreToDir != null ? !donorNodeROStoreToDir.equals(that.donorNodeROStoreToDir)
+        if (donorNodeROStoreToDir != null ? !donorNodeROStoreToDir.equals(that.donorNodeROStoreToDir)
                                         : that.donorNodeROStoreToDir != null)
             return false;
 
