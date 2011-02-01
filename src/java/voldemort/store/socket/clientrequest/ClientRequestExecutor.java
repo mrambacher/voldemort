@@ -34,6 +34,7 @@ import voldemort.client.protocol.RequestFormatType;
 import voldemort.utils.ByteUtils;
 import voldemort.utils.SelectorManager;
 import voldemort.utils.SelectorManagerWorker;
+import voldemort.utils.Timer;
 
 /**
  * ClientRequestExecutor represents a persistent link between a client and
@@ -54,6 +55,7 @@ public class ClientRequestExecutor extends SelectorManagerWorker {
     private ClientRequest<?> currentRequest;
     private RequestFormat requestFormat = null;
     private final RequestFormatType requestFormatType;
+    private Timer requestTimer;
 
     public ClientRequestExecutor(SelectorManager manager,
                                  SocketChannel socketChannel,
@@ -63,6 +65,7 @@ public class ClientRequestExecutor extends SelectorManagerWorker {
         super(manager, socketChannel, socketBufferSize, socketTimeoutMs);
         this.requestFormatType = formatType;
         this.requestFormat = null;
+        this.requestTimer = null;
         currentRequest = null;
     }
 
@@ -95,6 +98,15 @@ public class ClientRequestExecutor extends SelectorManagerWorker {
         }
     }
 
+    @Override
+    public void addCheckpoint(String point) {
+        if(requestTimer != null) {
+            requestTimer.checkpoint(point);
+        } else {
+            super.addCheckpoint(point);
+        }
+    }
+
     /**
      * Starts the protocol negotiation with the server.
      */
@@ -122,7 +134,12 @@ public class ClientRequestExecutor extends SelectorManagerWorker {
         } else {
             throw new VoldemortException("Unknown server response: " + result);
         }
+        // There was a request waiting for negotiation to complete
+        // Copy the current timer and reset it
+        // Then send the pending request
         if(this.currentRequest != null) {
+            requestTimer.checkpoint(timer);
+            timer.reset();
             this.writeClientRequest();
         }
     }
@@ -247,18 +264,21 @@ public class ClientRequestExecutor extends SelectorManagerWorker {
      * @param expiration How long (in milliseconds) the request is allowed to
      *        take.
      */
-    public synchronized void addClientRequest(ClientRequest<?> clientRequest,
-                                              long started,
-                                              long expiration) {
+    public synchronized void addClientRequest(ClientRequest<?> clientRequest, Timer requestTimer) {
         if(logger.isTraceEnabled())
             logger.trace("Associating client with " + socketChannel.socket());
 
-        timer.reset(started);
-        timer.setExpiration(expiration);
-        timer.setName(clientRequest.toString());
+        this.requestTimer = requestTimer;
+        // timer.reset(started);
+        // timer.setExpiration(expiration);
+        // timer.setName(clientRequest.toString());
         currentRequest = clientRequest;
         if(this.requestFormat != null) {
             // If protocol negotiation is complete, send the request now.
+            // Copy the current timer and reset it
+            // Then send the pending request
+            requestTimer.checkpoint(timer);
+            timer.reset();
             writeClientRequest();
         }
     }
@@ -336,7 +356,6 @@ public class ClientRequestExecutor extends SelectorManagerWorker {
         ClientRequest<?> local = currentRequest;
         currentRequest = null;
 
-        super.markCompleted(local.getName());
         local.markCompleted(ex);
         if(logger.isTraceEnabled())
             logger.trace("Marked client associated with " + socketChannel.socket() + " as complete");

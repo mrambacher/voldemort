@@ -48,7 +48,8 @@ public class PutClientRequest extends AbstractStoreClientRequest<Version> {
 
     @Override
     public String toString() {
-        return "Request[" + name + "/" + storeName + "(" + new String(key.get()) + ")]";
+        return "Request[" + name + "/" + storeName + "(" + new String(hexCodec.encode(key.get()))
+               + ")]";
     }
 
     @Override

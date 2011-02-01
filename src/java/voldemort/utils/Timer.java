@@ -93,6 +93,10 @@ public class Timer {
         }
     }
 
+    public void checkpoint(Timer timer) {
+        checkpoints.addAll(timer.checkpoints);
+    }
+
     public void checkpoint(Checkpoint point) {
         checkpoints.add(point);
     }

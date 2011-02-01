@@ -30,6 +30,7 @@ import voldemort.store.async.StoreFutureTask;
 import voldemort.store.socket.clientrequest.ClientRequest;
 import voldemort.store.socket.clientrequest.ClientRequestExecutor;
 import voldemort.store.socket.clientrequest.ClientRequestExecutorPool;
+import voldemort.utils.Timer;
 
 public class SocketStoreFuture<V> extends StoreFutureTask<V> implements ClientRequest<V> {
 
@@ -37,6 +38,7 @@ public class SocketStoreFuture<V> extends StoreFutureTask<V> implements ClientRe
     private final ClientRequestExecutorPool pool;
     private Thread thread;
     private V result;
+    private Timer timer;
     private VoldemortException exception;
     private boolean cancelled = false;
     private final ClientRequest<V> clientRequest;
@@ -54,17 +56,15 @@ public class SocketStoreFuture<V> extends StoreFutureTask<V> implements ClientRe
         this.result = null;
         this.exception = null;
         this.thread = Thread.currentThread();
-        long started = System.currentTimeMillis();
+        this.timer = new Timer(clientRequest.toString(), pool.getSocketTimeout());
         try {
             this.clientRequestExecutor = pool.checkout(destination);
-            this.started = System.nanoTime();
+            if(clientRequestExecutor != null) {
+                timer.checkpoint("Checkout complete");
+                clientRequestExecutor.addClientRequest(this, timer);
+            }
         } catch(VoldemortException ex) {
-            this.exception = ex;
             this.markAsFailed(ex);
-        }
-        if(clientRequestExecutor != null) {
-            clientRequestExecutor.addCheckpoint("Checkout complete");
-            clientRequestExecutor.addClientRequest(this, started, pool.getSocketTimeout());
         }
     }
 
@@ -88,14 +88,21 @@ public class SocketStoreFuture<V> extends StoreFutureTask<V> implements ClientRe
         return isCancelled() || isDone();
     }
 
+    @Override
+    public void markAsFailed(VoldemortException reason) {
+        exception = reason;
+        super.markAsFailed(reason);
+        timer.completed("Failed", this.logger);
+    }
+
     public void markCompleted(Exception reason) {
         try {
             clientRequest.markCompleted(reason);
             result = call();
             super.markAsCompleted(result);
+            timer.completed("Completed", this.logger);
         } catch(VoldemortException ex) {
-            exception = ex;
-            super.markAsFailed(ex);
+            markAsFailed(ex);
         } catch(IOException e) {
             clientRequestExecutor.close();
             exception = new UnreachableStoreException("Failure in " + getOperation() + " on "

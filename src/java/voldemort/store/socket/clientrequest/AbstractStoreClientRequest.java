@@ -21,6 +21,8 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
+import org.apache.commons.codec.binary.Hex;
+
 import voldemort.client.protocol.ClientRequestFormat;
 import voldemort.client.protocol.RequestFormat;
 import voldemort.serialization.VoldemortOpCode;
@@ -39,6 +41,7 @@ public abstract class AbstractStoreClientRequest<T> extends AbstractClientReques
 
     protected final String storeName;
     protected final RequestRoutingType routingType;
+    protected static final Hex hexCodec = new Hex();
 
     public AbstractStoreClientRequest(VoldemortOpCode request,
                                       String storeName,

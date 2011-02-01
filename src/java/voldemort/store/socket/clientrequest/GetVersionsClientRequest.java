@@ -36,7 +36,8 @@ public class GetVersionsClientRequest extends AbstractStoreClientRequest<List<Ve
 
     @Override
     public String toString() {
-        return "Request[" + name + "/" + storeName + "(" + new String(key.get()) + ")]";
+        return "Request[" + name + "/" + storeName + "(" + new String(hexCodec.encode(key.get()))
+               + ")]";
     }
 
     @Override
