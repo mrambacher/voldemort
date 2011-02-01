@@ -115,7 +115,8 @@ public class MetadataStore implements StorageEngine<ByteArray, byte[], byte[]> {
      */
     public static enum RebalancePartitionsInfoLifeCycleStatus {
         NEW,
-        RUNNING
+        RUNNING,
+        NOT_RUNNING
     }
 
     private final RoutingStrategyFactory routingFactory;
