@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.After;
 import org.junit.Before;
@@ -81,7 +82,9 @@ public class SocketStoreClientFactoryTest extends AbstractStoreClientFactoryTest
     protected StoreClientFactory getFactoryWithSerializer(SerializerFactory factory,
                                                           String... bootstrapUrls) {
         return new SocketStoreClientFactory(new ClientConfig().setBootstrapUrls(bootstrapUrls)
-                                                              .setSerializerFactory(factory));
+                                                              .setSerializerFactory(factory)
+                                                              .setSocketTimeout(0,
+                                                                                TimeUnit.MILLISECONDS));
     }
 
     @Override
